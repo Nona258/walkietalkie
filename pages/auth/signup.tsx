@@ -1,5 +1,5 @@
-// pages/signup.tsx
-import React, { useState } from "react";
+// pages/auth/signup.tsx
+import React, { useState } from 'react';
 import {
   View,
   Text,
@@ -10,43 +10,43 @@ import {
   KeyboardAvoidingView,
   Platform,
   ScrollView,
-} from "react-native";
-import { Ionicons } from "@expo/vector-icons";
-// import { supabase } from '../utils/supabase';  // <-- uncomment once supabase is configured
-import "../global.css";
+} from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
+// import { supabase } from '../../utils/supabase';  // <-- uncomment once supabase is configured
+import '../../global.css';
 
 interface SignUpProps {
   onNavigateToSignIn: () => void;
 }
 
 export default function SignUp({ onNavigateToSignIn }: SignUpProps) {
-  const [fullName, setFullName] = useState("");
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [confirmPassword, setConfirmPassword] = useState("");
+  const [fullName, setFullName] = useState('');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [loading, setLoading] = useState(false);
 
   const handleSignUp = async () => {
     if (!fullName.trim()) {
-      Alert.alert("Error", "Please enter your full name.");
+      Alert.alert('Error', 'Please enter your full name.');
       return;
     }
     if (!email.trim()) {
-      Alert.alert("Error", "Please enter your email.");
+      Alert.alert('Error', 'Please enter your email.');
       return;
     }
     if (!password) {
-      Alert.alert("Error", "Please enter a password.");
+      Alert.alert('Error', 'Please enter a password.');
       return;
     }
     if (password.length < 6) {
-      Alert.alert("Error", "Password must be at least 6 characters.");
+      Alert.alert('Error', 'Password must be at least 6 characters.');
       return;
     }
     if (password !== confirmPassword) {
-      Alert.alert("Error", "Passwords do not match.");
+      Alert.alert('Error', 'Passwords do not match.');
       return;
     }
 
@@ -71,12 +71,12 @@ export default function SignUp({ onNavigateToSignIn }: SignUpProps) {
       // }
 
       // Temporary stub:
-      console.log("Sign up with:", fullName, email, password);
-      Alert.alert("Success", "Account created successfully!", [
-        { text: "OK", onPress: onNavigateToSignIn },
+      console.log('Sign up with:', fullName, email, password);
+      Alert.alert('Success', 'Account created successfully!', [
+        { text: 'OK', onPress: onNavigateToSignIn },
       ]);
     } catch {
-      Alert.alert("Error", "Something went wrong.");
+      Alert.alert('Error', 'Something went wrong.');
     }
     setLoading(false);
   };
@@ -93,7 +93,7 @@ export default function SignUp({ onNavigateToSignIn }: SignUpProps) {
       <View className="absolute bottom-48 -right-12 w-32 h-32 rounded-full border border-[#34d399]/20" />
 
       <KeyboardAvoidingView
-        behavior={Platform.OS === "ios" ? "padding" : "height"}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         className="flex-1"
       >
         <ScrollView
@@ -158,7 +158,7 @@ export default function SignUp({ onNavigateToSignIn }: SignUpProps) {
                   onPress={() => setShowPassword(!showPassword)}
                 >
                   <Ionicons
-                    name={showPassword ? "eye-outline" : "eye-off-outline"}
+                    name={showPassword ? 'eye-outline' : 'eye-off-outline'}
                     size={20}
                     color="#9ca3af"
                   />
@@ -180,7 +180,7 @@ export default function SignUp({ onNavigateToSignIn }: SignUpProps) {
                   onPress={() => setShowConfirmPassword(!showConfirmPassword)}
                 >
                   <Ionicons
-                    name={showConfirmPassword ? "eye-outline" : "eye-off-outline"}
+                    name={showConfirmPassword ? 'eye-outline' : 'eye-off-outline'}
                     size={20}
                     color="#9ca3af"
                   />
@@ -207,7 +207,7 @@ export default function SignUp({ onNavigateToSignIn }: SignUpProps) {
               {/* Sign In Link */}
               <View className="flex-row items-center justify-center mt-2">
                 <Text className="text-[#6b7280] text-base">
-                  Already have an account?{" "}
+                  Already have an account?{' '}
                 </Text>
                 <TouchableOpacity onPress={onNavigateToSignIn}>
                   <Text className="text-[#10b981] text-base font-bold">

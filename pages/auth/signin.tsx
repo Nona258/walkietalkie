@@ -8,7 +8,7 @@ import {
   Platform,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import '../global.css';
+import '../../global.css';
 
 interface SignInProps {
   onNavigateToSignUp: () => void;
@@ -77,7 +77,7 @@ export default function SignIn({ onNavigateToSignUp }: SignInProps) {
               />
               <TouchableOpacity onPress={() => setShowPassword(!showPassword)}>
                 <Ionicons
-                  name={showPassword ? "eye-outline" : "eye-off-outline"}
+                  name={showPassword ? 'eye-outline' : 'eye-off-outline'}
                   size={20}
                   color="#9ca3af"
                 />
