@@ -9,10 +9,10 @@ import {
   TextInput,
   Alert,
 } from 'react-native';
+import { supabase } from '../../utils/supabase';
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { showToast } from '../../components/SimpleToast';
-import { supabase } from '../../utils/supabase';
 import '../../global.css';
 
 // ---------- Type Definitions ----------
@@ -86,7 +86,7 @@ export default function CompanyList({ onNavigate }: CompanyListProps) {
       if (error) throw error;
 
       // 2. Transform to our Company type
-      const transformed: Company[] = (supabaseCompanies || []).map((c) => {
+      const transformed: Company[] = (supabaseCompanies || []).map((c: any) => {
         const words = c.company_name.trim().split(' ');
         const initials = words
           .slice(0, 2)
@@ -371,7 +371,7 @@ export default function CompanyList({ onNavigate }: CompanyListProps) {
         .order('id', { ascending: true });
 
       if (error) throw error;
-      setBranchesList(data.map((b) => ({ id: b.id, name: b.branch_name })));
+      setBranchesList((data || []).map((b: any) => ({ id: b.id, name: b.branch_name })));
     } catch (error) {
       console.error('Error fetching branches:', error);
       showToast({ type: 'error', text1: 'Error', text2: 'Failed to load branches' });
