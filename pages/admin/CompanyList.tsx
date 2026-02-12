@@ -3,6 +3,7 @@ import { View, Text, ScrollView, TouchableOpacity, Modal, Pressable, TextInput, 
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { showToast } from '../../components/SimpleToast';
+import supabase from '../../utils/supabase';
 import '../../global.css';
 
 type Company = {
@@ -10,7 +11,6 @@ type Company = {
   name: string;
   industry: string;
   branches: number;
-  employees: number;
   initials: string;
   color: string;
 };
@@ -23,7 +23,7 @@ interface ValidationErrors {
   companyName?: string;
   industry?: string;
   branches?: string;
-  employees?: string;
+  branchNames?: string;
 }
 
 export default function CompanyList({ onNavigate }: CompanyListProps) {
@@ -35,8 +35,9 @@ export default function CompanyList({ onNavigate }: CompanyListProps) {
   // Form state
   const [companyName, setCompanyName] = useState('');
   const [industry, setIndustry] = useState('');
+  // branches stores the count as string. branchNames stores names for each branch.
   const [branches, setBranches] = useState('');
-  const [employees, setEmployees] = useState('');
+  const [branchNames, setBranchNames] = useState<string[]>([]);
 
   // Validation state
   const [errors, setErrors] = useState<ValidationErrors>({});
@@ -60,7 +61,6 @@ export default function CompanyList({ onNavigate }: CompanyListProps) {
             name: 'Acme Corporation',
             industry: 'Technology & Security',
             branches: 3,
-            employees: 86,
             initials: 'AC',
             color: '#ccfbf1',
           },
@@ -69,7 +69,6 @@ export default function CompanyList({ onNavigate }: CompanyListProps) {
             name: 'Global Logistics',
             industry: 'Shipping & Warehousing',
             branches: 5,
-            employees: 124,
             initials: 'GL',
             color: '#ccfbf1',
           },
@@ -78,7 +77,6 @@ export default function CompanyList({ onNavigate }: CompanyListProps) {
             name: 'BuildRight Construction',
             industry: 'Infrastructure',
             branches: 2,
-            employees: 45,
             initials: 'BR',
             color: '#ccfbf1',
           },
@@ -146,19 +144,8 @@ export default function CompanyList({ onNavigate }: CompanyListProps) {
         }
         return undefined;
 
-      case 'employees':
-        if (value && value.trim() !== '') {
-          const num = parseInt(value);
-          if (isNaN(num)) {
-            return 'Employees must be a valid number';
-          }
-          if (num < 0) {
-            return 'Employees cannot be negative';
-          }
-          if (num > 1000000) {
-            return 'Employees cannot exceed 1,000,000';
-          }
-        }
+      case 'branchNames':
+        // validation of branch names is handled in validateForm because it depends on count
         return undefined;
 
       default:
@@ -171,17 +158,25 @@ export default function CompanyList({ onNavigate }: CompanyListProps) {
       companyName: validateField('companyName', companyName),
       industry: validateField('industry', industry),
       branches: validateField('branches', branches),
-      employees: validateField('employees', employees),
+      branchNames: undefined,
     };
 
+    // Validate branch names when branches count > 0
+    const num = parseInt(branches) || 0;
+    if (num > 0) {
+      if (branchNames.length !== num || branchNames.some(b => !b || !b.trim())) {
+        newErrors.branchNames = 'Please provide a name for each branch';
+      }
+    }
+
     setErrors(newErrors);
-    
+
     // Mark all fields as touched
     setTouched({
       companyName: true,
       industry: true,
       branches: true,
-      employees: true,
+      branchNames: true,
     });
 
     // Return true if no errors
@@ -198,12 +193,20 @@ export default function CompanyList({ onNavigate }: CompanyListProps) {
         setIndustry(value);
         break;
       case 'branches':
+        // update branches count and keep branchNames length in sync
         setBranches(value);
+        const num = parseInt(value) || 0;
+        setBranchNames(prev => {
+          const next = [...prev];
+          if (num > next.length) {
+            for (let i = next.length; i < num; i++) next.push('');
+          } else if (num < next.length) {
+            next.length = num;
+          }
+          return next;
+        });
         break;
-      case 'employees':
-        setEmployees(value);
-        break;
-    }
+      }
 
     // Validate the field if it's been touched
     if (touched[fieldName]) {
@@ -218,11 +221,27 @@ export default function CompanyList({ onNavigate }: CompanyListProps) {
     setErrors(prev => ({ ...prev, [fieldName]: error }));
   };
 
+  const handleBranchNameChange = (index: number, value: string) => {
+    setBranchNames(prev => {
+      const next = [...prev];
+      next[index] = value;
+      return next;
+    });
+    if (touched.branchNames) {
+      const num = parseInt(branches) || 0;
+      if (num !== branchNames.length || branchNames.some(b => !b || !b.trim())) {
+        setErrors(prev => ({ ...prev, branchNames: 'Please provide a name for each branch' }));
+      } else {
+        setErrors(prev => ({ ...prev, branchNames: undefined }));
+      }
+    }
+  };
+
   const resetForm = () => {
     setCompanyName('');
     setIndustry('');
     setBranches('');
-    setEmployees('');
+    setBranchNames([]);
     setErrors({});
     setTouched({});
   };
@@ -237,6 +256,10 @@ export default function CompanyList({ onNavigate }: CompanyListProps) {
       return;
     }
 
+    // Allow anonymous insert attempts from the client.
+    // Note: If your Supabase DB enforces RLS and blocks anonymous writes,
+    // you'll need to adjust policies or perform writes from a trusted server.
+
     // Generate initials from company name
     const words = companyName.trim().split(' ');
     const initials = words
@@ -250,21 +273,42 @@ export default function CompanyList({ onNavigate }: CompanyListProps) {
       name: companyName.trim(),
       industry: industry.trim(),
       branches: parseInt(branches) || 0,
-      employees: parseInt(employees) || 0,
       initials: initials,
       color: '#ccfbf1',
     };
 
-    const updatedCompanies = [...companies, newCompany];
-    await saveCompanies(updatedCompanies);
-    
-    resetForm();
-    setIsAddModalOpen(false);
-    showToast({ 
-      type: 'success', 
-      text1: 'Success!', 
-      text2: `${companyName.trim()} has been added successfully` 
-    });
+    try {
+      const branchCount = parseInt(branches) || 0;
+      let primaryBranchId: number | null = null;
+
+      if (branchCount > 0) {
+        const payload = branchNames.slice(0, branchCount).map(name => ({ branch_name: name.trim() }));
+        const { data: insertedBranches, error: branchError } = await supabase.from('branch').insert(payload).select('id');
+        if (branchError) throw branchError;
+        if (insertedBranches && insertedBranches.length > 0) {
+          primaryBranchId = insertedBranches[0].id as number;
+        }
+      }
+
+      const { data: companyData, error: companyError } = await supabase.from('company').insert({
+        company_name: companyName.trim(),
+        industry_or_sectors: industry.trim(),
+        no_of_branch: parseInt(branches) || 0,
+        branch_id: primaryBranchId,
+      }).select();
+
+      if (companyError) throw companyError;
+
+      const updatedCompanies = [...companies, newCompany];
+      await saveCompanies(updatedCompanies);
+
+      resetForm();
+      setIsAddModalOpen(false);
+      showToast({ type: 'success', text1: 'Success!', text2: `${companyName.trim()} has been added successfully` });
+    } catch (err: any) {
+      console.log('Error saving to DB:', err);
+      showToast({ type: 'error', text1: 'Error', text2: err?.message || 'Failed to save company' });
+    }
   };
 
   const handleDeleteCompany = async (id: string) => {
@@ -505,10 +549,6 @@ export default function CompanyList({ onNavigate }: CompanyListProps) {
                     <Ionicons name="business-outline" size={16} color="#78716c" />
                     <Text className="text-sm text-stone-600 ml-1.5">{company.branches} branches</Text>
                   </View>
-                  <View className="flex-row items-center">
-                    <Ionicons name="people-outline" size={16} color="#78716c" />
-                    <Text className="text-sm text-stone-600 ml-1.5">{company.employees} employees</Text>
-                  </View>
                 </View>
               </View>
             ))}
@@ -540,8 +580,6 @@ export default function CompanyList({ onNavigate }: CompanyListProps) {
                     <View className="bg-stone-100 px-2 py-1 rounded">
                       <Text className="text-xs font-medium text-stone-600">{company.branches} branches</Text>
                     </View>
-                    <Text className="text-xs text-stone-400">•</Text>
-                    <Text className="text-xs font-medium text-stone-500">{company.employees} employees</Text>
                   </View>
                 </View>
 
@@ -793,28 +831,35 @@ export default function CompanyList({ onNavigate }: CompanyListProps) {
                 <Text className="text-xs text-stone-400 mt-1">Maximum 1000 branches</Text>
               </View>
 
-              {/* Number of Employees */}
-              <View className="mb-1">
-                <Text className="text-sm font-medium text-stone-700 mb-2">Number of Employees</Text>
-                <TextInput
-                  className={`bg-white border ${
-                    touched.employees && errors.employees ? 'border-red-500' : 'border-stone-300'
-                  } rounded-xl px-4 py-3 text-stone-900 text-sm`}
-                  placeholder="e.g., 86"
-                  placeholderTextColor="#a8a29e"
-                  keyboardType="numeric"
-                  value={employees}
-                  onChangeText={(value) => handleFieldChange('employees', value)}
-                  onBlur={() => handleFieldBlur('employees', employees)}
-                />
-                {touched.employees && errors.employees && (
-                  <View className="flex-row items-center mt-1.5">
-                    <Ionicons name="alert-circle" size={14} color="#dc2626" />
-                    <Text className="text-xs text-red-600 ml-1">{errors.employees}</Text>
+              {/* Branch Names (one input per branch) */}
+              {(() => {
+                const num = parseInt(branches) || 0;
+                if (num <= 0) return null;
+                return (
+                  <View className="mb-4">
+                    <Text className="text-sm font-medium text-stone-700 mb-2">Branch Names</Text>
+                    {Array.from({ length: num }).map((_, idx) => (
+                      <View key={idx} className="mb-3">
+                        <TextInput
+                          className={`bg-white border ${
+                            touched.branchNames && errors.branchNames ? 'border-red-500' : 'border-stone-300'
+                          } rounded-xl px-4 py-3 text-stone-900 text-sm`}
+                          placeholder={`Branch ${idx + 1} name`}
+                          placeholderTextColor="#a8a29e"
+                          value={branchNames[idx] ?? ''}
+                          onChangeText={(value) => handleBranchNameChange(idx, value)}
+                        />
+                      </View>
+                    ))}
+                    {touched.branchNames && errors.branchNames && (
+                      <View className="flex-row items-center mt-1.5">
+                        <Ionicons name="alert-circle" size={14} color="#dc2626" />
+                        <Text className="text-xs text-red-600 ml-1">{errors.branchNames}</Text>
+                      </View>
+                    )}
                   </View>
-                )}
-                <Text className="text-xs text-stone-400 mt-1">Maximum 1,000,000 employees</Text>
-              </View>
+                );
+              })()}
 
               <Text className="text-xs text-stone-400 mt-3">
                 <Text className="text-red-500">*</Text> Required fields
