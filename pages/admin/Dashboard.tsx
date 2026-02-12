@@ -1,7 +1,22 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+
+// Activity log type for fetched data (copied from ActivityLogs)
+interface ActivityLog {
+  id: number;
+  user_name: string;
+  initials: string;
+  action: string;
+  description: string;
+  location: string;
+  time: string;
+  type: string;
+  color: string;
+  icon: string;
+}
 import { View, Text, ScrollView, TouchableOpacity, Modal, Pressable } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import '../../global.css';
+import { supabase } from '../../utils/supabase';
 
 interface AdminDashboardProps {
   onNavigate: (page: 'dashboard' | 'siteManagement' | 'walkieTalkie' | 'activityLogs' | 'companyList' | 'employee' | 'settings') => void;
@@ -10,6 +25,48 @@ interface AdminDashboardProps {
 export default function AdminDashboard({ onNavigate }: AdminDashboardProps) {
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   const [isNotificationOpen, setIsNotificationOpen] = useState(false);
+  const [totalEmployees, setTotalEmployees] = useState<number>(0);
+  const [activeSites, setActiveSites] = useState<number>(0);
+
+  // Recent Activity logs state
+  const [recentActivities, setRecentActivities] = useState<ActivityLog[]>([]);
+  const [activityLoading, setActivityLoading] = useState(true);
+
+  useEffect(() => {
+    // Fetch recent activity logs (limit 4 for dashboard)
+    const fetchRecentLogs = async () => {
+      setActivityLoading(true);
+      const { data, error } = await supabase
+        .from('activity_logs')
+        .select('*')
+        .order('time', { ascending: false })
+        .limit(4);
+      if (!error && data) setRecentActivities(data);
+      setActivityLoading(false);
+    };
+    fetchRecentLogs();
+  }, []);
+
+  useEffect(() => {
+    // Fetch total employees
+    const fetchEmployees = async () => {
+      const { data, count, error } = await supabase
+        .from('users')
+        .select('id', { count: 'exact' })
+        .match({ role: 'employee' });
+      if (!error && typeof count === 'number') setTotalEmployees(count);
+    };
+    // Fetch active sites
+    const fetchSites = async () => {
+      const { count, error } = await supabase
+        .from('sites')
+        .select('id', { count: 'exact', head: true })
+        .eq('status', 'Active');
+      if (!error && typeof count === 'number') setActiveSites(count);
+    };
+    fetchEmployees();
+    fetchSites();
+  }, []);
 
   return (
     <View className="flex-1 flex-row bg-stone-50">
@@ -181,6 +238,7 @@ export default function AdminDashboard({ onNavigate }: AdminDashboardProps) {
         {/* Stats Grid */}
         <View className="px-6 py-6">
           <View className="flex-row flex-wrap gap-4 lg:gap-6">
+
             {/* Total Employees */}
             <View className="bg-white rounded-2xl p-4 lg:p-6 border border-stone-200 flex-1 min-w-[45%] lg:min-w-[200px] lg:max-w-[280px]">
               <View className="flex-row items-center justify-between mb-3">
@@ -191,7 +249,7 @@ export default function AdminDashboard({ onNavigate }: AdminDashboardProps) {
                   <Text className="text-emerald-600 text-xs font-semibold">+12%</Text>
                 </View>
               </View>
-              <Text className="text-3xl lg:text-4xl font-bold text-stone-900 mb-1">248</Text>
+              <Text className="text-3xl lg:text-4xl font-bold text-stone-900 mb-1">{totalEmployees}</Text>
               <Text className="text-stone-500 text-sm lg:text-base">Total Employees</Text>
             </View>
 
@@ -205,7 +263,7 @@ export default function AdminDashboard({ onNavigate }: AdminDashboardProps) {
                   <Text className="text-teal-600 text-xs font-semibold">+5</Text>
                 </View>
               </View>
-              <Text className="text-3xl lg:text-4xl font-bold text-stone-900 mb-1">32</Text>
+              <Text className="text-3xl lg:text-4xl font-bold text-stone-900 mb-1">{activeSites}</Text>
               <Text className="text-stone-500 text-sm lg:text-base">Active Sites</Text>
             </View>
 
@@ -321,49 +379,36 @@ export default function AdminDashboard({ onNavigate }: AdminDashboardProps) {
               <View className="bg-white rounded-2xl border border-stone-200 p-5 lg:p-6">
                 <Text className="text-lg lg:text-xl font-semibold text-stone-900 mb-4">Recent Activity</Text>
                 
-                {/* Activity Item 1 */}
-                <View className="flex-row items-start mb-4">
-                  <View className="w-10 h-10 bg-emerald-100 rounded-xl items-center justify-center mr-3">
-                    <Ionicons name="person-add" size={18} color="#10b981" />
+                {/* Dynamic Recent Activities */}
+                {activityLoading ? (
+                  <View className="items-center justify-center py-6">
+                    <Ionicons name="time-outline" size={32} color="#d6d3d1" />
+                    <Text className="text-stone-400 mt-2 text-sm">Loading...</Text>
                   </View>
-                  <View className="flex-1">
-                    <Text className="text-stone-900 font-medium mb-1">New employee added</Text>
-                    <Text className="text-stone-500 text-sm">John Doe • 2 min ago</Text>
+                ) : recentActivities.length === 0 ? (
+                  <View className="items-center justify-center py-6">
+                    <Ionicons name="document-text-outline" size={32} color="#d6d3d1" />
+                    <Text className="text-stone-400 mt-2 text-sm">No recent activity</Text>
                   </View>
-                </View>
-
-                {/* Activity Item 2 */}
-                <View className="flex-row items-start mb-4">
-                  <View className="w-10 h-10 bg-teal-100 rounded-xl items-center justify-center mr-3">
-                    <Ionicons name="checkmark-circle" size={18} color="#14b8a6" />
-                  </View>
-                  <View className="flex-1">
-                    <Text className="text-stone-900 font-medium mb-1">Site check-in</Text>
-                    <Text className="text-stone-500 text-sm">Sarah M. @ Downtown • 15 min ago</Text>
-                  </View>
-                </View>
-
-                {/* Activity Item 3 */}
-                <View className="flex-row items-start mb-4">
-                  <View className="w-10 h-10 bg-amber-100 rounded-xl items-center justify-center mr-3">
-                    <Ionicons name="chatbubble" size={18} color="#f59e0b" />
-                  </View>
-                  <View className="flex-1">
-                    <Text className="text-stone-900 font-medium mb-1">Group message sent</Text>
-                    <Text className="text-stone-500 text-sm">Security Team • 32 min ago</Text>
-                  </View>
-                </View>
-
-                {/* Activity Item 4 */}
-                <View className="flex-row items-start">
-                  <View className="w-10 h-10 bg-blue-100 rounded-xl items-center justify-center mr-3">
-                    <Ionicons name="shield-checkmark" size={18} color="#3b82f6" />
-                  </View>
-                  <View className="flex-1">
-                    <Text className="text-stone-900 font-medium mb-1">Site verified</Text>
-                    <Text className="text-stone-500 text-sm">Warehouse B • 1 hour ago</Text>
-                  </View>
-                </View>
+                ) : (
+                  recentActivities.map((activity, idx) => (
+                    <View
+                      key={activity.id}
+                      className={`flex-row items-start${idx !== recentActivities.length - 1 ? ' mb-4' : ''}`}
+                    >
+                      <View
+                        className="w-10 h-10 rounded-xl items-center justify-center mr-3"
+                        style={{ backgroundColor: activity.color }}
+                      >
+                        <Ionicons name={activity.icon as any} size={18} color="#10b981" />
+                      </View>
+                      <View className="flex-1">
+                        <Text className="text-stone-900 font-medium mb-1">{activity.action}</Text>
+                        <Text className="text-stone-500 text-sm">{activity.description}</Text>
+                      </View>
+                    </View>
+                  ))
+                )}
               </View>
             </View>
           </View>
@@ -538,3 +583,4 @@ export default function AdminDashboard({ onNavigate }: AdminDashboardProps) {
     </View>
   );
 }
+// ...existing code...

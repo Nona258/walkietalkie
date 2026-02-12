@@ -1,95 +1,52 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, Modal, Pressable, TextInput } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import '../../global.css';
+import { supabase } from '../../utils/supabase';
 
 interface ActivityLogsProps {
   onNavigate: (page: 'dashboard' | 'siteManagement' | 'walkieTalkie' | 'activityLogs' | 'companyList' | 'employee' | 'settings') => void;
 }
 
-const activities = [
-  {
-    id: 1,
-    user: 'John Doe',
-    initials: 'JD',
-    action: 'User logged in',
-    description: 'John Doe accessed the system',
-    location: 'Downtown HQ',
-    time: '2 min ago',
-    type: 'login',
-    color: '#d1fae5',
-    icon: 'log-in-outline',
-  },
-  {
-    id: 2,
-    user: 'Sarah Miller',
-    initials: 'SM',
-    action: 'Site check-in',
-    description: 'Sarah Miller checked in at Downtown HQ',
-    location: 'Downtown HQ',
-    time: '15 min ago',
-    type: 'checkin',
-    color: '#ccfbf1',
-    icon: 'location-outline',
-  },
-  {
-    id: 3,
-    user: 'Mike Kim',
-    initials: 'MK',
-    action: 'Voice message sent',
-    description: 'Mike Kim sent a message to Security Team',
-    location: 'Warehouse B',
-    time: '32 min ago',
-    type: 'message',
-    color: '#fef3c7',
-    icon: 'chatbubble-outline',
-  },
-  {
-    id: 4,
-    user: 'Admin User',
-    initials: 'AD',
-    action: 'Added new site: North Branch',
-    description: 'New site location has been added to the system',
-    location: 'System',
-    time: '1 hour ago',
-    type: 'system',
-    color: '#d1fae5',
-    icon: 'add-circle-outline',
-  },
-  {
-    id: 5,
-    user: 'Security Team',
-    initials: 'ST',
-    action: 'Started group communication',
-    description: 'Group channel initiated for security updates',
-    location: 'Multiple Sites',
-    time: '2 hours ago',
-    type: 'communication',
-    color: '#d1fae5',
-    icon: 'people-outline',
-  },
-  {
-    id: 6,
-    user: 'John Doe',
-    initials: 'JD',
-    action: 'Completed patrol at Downtown HQ',
-    description: 'Routine patrol completed successfully',
-    location: 'Downtown HQ',
-    time: '3 hours ago',
-    type: 'patrol',
-    color: '#d1fae5',
-    icon: 'shield-checkmark-outline',
-  },
-];
+
+// Activity log type for fetched data
+interface ActivityLog {
+  id: number;
+  user_name: string;
+  initials: string;
+  action: string;
+  description: string;
+  location: string;
+  time: string;
+  type: string;
+  color: string;
+  icon: string;
+}
+
 
 export default function ActivityLogs({ onNavigate }: ActivityLogsProps) {
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   const [isNotificationOpen, setIsNotificationOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [filterType, setFilterType] = useState<string>('all');
+  const [activities, setActivities] = useState<ActivityLog[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const fetchLogs = async () => {
+      setLoading(true);
+      const { data, error } = await supabase
+        .from('activity_logs')
+        .select('*')
+        .order('time', { ascending: false });
+      if (!error && data) setActivities(data);
+      setLoading(false);
+    };
+    fetchLogs();
+  }, []);
 
   const filteredActivities = activities.filter(activity => {
-    const matchesSearch = activity.user.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    const matchesSearch = activity.user_name.toLowerCase().includes(searchQuery.toLowerCase()) ||
       activity.action.toLowerCase().includes(searchQuery.toLowerCase()) ||
       activity.description.toLowerCase().includes(searchQuery.toLowerCase());
     const matchesFilter = filterType === 'all' || activity.type === filterType;

@@ -23,14 +23,14 @@ export default function SimpleToast() {
       Animated.timing(anim, {
         toValue: 1,
         duration: 250,
-        useNativeDriver: true,
+        useNativeDriver: false,
       }).start();
 
       hideTimer.current = (setTimeout(() => {
         Animated.timing(anim, {
           toValue: 0,
           duration: 200,
-          useNativeDriver: true,
+          useNativeDriver: false,
         }).start(() => setMessage(null));
       }, 3000) as unknown) as number;
     };
@@ -47,7 +47,7 @@ export default function SimpleToast() {
   const textColor = '#0f172a';
 
   return (
-    <Animated.View style={[styles.container, { transform: [{ translateY }], width: Math.min(520, screenW - 40) }]} pointerEvents="box-none">
+    <Animated.View style={[styles.container, { transform: [{ translateY }], width: Math.min(520, screenW - 40), pointerEvents: 'box-none' }]}> 
       <View style={[styles.toast, { backgroundColor: background, borderColor: border }]}> 
         <Text style={[styles.title, { color: textColor }]}>{message.text1}</Text>
         {message.text2 ? <Text style={[styles.subtitle, { color: textColor }]}>{message.text2}</Text> : null}
@@ -70,10 +70,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     borderRadius: 12,
     borderWidth: 1,
-    shadowColor: '#000',
-    shadowOpacity: 0.06,
-    shadowRadius: 8,
-    elevation: 4,
+    boxShadow: '0px 4px 8px rgba(0,0,0,0.06)',
   },
   title: { fontSize: 14, fontWeight: '700' },
   subtitle: { fontSize: 12, marginTop: 4 },
