@@ -82,9 +82,9 @@ export default function SignIn({ onNavigateToSignUp, onSignInSuccess }: SignInPr
           {/* Logo */}
           <View className="items-center mb-10">
             <View className="w-20 h-20 bg-[#10b981] rounded-3xl items-center justify-center mb-6 shadow-lg shadow-[#10b981]/30">
-              <Ionicons name="chatbubble" size={38} color="#ffffff" />
+              <Ionicons name="radio" size={38} color="#ffffff" />
             </View>
-            <Text className="text-[#111827] text-3xl font-bold italic tracking-wide">WalkieTalk</Text>
+            <Text className="text-[#111827] text-3xl font-bold italic tracking-wide">SyncSpeak</Text>
             <Text className="text-[#6b7280] text-base mt-2 tracking-wide">Connect instantly. Talk freely.</Text>
           </View>
 
