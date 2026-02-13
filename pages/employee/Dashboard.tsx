@@ -10,7 +10,7 @@ export default function Dashboard({
   onLogout?: () => void;
   onNavigateToSettings?: () => void;
 }) {
-  const [userData, setUserData] = useState({ full_name: 'User' });
+  const [userData, setUserData] = useState({ full_name: 'User', phone_number: null });
 
   useEffect(() => {
     fetchUserData();
@@ -25,7 +25,7 @@ export default function Dashboard({
         // Fetch user data from the users table with simpler query
         const { data, error } = await supabase
           .from('users')
-          .select('full_name')
+          .select('full_name, phone_number')
           .eq('id', user.id);
 
         console.log('User data from table:', data);
@@ -34,12 +34,14 @@ export default function Dashboard({
         if (data && data.length > 0 && data[0].full_name) {
           setUserData({
             full_name: data[0].full_name,
+            phone_number: data[0].phone_number,
           });
         } else {
           // If table query fails, fallback to auth metadata
           console.log('Falling back to auth metadata');
           setUserData({
             full_name: user.user_metadata?.full_name || 'User',
+            phone_number: null,
           });
         }
       }
@@ -50,6 +52,7 @@ export default function Dashboard({
       if (user) {
         setUserData({
           full_name: user.user_metadata?.full_name || 'User',
+          phone_number: null,
         });
       }
     }

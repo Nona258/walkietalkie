@@ -22,6 +22,7 @@ interface SignUpProps {
 export default function SignUp({ onNavigateToSignIn }: SignUpProps) {
   const [fullName, setFullName] = useState("");
   const [email, setEmail] = useState("");
+  const [phoneNumber, setPhoneNumber] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
@@ -42,6 +43,10 @@ export default function SignUp({ onNavigateToSignIn }: SignUpProps) {
       return Alert.alert("Error", "Please enter your full name.");
     if (!email.trim())
       return Alert.alert("Error", "Please enter your email.");
+    if (!phoneNumber.trim())
+      return Alert.alert("Error", "Please enter your phone number.");
+    if (!/^\d{10,}$/.test(phoneNumber.trim()))
+      return Alert.alert("Error", "Please enter a valid phone number (at least 10 digits).");
     if (!password)
       return Alert.alert("Error", "Please enter a password.");
     if (password.length < 6)
@@ -90,6 +95,7 @@ export default function SignUp({ onNavigateToSignIn }: SignUpProps) {
           id: data.user.id,
           email: email.trim(),
           full_name: fullName.trim(),
+          phone_number: parseInt(phoneNumber.trim()),
         });
 
       if (insertError) {
@@ -122,13 +128,23 @@ export default function SignUp({ onNavigateToSignIn }: SignUpProps) {
   };
 
   return (
-    <View className="flex-1 bg-white">
+    <View className="flex-1 bg-white overflow-hidden">
+      {/* Background decorative elements */}
+      <View className="absolute top-20 -left-20 w-48 h-48 rounded-full bg-[#34d399] opacity-10" />
+      <View className="absolute -bottom-32 -left-32 w-80 h-80 rounded-full bg-[#10b981] opacity-10" />
+      <View className="absolute bottom-40 -right-16 w-48 h-48 rounded-full bg-[#059669] opacity-10" />
+
+      {/* Decorative rings */}
+      <View className="absolute -bottom-20 -left-20 w-56 h-56 rounded-full border-2 border-[#10b981]/15" />
+      <View className="absolute bottom-48 -right-12 w-32 h-32 rounded-full border border-[#34d399]/20" />
+
       <KeyboardAvoidingView
         behavior={Platform.OS === "ios" ? "padding" : "height"}
-        className="flex-1 justify-center px-8"
+        className="flex-1 overflow-hidden"
       >
-        {/* Logo */}
-        <View className="items-center mb-10">
+        <View className="justify-center flex-1 px-8 overflow-hidden">
+          {/* Logo */}
+          <View className="items-center mb-10">
           <View className="w-20 h-20 bg-[#10b981] rounded-3xl items-center justify-center mb-6 shadow-lg shadow-[#10b981]/30">
             <Ionicons name="chatbubble" size={38} color="#ffffff" />
           </View>
@@ -162,6 +178,18 @@ export default function SignUp({ onNavigateToSignIn }: SignUpProps) {
             autoCapitalize="none"
             value={email}
             onChangeText={setEmail}
+          />
+        </View>
+
+        {/* Phone Number */}
+        <View className="flex-row items-center px-3 py-3 mb-4 border border-green-300 rounded-xl">
+          <Ionicons name="call-outline" size={20} color="#4ade80" />
+          <TextInput
+            className="flex-1 ml-2"
+            placeholder="Phone Number"
+            keyboardType="phone-pad"
+            value={phoneNumber}
+            onChangeText={setPhoneNumber}
           />
         </View>
 
@@ -226,6 +254,7 @@ export default function SignUp({ onNavigateToSignIn }: SignUpProps) {
           <TouchableOpacity onPress={onNavigateToSignIn}>
             <Text className="text-[#10b981] font-bold">Sign In</Text>
           </TouchableOpacity>
+        </View>
         </View>
       </KeyboardAvoidingView>
 

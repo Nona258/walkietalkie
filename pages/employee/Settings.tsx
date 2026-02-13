@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, TouchableOpacity, ScrollView, StatusBar, SafeAreaView } from 'react-native';
+import { View, Text, TouchableOpacity, StatusBar, SafeAreaView } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import supabase from '../../utils/supabase';
 
@@ -10,7 +10,7 @@ export default function Settings({
   onLogout?: () => void;
   onBackToDashboard?: () => void;
 }) {
-  const [userData, setUserData] = useState({ full_name: 'User', email: '' });
+  const [userData, setUserData] = useState({ full_name: 'User', email: '', phone_number: null });
 
   useEffect(() => {
     fetchUserData();
@@ -23,18 +23,20 @@ export default function Settings({
       if (user?.id) {
         const { data, error } = await supabase
           .from('users')
-          .select('full_name')
+          .select('full_name, phone_number')
           .eq('id', user.id);
 
         if (data && data.length > 0 && data[0].full_name) {
           setUserData({
             full_name: data[0].full_name,
             email: user.email || '',
+            phone_number: data[0].phone_number,
           });
         } else {
           setUserData({
             full_name: user.user_metadata?.full_name || 'User',
             email: user.email || '',
+            phone_number: null,
           });
         }
       }
@@ -45,6 +47,7 @@ export default function Settings({
         setUserData({
           full_name: user.user_metadata?.full_name || 'User',
           email: user.email || '',
+          phone_number: null,
         });
       }
     }
@@ -54,11 +57,8 @@ export default function Settings({
     <View className="flex-1 w-full bg-white">
       <StatusBar barStyle="light-content" />
       
-      <ScrollView 
-        showsVerticalScrollIndicator={false}
+      <View 
         className="flex-1 w-full"
-        contentContainerStyle={{ flexGrow: 1, width: '100%' }}
-        bounces={false}
       >
         {/* HEADER WITH BACK BUTTON */}
         <View className="bg-white pt-6 pb-6 px-6 flex-row items-center gap-4">
@@ -81,7 +81,7 @@ export default function Settings({
               </View>
               <View className="flex-1">
                 <Text className="text-gray-900 text-lg font-extrabold">{userData.full_name}</Text>
-                <Text className="text-gray-500 text-sm mt-1">{userData.email}</Text>
+                <Text className="text-gray-500 text-sm">{userData.email}</Text>
               </View>
             </View>
             <View className="bg-green-100 px-4 py-2 rounded-full self-start">
@@ -130,10 +130,8 @@ export default function Settings({
             </TouchableOpacity>
             <Text className="text-gray-400 text-xs text-center mt-4">You will be signed out from this device</Text>
           </View>
-
-          <View className="h-20" />
         </View>
-      </ScrollView>
+      </View>
     </View>
   );
 }
