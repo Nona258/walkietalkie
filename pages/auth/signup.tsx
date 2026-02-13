@@ -13,7 +13,7 @@ import {
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 // import { supabase } from '../utils/supabase';  // <-- uncomment once supabase is configured
-import "../global.css";
+import "../../global.css";
 
 interface SignUpProps {
   onNavigateToSignIn: () => void;

@@ -8,7 +8,7 @@ import {
   Platform,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import '../global.css';
+import '../../global.css';
 
 interface SignInProps {
   onNavigateToSignUp: () => void;
