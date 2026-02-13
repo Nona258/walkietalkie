@@ -9,10 +9,10 @@ import {
   ActivityIndicator,
   KeyboardAvoidingView,
   Platform,
-  ScrollView,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
-// import { supabase } from '../utils/supabase';  // <-- uncomment once supabase is configured
+import supabase from "../utils/supabase";
+import SweetAlertModal from "../components/SweetAlertModal";
 import "../global.css";
 
 interface SignUpProps {
@@ -28,197 +28,215 @@ export default function SignUp({ onNavigateToSignIn }: SignUpProps) {
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [loading, setLoading] = useState(false);
 
+  const [alertVisible, setAlertVisible] = useState(false);
+  const [alertConfig, setAlertConfig] = useState({
+    title: "",
+    message: "",
+    type: "info" as "success" | "error" | "warning" | "info",
+    confirmText: "OK",
+    onConfirm: () => setAlertVisible(false),
+  });
+
   const handleSignUp = async () => {
-    if (!fullName.trim()) {
-      Alert.alert("Error", "Please enter your full name.");
-      return;
-    }
-    if (!email.trim()) {
-      Alert.alert("Error", "Please enter your email.");
-      return;
-    }
-    if (!password) {
-      Alert.alert("Error", "Please enter a password.");
-      return;
-    }
-    if (password.length < 6) {
-      Alert.alert("Error", "Password must be at least 6 characters.");
-      return;
-    }
-    if (password !== confirmPassword) {
-      Alert.alert("Error", "Passwords do not match.");
-      return;
-    }
+    if (!fullName.trim())
+      return Alert.alert("Error", "Please enter your full name.");
+    if (!email.trim())
+      return Alert.alert("Error", "Please enter your email.");
+    if (!password)
+      return Alert.alert("Error", "Please enter a password.");
+    if (password.length < 6)
+      return Alert.alert("Error", "Password must be at least 6 characters.");
+    if (password !== confirmPassword)
+      return Alert.alert("Error", "Passwords do not match.");
+
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email.trim()))
+      return Alert.alert("Error", "Please enter a valid email address.");
 
     setLoading(true);
-    try {
-      // TODO: Uncomment when supabase is properly configured
-      // const { error } = await supabase.auth.signUp({
-      //   email: email.trim(),
-      //   password,
-      //   options: {
-      //     data: {
-      //       full_name: fullName.trim(),
-      //     },
-      //   },
-      // });
-      // if (error) {
-      //   Alert.alert('Sign Up Error', error.message);
-      // } else {
-      //   Alert.alert('Success', 'Account created!', [
-      //     { text: 'OK', onPress: onNavigateToSignIn },
-      //   ]);
-      // }
 
-      // Temporary stub:
-      console.log("Sign up with:", fullName, email, password);
-      Alert.alert("Success", "Account created successfully!", [
-        { text: "OK", onPress: onNavigateToSignIn },
-      ]);
-    } catch {
-      Alert.alert("Error", "Something went wrong.");
+    try {
+      // ✅ SAVE full_name inside Auth user_metadata
+      const { data, error } = await supabase.auth.signUp({
+        email: email.trim(),
+        password: password,
+        options: {
+          data: {
+            full_name: fullName.trim(),
+          },
+        },
+      });
+
+      if (error) {
+        setAlertConfig({
+          title: "Sign Up Error",
+          message: error.message,
+          type: "error",
+          confirmText: "OK",
+          onConfirm: () => setAlertVisible(false),
+        });
+        setAlertVisible(true);
+        return;
+      }
+
+      if (!data.user) {
+        throw new Error("User creation failed.");
+      }
+
+      // ✅ Insert into your public users table
+      const { error: insertError } = await supabase
+        .from("users")
+        .insert({
+          id: data.user.id,
+          email: email.trim(),
+          full_name: fullName.trim(),
+        });
+
+      if (insertError) {
+        throw insertError;
+      }
+
+      setAlertConfig({
+        title: "Success!",
+        message: "Your account has been created successfully!",
+        type: "success",
+        confirmText: "Go to Sign In",
+        onConfirm: () => {
+          setAlertVisible(false);
+          onNavigateToSignIn();
+        },
+      });
+      setAlertVisible(true);
+    } catch (err: any) {
+      setAlertConfig({
+        title: "Error",
+        message: err.message || "Something went wrong.",
+        type: "error",
+        confirmText: "OK",
+        onConfirm: () => setAlertVisible(false),
+      });
+      setAlertVisible(true);
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   };
 
   return (
     <View className="flex-1 bg-white">
-      {/* Background decorative elements */}
-      <View className="absolute top-20 -left-20 w-48 h-48 rounded-full bg-[#34d399] opacity-10" />
-      <View className="absolute -bottom-32 -left-32 w-80 h-80 rounded-full bg-[#10b981] opacity-10" />
-      <View className="absolute bottom-40 -right-16 w-48 h-48 rounded-full bg-[#059669] opacity-10" />
-
-      {/* Decorative rings */}
-      <View className="absolute -bottom-20 -left-20 w-56 h-56 rounded-full border-2 border-[#10b981]/15" />
-      <View className="absolute bottom-48 -right-12 w-32 h-32 rounded-full border border-[#34d399]/20" />
-
       <KeyboardAvoidingView
         behavior={Platform.OS === "ios" ? "padding" : "height"}
-        className="flex-1"
+        className="flex-1 justify-center px-8"
       >
-        <ScrollView
-          contentContainerStyle={{ flexGrow: 1 }}
-          keyboardShouldPersistTaps="handled"
-        >
-          <View className="justify-center flex-1 px-8">
-            {/* Logo */}
-            <View className="items-center mb-10">
-              <View className="w-20 h-20 bg-[#10b981] rounded-3xl items-center justify-center mb-6 shadow-lg shadow-[#10b981]/30">
-                <Ionicons name="chatbubble" size={38} color="#ffffff" />
-              </View>
-              <Text className="text-[#111827] text-3xl font-bold italic tracking-wide">
-                WalkieTalk
-              </Text>
-              <Text className="text-[#6b7280] text-base mt-2 tracking-wide">
-                Create your account
-              </Text>
-            </View>
-
-            {/* Form */}
-            <View className="mt-2">
-              {/* Full Name Input */}
-              <View className="flex-row items-center px-3 py-3 mb-4 bg-white border border-green-300 rounded-xl">
-                <Ionicons name="person-outline" size={20} color="#4ade80" />
-                <TextInput
-                  className="flex-1 ml-2 text-base outline-none"
-                  placeholder="Full Name"
-                  placeholderTextColor="#9ca3af"
-                  autoCapitalize="words"
-                  value={fullName}
-                  onChangeText={setFullName}
-                />
-              </View>
-
-              {/* Email Input */}
-              <View className="flex-row items-center px-3 py-3 mb-4 bg-white border border-green-300 rounded-xl">
-                <Ionicons name="mail-outline" size={20} color="#4ade80" />
-                <TextInput
-                  className="flex-1 ml-2 text-base outline-none"
-                  placeholder="Email address"
-                  placeholderTextColor="#9ca3af"
-                  keyboardType="email-address"
-                  autoCapitalize="none"
-                  value={email}
-                  onChangeText={setEmail}
-                />
-              </View>
-
-              {/* Password Input */}
-              <View className="flex-row items-center px-3 py-3 mb-4 bg-white border border-green-300 rounded-xl">
-                <Ionicons name="lock-closed-outline" size={20} color="#4ade80" />
-                <TextInput
-                  className="flex-1 ml-2 text-base outline-none"
-                  placeholder="Password"
-                  placeholderTextColor="#9ca3af"
-                  secureTextEntry={!showPassword}
-                  value={password}
-                  onChangeText={setPassword}
-                />
-                <TouchableOpacity
-                  onPress={() => setShowPassword(!showPassword)}
-                >
-                  <Ionicons
-                    name={showPassword ? "eye-outline" : "eye-off-outline"}
-                    size={20}
-                    color="#9ca3af"
-                  />
-                </TouchableOpacity>
-              </View>
-
-              {/* Confirm Password Input */}
-              <View className="flex-row items-center px-3 py-3 mb-8 bg-white border border-green-300 rounded-xl">
-                <Ionicons name="lock-closed-outline" size={20} color="#4ade80" />
-                <TextInput
-                  className="flex-1 ml-2 text-base outline-none"
-                  placeholder="Confirm Password"
-                  placeholderTextColor="#9ca3af"
-                  secureTextEntry={!showConfirmPassword}
-                  value={confirmPassword}
-                  onChangeText={setConfirmPassword}
-                />
-                <TouchableOpacity
-                  onPress={() => setShowConfirmPassword(!showConfirmPassword)}
-                >
-                  <Ionicons
-                    name={showConfirmPassword ? "eye-outline" : "eye-off-outline"}
-                    size={20}
-                    color="#9ca3af"
-                  />
-                </TouchableOpacity>
-              </View>
-
-              {/* Sign Up Button */}
-              <TouchableOpacity
-                className="bg-[#10b981] rounded-2xl h-14 items-center justify-center mb-6 shadow-lg shadow-[#10b981]/30 active:opacity-90"
-                onPress={handleSignUp}
-                disabled={loading}
-              >
-                {loading ? (
-                  <ActivityIndicator color="#fff" />
-                ) : (
-                  <View className="flex-row items-center">
-                    <Text className="text-lg font-bold tracking-wide text-white">
-                      Sign Up
-                    </Text>
-                  </View>
-                )}
-              </TouchableOpacity>
-
-              {/* Sign In Link */}
-              <View className="flex-row items-center justify-center mt-2">
-                <Text className="text-[#6b7280] text-base">
-                  Already have an account?{" "}
-                </Text>
-                <TouchableOpacity onPress={onNavigateToSignIn}>
-                  <Text className="text-[#10b981] text-base font-bold">
-                    Sign In
-                  </Text>
-                </TouchableOpacity>
-              </View>
-            </View>
+        {/* Logo */}
+        <View className="items-center mb-10">
+          <View className="w-20 h-20 bg-[#10b981] rounded-3xl items-center justify-center mb-6 shadow-lg shadow-[#10b981]/30">
+            <Ionicons name="chatbubble" size={38} color="#ffffff" />
           </View>
-        </ScrollView>
+          <Text className="text-[#111827] text-3xl font-bold italic">
+            WalkieTalk
+          </Text>
+          <Text className="text-[#6b7280] text-base mt-2">
+            Create your account
+          </Text>
+        </View>
+
+        {/* Full Name */}
+        <View className="flex-row items-center px-3 py-3 mb-4 border border-green-300 rounded-xl">
+          <Ionicons name="person-outline" size={20} color="#4ade80" />
+          <TextInput
+            className="flex-1 ml-2"
+            placeholder="Full Name"
+            autoCapitalize="words"
+            value={fullName}
+            onChangeText={setFullName}
+          />
+        </View>
+
+        {/* Email */}
+        <View className="flex-row items-center px-3 py-3 mb-4 border border-green-300 rounded-xl">
+          <Ionicons name="mail-outline" size={20} color="#4ade80" />
+          <TextInput
+            className="flex-1 ml-2"
+            placeholder="Email address"
+            keyboardType="email-address"
+            autoCapitalize="none"
+            value={email}
+            onChangeText={setEmail}
+          />
+        </View>
+
+        {/* Password */}
+        <View className="flex-row items-center px-3 py-3 mb-4 border border-green-300 rounded-xl">
+          <Ionicons name="lock-closed-outline" size={20} color="#4ade80" />
+          <TextInput
+            className="flex-1 ml-2"
+            placeholder="Password"
+            secureTextEntry={!showPassword}
+            value={password}
+            onChangeText={setPassword}
+          />
+          <TouchableOpacity onPress={() => setShowPassword(!showPassword)}>
+            <Ionicons
+              name={showPassword ? "eye-outline" : "eye-off-outline"}
+              size={20}
+              color="#9ca3af"
+            />
+          </TouchableOpacity>
+        </View>
+
+        {/* Confirm Password */}
+        <View className="flex-row items-center px-3 py-3 mb-6 border border-green-300 rounded-xl">
+          <Ionicons name="lock-closed-outline" size={20} color="#4ade80" />
+          <TextInput
+            className="flex-1 ml-2"
+            placeholder="Confirm Password"
+            secureTextEntry={!showConfirmPassword}
+            value={confirmPassword}
+            onChangeText={setConfirmPassword}
+          />
+          <TouchableOpacity
+            onPress={() => setShowConfirmPassword(!showConfirmPassword)}
+          >
+            <Ionicons
+              name={
+                showConfirmPassword ? "eye-outline" : "eye-off-outline"
+              }
+              size={20}
+              color="#9ca3af"
+            />
+          </TouchableOpacity>
+        </View>
+
+        {/* Button */}
+        <TouchableOpacity
+          className="bg-[#10b981] rounded-2xl h-14 items-center justify-center"
+          onPress={handleSignUp}
+          disabled={loading}
+        >
+          {loading ? (
+            <ActivityIndicator color="#fff" />
+          ) : (
+            <Text className="text-lg font-bold text-white">Sign Up</Text>
+          )}
+        </TouchableOpacity>
+
+        {/* Sign In */}
+        <View className="flex-row justify-center mt-4">
+          <Text>Already have an account? </Text>
+          <TouchableOpacity onPress={onNavigateToSignIn}>
+            <Text className="text-[#10b981] font-bold">Sign In</Text>
+          </TouchableOpacity>
+        </View>
       </KeyboardAvoidingView>
+
+      <SweetAlertModal
+        visible={alertVisible}
+        title={alertConfig.title}
+        message={alertConfig.message}
+        type={alertConfig.type}
+        confirmText={alertConfig.confirmText}
+        onConfirm={alertConfig.onConfirm}
+      />
     </View>
   );
 }

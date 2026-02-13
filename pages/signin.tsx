@@ -6,25 +6,65 @@ import {
   TouchableOpacity,
   KeyboardAvoidingView,
   Platform,
+  ActivityIndicator,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import supabase from '../utils/supabase';
 import '../global.css';
 
 interface SignInProps {
   onNavigateToSignUp: () => void;
+  onSignInSuccess: (user: any) => void;
 }
 
-export default function SignIn({ onNavigateToSignUp }: SignInProps) {
+export default function SignIn({ onNavigateToSignUp, onSignInSuccess }: SignInProps) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
 
-  const handleSignIn = () => {
-    console.log('Sign in with:', email, password);
+  // Auto-hide error after 5 seconds
+  React.useEffect(() => {
+    if (error) {
+      const timer = setTimeout(() => setError(''), 5000);
+      return () => clearTimeout(timer);
+    }
+  }, [error]);
+
+  const handleSignIn = async () => {
+    if (!email || !password) {
+      setError('Please fill in all fields');
+      return;
+    }
+
+    setLoading(true);
+    setError('');
+
+    try {
+      const { data, error: signInError } = await supabase.auth.signInWithPassword({
+        email,
+        password,
+      });
+
+      if (signInError) {
+        setError(signInError.message);
+        return;
+      }
+
+      if (data?.user) {
+        onSignInSuccess(data.user);
+      }
+    } catch (err: any) {
+      const errorMessage = err?.message || 'An error occurred during sign in';
+      setError(errorMessage);
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
-    <View className="flex-1 bg-white">
+    <View className="flex-1 bg-white overflow-hidden">
       {/* Background decorative elements */}
       <View className="absolute top-20 -left-20 w-48 h-48 rounded-full bg-[#34d399] opacity-10" />
       <View className="absolute -bottom-32 -left-32 w-80 h-80 rounded-full bg-[#10b981] opacity-10" />
@@ -36,9 +76,9 @@ export default function SignIn({ onNavigateToSignUp }: SignInProps) {
 
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        className="flex-1"
+        className="flex-1 overflow-hidden"
       >
-        <View className="justify-center flex-1 px-8">
+        <View className="justify-center flex-1 px-8 overflow-hidden">
           {/* Logo */}
           <View className="items-center mb-10">
             <View className="w-20 h-20 bg-[#10b981] rounded-3xl items-center justify-center mb-6 shadow-lg shadow-[#10b981]/30">
@@ -84,6 +124,13 @@ export default function SignIn({ onNavigateToSignUp }: SignInProps) {
               </TouchableOpacity>
             </View>
 
+            {/* Error Message */}
+            {error ? (
+              <View className="bg-red-50 rounded-xl px-4 py-3 mt-2">
+                <Text className="text-red-500 text-sm">{error}</Text>
+              </View>
+            ) : null}
+
             {/* Forgot Password */}
             <TouchableOpacity className="self-end mt-2 mb-8">
               <Text className="text-[#10b981] text-sm font-semibold">Forgot password?</Text>
@@ -91,12 +138,17 @@ export default function SignIn({ onNavigateToSignUp }: SignInProps) {
 
             {/* Sign In Button */}
             <TouchableOpacity
-              className="bg-[#10b981] rounded-2xl h-14 items-center justify-center mb-6 shadow-lg shadow-[#10b981]/30 active:opacity-90"
+              className="bg-[#10b981] rounded-2xl h-14 items-center justify-center mb-6 shadow-lg shadow-[#10b981]/30 active:opacity-90 disabled:opacity-50"
               onPress={handleSignIn}
+              disabled={loading}
             >
-              <View className="flex-row items-center">
-                <Text className="text-lg font-bold tracking-wide text-white">Sign In</Text>
-              </View>
+              {loading ? (
+                <ActivityIndicator color="#ffffff" />
+              ) : (
+                <View className="flex-row items-center">
+                  <Text className="text-lg font-bold tracking-wide text-white">Sign In</Text>
+                </View>
+              )}
             </TouchableOpacity>
 
             {/* Sign Up Link */}
