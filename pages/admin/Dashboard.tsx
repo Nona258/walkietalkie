@@ -25,7 +25,7 @@ interface AdminDashboardProps {
 export default function AdminDashboard({ onNavigate }: AdminDashboardProps) {
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   const [isNotificationOpen, setIsNotificationOpen] = useState(false);
-  const [totalEmployees, setTotalEmployees] = useState<number>(0);
+  const [totalEmployees] = useState<number>(10); // Static value
   const [activeSites, setActiveSites] = useState<number>(0);
 
   // Recent Activity logs state
@@ -49,13 +49,7 @@ export default function AdminDashboard({ onNavigate }: AdminDashboardProps) {
 
   useEffect(() => {
     // Fetch total employees
-    const fetchEmployees = async () => {
-      const { data, count, error } = await supabase
-        .from('users')
-        .select('id', { count: 'exact' })
-        .match({ role: 'employee' });
-      if (!error && typeof count === 'number') setTotalEmployees(count);
-    };
+    // Removed fetchEmployees, static employee count
     // Fetch active sites
     const fetchSites = async () => {
       const { count, error } = await supabase
@@ -64,7 +58,7 @@ export default function AdminDashboard({ onNavigate }: AdminDashboardProps) {
         .eq('status', 'Active');
       if (!error && typeof count === 'number') setActiveSites(count);
     };
-    fetchEmployees();
+    // Removed fetchEmployees()
     fetchSites();
   }, []);
 

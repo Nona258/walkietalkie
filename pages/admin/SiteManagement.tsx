@@ -8,8 +8,8 @@ import { supabase } from '../../utils/supabase';
 interface Site {
   id: string; 
   name: string;
-  company: string;
-  branch: string;
+    company: string;
+    branch_id: string;
   members: number;
   status: string;
   latitude?: number;
@@ -23,7 +23,7 @@ interface SiteManagementProps {
 interface ValidationErrors {
   siteName?: string;
   company?: string;
-  branch?: string;
+  branch_id?: string;
   members?: string;
   location?: string;
 }
@@ -39,11 +39,55 @@ export default function SiteManagement({ onNavigate }: SiteManagementProps) {
   
   // Form state
   const [siteName, setSiteName] = useState('');
-  const [company, setCompany] = useState('');
-  const [branch, setBranch] = useState('');
+  const [company, setCompany] = useState(''); // stores company id
+    const [branch_id, setBranchId] = useState('');
   const [members, setMembers] = useState('');
   const [latitude, setLatitude] = useState<number | null>(null);
   const [longitude, setLongitude] = useState<number | null>(null);
+  // Branch dropdown state
+  const [branchOptions, setBranchOptions] = useState<{id: string, name: string}[]>([]);
+
+  // Company dropdown state
+  const [companyOptions, setCompanyOptions] = useState<{id: string, name: string, industry: string}[]>([]);
+
+  // Fetch companies for dropdown
+  useEffect(() => {
+    const fetchCompanies = async () => {
+      const { data, error } = await supabase
+        .from('company')
+        .select('id, company_name, industry_or_sectors');
+      if (!error && data) {
+        setCompanyOptions(
+          data.map((c: any) => ({
+            id: c.id,
+            name: c.company_name,
+            industry: c.industry_or_sectors || '',
+          }))
+        );
+      }
+    };
+    fetchCompanies();
+  }, []);
+
+  // Fetch all branches for table display
+  useEffect(() => {
+    const fetchBranches = async () => {
+      const { data, error } = await supabase
+        .from('branch')
+        .select('id, branch_name');
+      if (!error && data) {
+        setBranchOptions(
+          data.map((b: any) => ({
+            id: b.id,
+            name: b.branch_name,
+          }))
+        );
+      } else {
+        setBranchOptions([]);
+      }
+    };
+    fetchBranches();
+  }, []);
   
   // Validation state
   const [errors, setErrors] = useState<ValidationErrors>({});
@@ -244,7 +288,7 @@ export default function SiteManagement({ onNavigate }: SiteManagementProps) {
           <div style="font-family: sans-serif;">
             <strong style="font-size: 14px;">${selectedSite.name}</strong><br/>
             <span style="font-size: 12px; color: #666;">${selectedSite.company}</span><br/>
-            <span style="font-size: 12px; color: #666;">${selectedSite.branch}</span>
+            <span style="font-size: 12px; color: #666;">${branchOptions.find(opt => opt.id === selectedSite.branch_id)?.name || 'No branch selected'}</span>
           </div>
         `).openPopup();
 
@@ -300,28 +344,12 @@ export default function SiteManagement({ onNavigate }: SiteManagementProps) {
         return undefined;
 
       case 'company':
-        if (!value.trim()) {
-          return 'Company name is required';
-        }
-        if (value.trim().length < 2) {
-          return 'Company name must be at least 2 characters';
-        }
-        if (value.trim().length > 50) {
-          return 'Company name must not exceed 50 characters';
-        }
+        // No validation for company name
         return undefined;
 
       case 'branch':
-        if (!value.trim()) {
-          return 'Branch/Department is required';
-        }
-        if (value.trim().length < 2) {
-          return 'Branch name must be at least 2 characters';
-        }
-        if (value.trim().length > 50) {
-          return 'Branch name must not exceed 50 characters';
-        }
-        return undefined;
+          // No validation for branch/department
+          return undefined;
 
       case 'members':
         if (value && value.trim() !== '') {
@@ -347,7 +375,7 @@ export default function SiteManagement({ onNavigate }: SiteManagementProps) {
     const newErrors: ValidationErrors = {
       siteName: validateField('siteName', siteName),
       company: validateField('company', company),
-      branch: validateField('branch', branch),
+      branch_id: validateField('branch_id', branch_id),
       members: validateField('members', members),
     };
 
@@ -362,7 +390,7 @@ export default function SiteManagement({ onNavigate }: SiteManagementProps) {
     setTouched({
       siteName: true,
       company: true,
-      branch: true,
+      branch_id: true,
       members: true,
       location: true,
     });
@@ -379,9 +407,13 @@ export default function SiteManagement({ onNavigate }: SiteManagementProps) {
         break;
       case 'company':
         setCompany(value);
+        // Remove error if valid option selected
+        if (value && companyOptions.some(opt => opt.id === value)) {
+          setErrors(prev => ({ ...prev, company: undefined }));
+        }
         break;
-      case 'branch':
-        setBranch(value);
+      case 'branch_id':
+        setBranchId(value);
         break;
       case 'members':
         setMembers(value);
@@ -394,6 +426,12 @@ export default function SiteManagement({ onNavigate }: SiteManagementProps) {
       setErrors(prev => ({ ...prev, [fieldName]: error }));
     }
   };
+  // Auto-fill site name with coordinates when map is clicked or marker is dragged
+  useEffect(() => {
+    if (latitude !== null && longitude !== null) {
+      setSiteName(`Site (${latitude.toFixed(4)}, ${longitude.toFixed(4)})`);
+    }
+  }, [latitude, longitude]);
 
   const handleFieldBlur = (fieldName: string, value: string) => {
     setTouched(prev => ({ ...prev, [fieldName]: true }));
@@ -404,7 +442,7 @@ export default function SiteManagement({ onNavigate }: SiteManagementProps) {
   const resetForm = () => {
     setSiteName('');
     setCompany('');
-    setBranch('');
+    setBranchId('');
     setMembers('');
     setLatitude(null);
     setLongitude(null);
@@ -428,8 +466,8 @@ export default function SiteManagement({ onNavigate }: SiteManagementProps) {
       .insert([
         {
           name: siteName.trim(),
-          company: company.trim(),
-          branch: branch.trim(),
+          company_id: company,
+          branch_id: branch_id,
           members: parseInt(members) || 0,
           status: 'Active',
           latitude: latitude,
@@ -463,7 +501,7 @@ export default function SiteManagement({ onNavigate }: SiteManagementProps) {
     setSelectedSite(site);
     setSiteName(site.name);
     setCompany(site.company);
-    setBranch(site.branch);
+    setBranchId(site.branch_id);
     setMembers(site.members.toString());
     setLatitude(site.latitude || null);
     setLongitude(site.longitude || null);
@@ -489,15 +527,15 @@ export default function SiteManagement({ onNavigate }: SiteManagementProps) {
       .from('sites')
       .update({
         name: siteName.trim(),
-        company: company.trim(),
-        branch: branch.trim(),
+        company_id: company,
+        branch_id: branch_id,
         members: parseInt(members) || 0,
         latitude: latitude,
         longitude: longitude,
         updated_at: new Date().toISOString(),
       })
       .eq('id', selectedSite.id)
-      .select(); // Added .select() to ensure the query completes properly
+      .select();
 
     if (error) {
       showToast({ type: 'error', text1: 'Update Error', text2: error.message });
@@ -518,7 +556,12 @@ export default function SiteManagement({ onNavigate }: SiteManagementProps) {
       });
       return;
     }
-    setSelectedSite(site);
+    // Attach company name to site for modal
+    const companyObj = companyOptions.find(opt => String(opt.id) === String(site.company_id));
+    setSelectedSite({
+      ...site,
+      company: companyObj ? companyObj.name : site.company_id // fallback to id if not found
+    });
     setIsViewLocationOpen(true);
   };
 
@@ -759,10 +802,10 @@ export default function SiteManagement({ onNavigate }: SiteManagementProps) {
                   </View>
 
                   {/* Company */}
-                  <Text className="flex-1 text-sm text-stone-600">{site.company}</Text>
+                  <Text className="flex-1 text-sm text-stone-600">{companyOptions.find(opt => String(opt.id) === String(site.company_id))?.name || 'No company selected'}</Text>
 
                   {/* Branch */}
-                  <Text className="flex-1 text-sm text-stone-600">{site.branch}</Text>
+                  <Text className="flex-1 text-sm text-stone-600">{branchOptions.find(opt => String(opt.id) === String(site.branch_id))?.name || 'No branch selected'}</Text>
 
                   {/* Members */}
                   <Text className="w-24 text-sm text-stone-600">{site.members}</Text>
@@ -835,7 +878,7 @@ export default function SiteManagement({ onNavigate }: SiteManagementProps) {
                       
                       <View className="flex-row items-center mb-1.5">
                         <Ionicons name="git-branch-outline" size={12} color="#78716c" />
-                        <Text className="text-xs text-stone-600 ml-1.5">{site.branch}</Text>
+                        <Text className="text-xs text-stone-600 ml-1.5">{branchOptions.find(opt => opt.id === site.branch_id)?.name || 'No branch selected'}</Text>
                       </View>
 
                       <View className="flex-row items-center gap-3 mt-1">
@@ -1050,12 +1093,9 @@ export default function SiteManagement({ onNavigate }: SiteManagementProps) {
                   className={`bg-white border ${
                     touched.siteName && errors.siteName ? 'border-red-500' : 'border-stone-300'
                   } rounded-xl px-4 py-3 text-stone-900 text-sm`}
-                  placeholder="e.g., Downtown Office"
-                  placeholderTextColor="#a8a29e"
                   value={siteName}
-                  onChangeText={(value) => handleFieldChange('siteName', value)}
-                  onBlur={() => handleFieldBlur('siteName', siteName)}
-                  maxLength={50}
+                  editable={false}
+                  selectTextOnFocus={false}
                 />
                 {touched.siteName && errors.siteName && (
                   <View className="flex-row items-center mt-1.5">
@@ -1063,7 +1103,7 @@ export default function SiteManagement({ onNavigate }: SiteManagementProps) {
                     <Text className="text-xs text-red-600 ml-1">{errors.siteName}</Text>
                   </View>
                 )}
-                <Text className="text-xs text-stone-400 mt-1">{siteName.length}/50 characters</Text>
+                <Text className="text-xs text-stone-400 mt-1">Auto-filled from map coordinates</Text>
               </View>
 
               {/* Company */}
@@ -1071,49 +1111,59 @@ export default function SiteManagement({ onNavigate }: SiteManagementProps) {
                 <Text className="text-sm font-medium text-stone-700 mb-2">
                   Company Name <Text className="text-red-500">*</Text>
                 </Text>
-                <TextInput
-                  className={`bg-white border ${
-                    touched.company && errors.company ? 'border-red-500' : 'border-stone-300'
-                  } rounded-xl px-4 py-3 text-stone-900 text-sm`}
-                  placeholder="e.g., Acme Corporation"
-                  placeholderTextColor="#a8a29e"
-                  value={company}
-                  onChangeText={(value) => handleFieldChange('company', value)}
-                  onBlur={() => handleFieldBlur('company', company)}
-                  maxLength={50}
-                />
+                <View className={`bg-white border ${
+                  touched.company && errors.company ? 'border-red-500' : 'border-stone-300'
+                } rounded-xl px-4 py-3`}>
+                  <select
+                    style={{ width: '100%', background: 'transparent', border: 'none', fontSize: 16, color: '#44403c' }}
+                    value={company}
+                    onChange={e => handleFieldChange('company', e.target.value)}
+                    onBlur={() => handleFieldBlur('company', company)}
+                  >
+                    <option value="">Select a company</option>
+                    {companyOptions.map(opt => (
+                      <option key={opt.id} value={opt.id}>
+                        {opt.name} {opt.industry ? `(${opt.industry})` : ''}
+                      </option>
+                    ))}
+                  </select>
+                </View>
                 {touched.company && errors.company && (
                   <View className="flex-row items-center mt-1.5">
                     <Ionicons name="alert-circle" size={14} color="#dc2626" />
                     <Text className="text-xs text-red-600 ml-1">{errors.company}</Text>
                   </View>
                 )}
-                <Text className="text-xs text-stone-400 mt-1">{company.length}/50 characters</Text>
               </View>
 
               {/* Branch */}
               <View className="mb-4">
                 <Text className="text-sm font-medium text-stone-700 mb-2">
-                  Branch/Department <Text className="text-red-500">*</Text>
+                  Branch/Department
                 </Text>
-                <TextInput
-                  className={`bg-white border ${
-                    touched.branch && errors.branch ? 'border-red-500' : 'border-stone-300'
-                  } rounded-xl px-4 py-3 text-stone-900 text-sm`}
-                  placeholder="e.g., Main Branch, Logistics"
-                  placeholderTextColor="#a8a29e"
-                  value={branch}
-                  onChangeText={(value) => handleFieldChange('branch', value)}
-                  onBlur={() => handleFieldBlur('branch', branch)}
-                  maxLength={50}
-                />
-                {touched.branch && errors.branch && (
+                <View className={`bg-white border ${
+                  touched.branch_id && errors.branch_id ? 'border-red-500' : 'border-stone-300'
+                } rounded-xl px-4 py-3`}>
+                  <select
+                    style={{ width: '100%', background: 'transparent', border: 'none', fontSize: 16, color: '#44403c' }}
+                    value={branch_id}
+                    onChange={e => handleFieldChange('branch_id', e.target.value)}
+                    onBlur={() => handleFieldBlur('branch_id', branch_id)}
+                  >
+                    <option value="">Select a branch</option>
+                    {branchOptions.map(opt => (
+                      <option key={opt.id} value={opt.id}>
+                        {opt.name}
+                      </option>
+                    ))}
+                  </select>
+                </View>
+                {touched.branch_id && errors.branch_id && (
                   <View className="flex-row items-center mt-1.5">
                     <Ionicons name="alert-circle" size={14} color="#dc2626" />
-                    <Text className="text-xs text-red-600 ml-1">{errors.branch}</Text>
+                    <Text className="text-xs text-red-600 ml-1">{errors.branch_id}</Text>
                   </View>
                 )}
-                <Text className="text-xs text-stone-400 mt-1">{branch.length}/50 characters</Text>
               </View>
 
               {/* Members */}
@@ -1272,24 +1322,29 @@ export default function SiteManagement({ onNavigate }: SiteManagementProps) {
                 <Text className="text-sm font-medium text-stone-700 mb-2">
                   Company Name <Text className="text-red-500">*</Text>
                 </Text>
-                <TextInput
-                  className={`bg-white border ${
-                    touched.company && errors.company ? 'border-red-500' : 'border-stone-300'
-                  } rounded-xl px-4 py-3 text-stone-900 text-sm`}
-                  placeholder="e.g., Acme Corporation"
-                  placeholderTextColor="#a8a29e"
-                  value={company}
-                  onChangeText={(value) => handleFieldChange('company', value)}
-                  onBlur={() => handleFieldBlur('company', company)}
-                  maxLength={50}
-                />
+                <View className={`bg-white border ${
+                  touched.company && errors.company ? 'border-red-500' : 'border-stone-300'
+                } rounded-xl px-4 py-3`}>
+                  <select
+                    style={{ width: '100%', background: 'transparent', border: 'none', fontSize: 16, color: '#44403c' }}
+                    value={company}
+                    onChange={e => handleFieldChange('company', e.target.value)}
+                    onBlur={() => handleFieldBlur('company', company)}
+                  >
+                    <option value="">Select a company</option>
+                    {companyOptions.map(opt => (
+                      <option key={opt.id} value={opt.id}>
+                        {opt.name} {opt.industry ? `(${opt.industry})` : ''}
+                      </option>
+                    ))}
+                  </select>
+                </View>
                 {touched.company && errors.company && (
                   <View className="flex-row items-center mt-1.5">
                     <Ionicons name="alert-circle" size={14} color="#dc2626" />
                     <Text className="text-xs text-red-600 ml-1">{errors.company}</Text>
                   </View>
                 )}
-                <Text className="text-xs text-stone-400 mt-1">{company.length}/50 characters</Text>
               </View>
 
               {/* Branch */}
@@ -1297,24 +1352,29 @@ export default function SiteManagement({ onNavigate }: SiteManagementProps) {
                 <Text className="text-sm font-medium text-stone-700 mb-2">
                   Branch/Department <Text className="text-red-500">*</Text>
                 </Text>
-                <TextInput
-                  className={`bg-white border ${
-                    touched.branch && errors.branch ? 'border-red-500' : 'border-stone-300'
-                  } rounded-xl px-4 py-3 text-stone-900 text-sm`}
-                  placeholder="e.g., Main Branch, Logistics"
-                  placeholderTextColor="#a8a29e"
-                  value={branch}
-                  onChangeText={(value) => handleFieldChange('branch', value)}
-                  onBlur={() => handleFieldBlur('branch', branch)}
-                  maxLength={50}
-                />
-                {touched.branch && errors.branch && (
+                <View className={`bg-white border ${
+                  touched.branch_id && errors.branch_id ? 'border-red-500' : 'border-stone-300'
+                } rounded-xl px-4 py-3`}>
+                  <select
+                    style={{ width: '100%', background: 'transparent', border: 'none', fontSize: 16, color: '#44403c' }}
+                    value={branch_id}
+                    onChange={e => handleFieldChange('branch_id', e.target.value)}
+                    onBlur={() => handleFieldBlur('branch_id', branch_id)}
+                  >
+                    <option value="">Select a branch</option>
+                    {branchOptions.map(opt => (
+                      <option key={opt.id} value={opt.id}>
+                        {opt.name}
+                      </option>
+                    ))}
+                  </select>
+                </View>
+                {touched.branch_id && errors.branch_id && (
                   <View className="flex-row items-center mt-1.5">
                     <Ionicons name="alert-circle" size={14} color="#dc2626" />
-                    <Text className="text-xs text-red-600 ml-1">{errors.branch}</Text>
+                    <Text className="text-xs text-red-600 ml-1">{errors.branch_id}</Text>
                   </View>
                 )}
-                <Text className="text-xs text-stone-400 mt-1">{branch.length}/50 characters</Text>
               </View>
 
               {/* Members */}
@@ -1464,7 +1524,7 @@ export default function SiteManagement({ onNavigate }: SiteManagementProps) {
                   </View>
                   <View className="flex-row items-center mb-2">
                     <Ionicons name="git-branch-outline" size={16} color="#78716c" />
-                    <Text className="text-sm text-stone-600 ml-2">{selectedSite.branch}</Text>
+                    <Text className="text-sm text-stone-600 ml-2">{branchOptions.find(opt => opt.id === selectedSite.branch_id)?.name || 'No branch selected'}</Text>
                   </View>
                   <View className="flex-row items-center">
                     <Ionicons name="location-outline" size={16} color="#78716c" />
