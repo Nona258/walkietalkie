@@ -65,7 +65,7 @@ export default function Dashboard({
       
       <ScrollView 
         showsVerticalScrollIndicator={false}
-        className="flex-1 w-full"
+        className="flex-1 w-full pb-20"
         // FIX 2: contentContainerStyle must be flexGrow to allow scrolling but w-full to prevent gaps
         contentContainerStyle={{ flexGrow: 1, width: '100%' }}
         // Disables horizontal bouncing that reveals white backgrounds

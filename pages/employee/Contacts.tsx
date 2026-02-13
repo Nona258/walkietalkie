@@ -182,7 +182,7 @@ export default function Contacts({ onContactSelected }: ContactsProps) {
 
       {/* Contact List */}
       <ScrollView
-        className="flex-1 bg-white"
+        className="flex-1 bg-white pb-20"
         showsVerticalScrollIndicator={false}
         contentContainerStyle={{ paddingBottom: 24 }}
       >

@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, TouchableOpacity, StatusBar, SafeAreaView } from 'react-native';
+import { View, Text, TouchableOpacity, StatusBar, SafeAreaView, ScrollView } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import supabase from '../../utils/supabase';
 
@@ -58,7 +58,7 @@ export default function Settings({
       <StatusBar barStyle="light-content" />
       
       <View 
-        className="flex-1 w-full"
+        className="flex-1 w-full flex-col"
       >
         {/* HEADER WITH BACK BUTTON */}
         <View className="bg-white pt-6 pb-6 px-6 flex-row items-center gap-4">
@@ -71,8 +71,12 @@ export default function Settings({
           <Text className="text-gray-900 text-2xl font-extrabold">Settings</Text>
         </View>
 
-        {/* PROFILE SECTION */}
-        <View className="px-6 py-8 w-full">
+        {/* SCROLLABLE CONTENT */}
+        <ScrollView 
+          className="flex-1 w-full"
+          contentContainerStyle={{ paddingHorizontal: 24, paddingTop: 32, paddingBottom: 32 }}
+          showsVerticalScrollIndicator={true}
+        >
           {/* User Info Card */}
           <View className="bg-gradient-to-br from-white to-green-50 rounded-3xl p-6 shadow-md shadow-green-200 border-2 border-green-200 w-full mb-8">
             <View className="flex-row items-center mb-6">
@@ -130,7 +134,7 @@ export default function Settings({
             </TouchableOpacity>
             <Text className="text-gray-400 text-xs text-center mt-4">You will be signed out from this device</Text>
           </View>
-        </View>
+        </ScrollView>
       </View>
     </View>
   );

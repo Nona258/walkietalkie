@@ -189,7 +189,7 @@ export default function Logs() {
 
       {/* Logs List */}
       <ScrollView
-        className="flex-1"
+        className="flex-1 pb-20"
         contentContainerStyle={{ paddingHorizontal: 24, paddingTop: 16, paddingBottom: 120 }}
         showsVerticalScrollIndicator={false}
         bounces={false}

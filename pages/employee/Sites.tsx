@@ -115,7 +115,7 @@ export default function Sites() {
 
       {/* Sites List */}
       <ScrollView 
-        className="flex-1"
+        className="flex-1 pb-20"
         contentContainerStyle={{ flexGrow: 1 }}
         showsVerticalScrollIndicator={false}
         bounces={false}
