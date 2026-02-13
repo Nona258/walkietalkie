@@ -182,9 +182,9 @@ export default function Contacts({ onContactSelected }: ContactsProps) {
 
       {/* Contact List */}
       <ScrollView
-        className="flex-1 bg-white pb-20"
+        className="flex-1 bg-white"
         showsVerticalScrollIndicator={false}
-        contentContainerStyle={{ paddingBottom: 24 }}
+        contentContainerStyle={{ paddingBottom: 80 }}
       >
         <View className="px-6 py-6">
           {filteredContacts.length > 0 ? (

@@ -9,7 +9,7 @@ interface NavbarProps {
 
 export default function Navbar({ activeTab, onTabChange }: NavbarProps) {
   return (
-    <View className="absolute bottom-0 left-0 right-0 bg-white border-t-2 border-green-100 flex-row justify-around px-4 py-2 shadow-lg" style={{ zIndex: 50 }}>
+    <View className="absolute bottom-0 left-0 right-0 bg-white border-t-2 border-green-100 flex-row justify-around px-4 py-2 shadow-lg">
       <NavbarIcon
         icon="home-outline"
         label="Home"
