@@ -1,7 +1,8 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, TouchableOpacity, StatusBar, SafeAreaView, ScrollView, TextInput, ActivityIndicator, Alert, Image } from 'react-native';
+import { View, Text, TouchableOpacity, StatusBar, ScrollView, TextInput, ActivityIndicator, Alert, Image } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
+import * as ImageManipulator from 'expo-image-manipulator';
 import supabase from '../../utils/supabase';
 import SweetAlertModal from '../../components/SweetAlertModal';
 
@@ -94,10 +95,11 @@ export default function EditProfile({
 
   const pickImage = async () => {
     try {
+      // Launch image picker with built-in editing and aspect ratio lock
       const result = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: ImagePicker.MediaTypeOptions.Images,
         allowsEditing: true,
-        aspect: [1, 1],
+        aspect: [1, 1], // Force square aspect ratio for circular profile picture
         quality: 0.8,
       });
 
@@ -107,19 +109,26 @@ export default function EditProfile({
         // Generate unique filename based on user ID and timestamp
         const fileName = `${userId}_${Date.now()}.jpg`;
         
-        console.log('Image selected:', {
-          uri: asset.uri,
+        // Optimize the image before uploading
+        const manipulatedImage = await ImageManipulator.manipulateAsync(
+          asset.uri,
+          [{ resize: { width: 400, height: 400 } }],
+          { compress: 0.8, format: ImageManipulator.SaveFormat.JPEG }
+        );
+        
+        console.log('Image selected and cropped:', {
+          uri: manipulatedImage.uri,
           fileName: fileName,
         });
         
-        setNewImageUri(asset.uri);
+        setNewImageUri(manipulatedImage.uri);
         setImageFileName(fileName);
-        setProfilePicture(asset.uri); // Show preview
+        setProfilePicture(manipulatedImage.uri); // Show preview
         setNewImageSelected(true);
       }
     } catch (error) {
       console.error('Error picking image:', error);
-      Alert.alert('Error', 'Failed to pick image');
+      Alert.alert('Error', 'Failed to pick or crop image');
     }
   };
 
