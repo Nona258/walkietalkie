@@ -508,7 +508,7 @@ export default function Map({ onBack }: { onBack?: () => void }) {
             onLoad: handleIframeLoad,
           } as any)}
           {!isStreetViewActive && (
-            <View className="absolute top-0 left-0 right-0 px-6 py-4 pt-12 z-50">
+            <View className="absolute top-0 left-0 right-0 px-4 py-4 pt-4 z-50">
               <View className="flex-1 flex-row items-center rounded-2xl bg-white bg-opacity-95 px-4 py-3 border border-gray-300 shadow-lg">
                 <Ionicons name="location" size={20} color="#10b981" />
                 <TextInput
