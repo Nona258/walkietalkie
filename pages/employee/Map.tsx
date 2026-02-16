@@ -187,7 +187,9 @@ export default function Map({ onBack }: { onBack?: () => void }) {
             zoom: 12,
             mapTypeId: 'roadmap',
             mapTypeControl: false,
-            fullscreenControl: false
+            fullscreenControl: false,
+            gestureHandling: 'greedy',
+            zoomControl: true
           });
           
           // Initialize geocoder
@@ -381,7 +383,8 @@ export default function Map({ onBack }: { onBack?: () => void }) {
               function(position) {
                 const userLat = position.coords.latitude;
                 const userLng = position.coords.longitude;
-                const userLocation = { lat: userLat, lng: userLng };
+                const userLocationObj = { lat: userLat, lng: userLng };
+                userLocation = userLocationObj; // Update global userLocation
                 
                 // Remove old marker if exists
                 if (userMarker) {
@@ -390,7 +393,7 @@ export default function Map({ onBack }: { onBack?: () => void }) {
                 
                 // Create new marker for user's location
                 userMarker = new google.maps.Marker({
-                  position: userLocation,
+                  position: userLocationObj,
                   map: map,
                   title: 'Your Location',
                   icon: {
@@ -404,12 +407,48 @@ export default function Map({ onBack }: { onBack?: () => void }) {
                   }
                 });
                 
+                // Reverse geocode to get location name
+                geocoder.geocode({ location: userLocationObj }, function(results, status) {
+                  if (status === 'OK' && results.length > 0) {
+                    const locationName = results[0].formatted_address;
+                    let infoWindowOpen = false;
+                    
+                    // Create info window with location name
+                    const infoWindow = new google.maps.InfoWindow({
+                      content: '<div style="padding: 10px; font-size: 12px;"><strong>Your Location</strong><br><span style="color: #666; margin-top: 4px; display: block;">' + locationName + '</span></div>',
+                      maxWidth: 250
+                    });
+                    
+                    // Toggle info window on marker click
+                    userMarker.addListener('click', function() {
+                      if (infoWindowOpen) {
+                        infoWindow.close();
+                        infoWindowOpen = false;
+                      } else {
+                        infoWindow.open(map, userMarker);
+                        infoWindowOpen = true;
+                      }
+                    });
+                    
+                    // Update flag when info window closes
+                    infoWindow.addListener('closeclick', function() {
+                      infoWindowOpen = false;
+                    });
+                  }
+                });
+                
                 // Center map on user location and zoom in
-                map.setCenter(userLocation);
+                map.setCenter(userLocationObj);
                 map.setZoom(16);
               },
               function(error) {
+                // Handle geolocation error - remove marker when location is turned off
                 console.log('Geolocation error: ' + error.message);
+                if (userMarker) {
+                  userMarker.setMap(null);
+                  userMarker = null;
+                }
+                userLocation = null;
               },
               {
                 enableHighAccuracy: true,
