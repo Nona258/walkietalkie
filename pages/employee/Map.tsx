@@ -157,6 +157,7 @@ export default function Map({ onBack }: { onBack?: () => void }) {
           .gm-fullscreen-control { display: none !important; }
           button[aria-label*="fullscreen"] { display: none !important; }
           button[aria-label*="Full screen"] { display: none !important; }
+          button[aria-label="Map camera controls"] { display: none !important; }
           .gm-iv-address { display: none !important; }
           .gm-iv-container { margin-left: 10px !important; }
           button[aria-label*="Back"] { 
@@ -181,6 +182,8 @@ export default function Map({ onBack }: { onBack?: () => void }) {
           let geocoder = null;
           let userProvince = 'Lanao del Norte'; // Default to Lanao del Norte
           let userLocation = null; // Store user's current location
+          let hasUserMovedMap = false; // Track if user has manually moved the map
+          let isInitialLoad = true; // Track if this is the first location update
           
           const map = new google.maps.Map(document.getElementById('map'), {
             center: { lat: 8.2256, lng: 124.2319 },
@@ -190,6 +193,11 @@ export default function Map({ onBack }: { onBack?: () => void }) {
             fullscreenControl: false,
             gestureHandling: 'greedy',
             zoomControl: true
+          });
+          
+          // Track when user manually drags/moves the map
+          map.addListener('drag', function() {
+            hasUserMovedMap = true;
           });
           
           // Initialize geocoder
@@ -235,9 +243,12 @@ export default function Map({ onBack }: { onBack?: () => void }) {
                   }
                 });
                 
-                // Center map on user location and zoom in
-                map.setCenter(userLocation);
-                map.setZoom(16);
+                // Center map on user location only on initial load
+                if (isInitialLoad) {
+                  map.setCenter(userLocation);
+                  map.setZoom(16);
+                  isInitialLoad = false;
+                }
               },
               function(error) {
                 console.log('Geolocation error: ' + error.message);
@@ -376,87 +387,6 @@ export default function Map({ onBack }: { onBack?: () => void }) {
               }
             }
           });
-          
-          // Get user's geolocation
-          if (navigator.geolocation) {
-            navigator.geolocation.watchPosition(
-              function(position) {
-                const userLat = position.coords.latitude;
-                const userLng = position.coords.longitude;
-                const userLocationObj = { lat: userLat, lng: userLng };
-                userLocation = userLocationObj; // Update global userLocation
-                
-                // Remove old marker if exists
-                if (userMarker) {
-                  userMarker.setMap(null);
-                }
-                
-                // Create new marker for user's location
-                userMarker = new google.maps.Marker({
-                  position: userLocationObj,
-                  map: map,
-                  title: 'Your Location',
-                  icon: {
-                    path: 'M12 0C5.383 0 0 5.383 0 12c0 7 12 20 12 20s12-13 12-20c0-6.617-5.383-12-12-12zm0 16c-2.209 0-4-1.791-4-4s1.791-4 4-4 4 1.791 4 4-1.791 4-4 4z',
-                    scale: 1.5,
-                    fillColor: '#22c55e',
-                    fillOpacity: 1,
-                    strokeColor: '#ffffff',
-                    strokeWeight: 1,
-                    anchor: { x: 12, y: 20 }
-                  }
-                });
-                
-                // Reverse geocode to get location name
-                geocoder.geocode({ location: userLocationObj }, function(results, status) {
-                  if (status === 'OK' && results.length > 0) {
-                    const locationName = results[0].formatted_address;
-                    let infoWindowOpen = false;
-                    
-                    // Create info window with location name
-                    const infoWindow = new google.maps.InfoWindow({
-                      content: '<div style="padding: 10px; font-size: 12px;"><strong>Your Location</strong><br><span style="color: #666; margin-top: 4px; display: block;">' + locationName + '</span></div>',
-                      maxWidth: 250
-                    });
-                    
-                    // Toggle info window on marker click
-                    userMarker.addListener('click', function() {
-                      if (infoWindowOpen) {
-                        infoWindow.close();
-                        infoWindowOpen = false;
-                      } else {
-                        infoWindow.open(map, userMarker);
-                        infoWindowOpen = true;
-                      }
-                    });
-                    
-                    // Update flag when info window closes
-                    infoWindow.addListener('closeclick', function() {
-                      infoWindowOpen = false;
-                    });
-                  }
-                });
-                
-                // Center map on user location and zoom in
-                map.setCenter(userLocationObj);
-                map.setZoom(16);
-              },
-              function(error) {
-                // Handle geolocation error - remove marker when location is turned off
-                console.log('Geolocation error: ' + error.message);
-                if (userMarker) {
-                  userMarker.setMap(null);
-                  userMarker = null;
-                }
-                userLocation = null;
-              },
-              {
-                enableHighAccuracy: true,
-                timeout: 30000,
-                maximumAge: 0
-              }
-            );
-          }
           
           const streetViewPanorama = map.getStreetView();
           
