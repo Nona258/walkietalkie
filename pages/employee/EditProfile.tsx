@@ -95,11 +95,10 @@ export default function EditProfile({
 
   const pickImage = async () => {
     try {
-      // Launch image picker with built-in editing and aspect ratio lock
+      // Launch image picker with free editing (no aspect ratio constraint)
       const result = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: ImagePicker.MediaTypeOptions.Images,
         allowsEditing: true,
-        aspect: [1, 1], // Force square aspect ratio for circular profile picture
         quality: 0.8,
       });
 
@@ -109,14 +108,30 @@ export default function EditProfile({
         // Generate unique filename based on user ID and timestamp
         const fileName = `${userId}_${Date.now()}.jpg`;
         
-        // Optimize the image before uploading
+        // Get dimensions of the cropped image
+        const { width, height } = asset;
+        
+        // Only resize if image is larger than 800px in any dimension
+        const actions = [];
+        if (width > 800 || height > 800) {
+          const scale = Math.min(800 / width, 800 / height);
+          actions.push({
+            resize: {
+              width: Math.round(width * scale),
+              height: Math.round(height * scale),
+            },
+          });
+        }
+        
+        // Optimize image with compression
         const manipulatedImage = await ImageManipulator.manipulateAsync(
           asset.uri,
-          [{ resize: { width: 400, height: 400 } }],
-          { compress: 0.8, format: ImageManipulator.SaveFormat.JPEG }
+          actions.length > 0 ? actions : [],
+          { compress: 0.85, format: ImageManipulator.SaveFormat.JPEG }
         );
         
-        console.log('Image selected and cropped:', {
+        console.log('Image cropped freely by user:', {
+          originalDimensions: { width, height },
           uri: manipulatedImage.uri,
           fileName: fileName,
         });
@@ -302,7 +317,7 @@ export default function EditProfile({
         {/* SCROLLABLE CONTENT */}
         <ScrollView 
           className="flex-1 w-full"
-          contentContainerStyle={{ paddingHorizontal: 24, paddingTop: 16, paddingBottom: 100 }}
+          contentContainerStyle={{ paddingHorizontal: 24, paddingTop: 16, paddingBottom: 30 }}
           showsVerticalScrollIndicator={true}
         >
           {/* Profile Picture Section */}
@@ -415,10 +430,10 @@ export default function EditProfile({
             onPress={onBackToSettings}
             disabled={saving}
             activeOpacity={0.8}
-            className="bg-gray-200 rounded-2xl p-4 flex-row items-center justify-center active:scale-95 mt-3 disabled:opacity-60"
+            className="bg-red-500 rounded-2xl p-4 flex-row items-center justify-center active:scale-95 mt-3 disabled:opacity-60 shadow-md shadow-red-300"
           >
-            <Ionicons name="close" size={24} color="#6b7280" />
-            <Text className="text-gray-700 font-bold ml-3 text-lg">Cancel</Text>
+            <Ionicons name="close" size={24} color="white" />
+            <Text className="text-white font-bold ml-3 text-lg">Cancel</Text>
           </TouchableOpacity>
         </ScrollView>
       </View>
