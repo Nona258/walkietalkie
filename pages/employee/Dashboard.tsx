@@ -152,6 +152,7 @@ export default function Dashboard({
              <Text className="text-gray-800 text-lg font-bold mb-4">Recent Activity</Text>
              <ActivityItem icon="checkmark-circle" text="Completed safety inspection" time="2h ago" />
              <ActivityItem icon="mail" text="New message from supervisor" time="4h ago" />
+             <ActivityItem icon="alert-circle" text="System update available" time="1h ago" />
           </View>
         </View>
       </ScrollView>

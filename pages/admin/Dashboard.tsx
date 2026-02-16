@@ -13,16 +13,17 @@ interface ActivityLog {
   color: string;
   icon: string;
 }
-import { View, Text, ScrollView, TouchableOpacity, Modal, Pressable } from 'react-native';
+import { View, Text, ScrollView, TouchableOpacity, Modal, Pressable, Alert } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import '../../global.css';
-import  supabase  from '../../utils/supabase';
+import supabase from '../../utils/supabase';
 
 interface AdminDashboardProps {
   onNavigate: (page: 'dashboard' | 'siteManagement' | 'walkieTalkie' | 'activityLogs' | 'companyList' | 'employee' | 'settings') => void;
+  onLogout?: () => void; // Add logout callback prop
 }
 
-export default function AdminDashboard({ onNavigate }: AdminDashboardProps) {
+export default function AdminDashboard({ onNavigate, onLogout }: AdminDashboardProps) {
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   const [isNotificationOpen, setIsNotificationOpen] = useState(false);
   const [totalEmployees, setTotalEmployees] = useState<number>(0);
@@ -71,6 +72,46 @@ export default function AdminDashboard({ onNavigate }: AdminDashboardProps) {
     // Removed fetchEmployees()
     fetchSites();
   }, []);
+
+  // Logout function
+  const handleLogout = async () => {
+    Alert.alert(
+      'End Session',
+      'Are you sure you want to logout?',
+      [
+        {
+          text: 'Cancel',
+          style: 'cancel',
+        },
+        {
+          text: 'Logout',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              const { error } = await supabase.auth.signOut();
+              if (error) {
+                console.error('Logout error:', error.message);
+                Alert.alert('Error', 'Failed to logout. Please try again.');
+                return;
+              }
+              
+              // Close any open modals
+              setIsDrawerOpen(false);
+              setIsNotificationOpen(false);
+              
+              // Call the onLogout callback if provided
+              if (onLogout) {
+                onLogout();
+              }
+            } catch (err) {
+              console.error('Unexpected logout error:', err);
+              Alert.alert('Error', 'An unexpected error occurred.');
+            }
+          },
+        },
+      ]
+    );
+  };
 
   return (
     <View className="flex-1 flex-row bg-stone-50">
@@ -159,7 +200,10 @@ export default function AdminDashboard({ onNavigate }: AdminDashboardProps) {
 
         {/* Sign Out */}
         <View className="px-4 pb-6 pt-4 border-t border-stone-200">
-          <TouchableOpacity className="flex-row items-center px-4 py-3 rounded-xl">
+          <TouchableOpacity 
+            className="flex-row items-center px-4 py-3 rounded-xl"
+            onPress={handleLogout}
+          >
             <Ionicons name="log-out-outline" size={20} color="#dc2626" />
             <Text className="ml-3 text-red-600 font-medium">Sign Out</Text>
           </TouchableOpacity>
@@ -570,7 +614,13 @@ export default function AdminDashboard({ onNavigate }: AdminDashboardProps) {
 
             {/* Sign Out */}
             <View className="px-4 pb-6 pt-4 border-t border-stone-200">
-              <TouchableOpacity className="flex-row items-center px-4 py-3 rounded-xl">
+              <TouchableOpacity 
+                className="flex-row items-center px-4 py-3 rounded-xl"
+                onPress={() => {
+                  setIsDrawerOpen(false);
+                  handleLogout();
+                }}
+              >
                 <Ionicons name="log-out-outline" size={20} color="#dc2626" />
                 <Text className="ml-3 text-red-600 font-medium">Sign Out</Text>
               </TouchableOpacity>
@@ -587,4 +637,3 @@ export default function AdminDashboard({ onNavigate }: AdminDashboardProps) {
     </View>
   );
 }
-// ...existing code...
