@@ -12,6 +12,10 @@ interface Site {
   staffCount: number;
 }
 
+interface SitesProps {
+  onMapPress?: () => void;
+}
+
 const MOCK_SITES: Site[] = [
   {
     id: '1',
@@ -60,7 +64,7 @@ const MOCK_SITES: Site[] = [
   },
 ];
 
-export default function Sites() {
+export default function Sites({ onMapPress }: SitesProps) {
   const [sites, setSites] = useState(MOCK_SITES);
   const [searchText, setSearchText] = useState('');
   const [selectedSite, setSelectedSite] = useState<Site | null>(null);
@@ -90,9 +94,9 @@ export default function Sites() {
             <Text className="text-gray-900 text-3xl font-extrabold">Sites</Text>
             <Text className="text-green-600 text-xs font-semibold mt-1">Manage your locations</Text>
           </View>
-          <View className="bg-green-100 rounded-full p-3">
+          <TouchableOpacity onPress={onMapPress} className="bg-green-100 rounded-full p-3 active:scale-95">
             <Ionicons name="map" size={24} color="#10b981" />
-          </View>
+          </TouchableOpacity>
         </View>
 
         {/* Search Bar */}

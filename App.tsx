@@ -7,6 +7,7 @@ import SignUp from './pages/SignUp';
 import Dashboard from './pages/employee/Dashboard';
 import Contacts from './pages/employee/Contacts';
 import Sites from './pages/employee/Sites';
+import Map from './pages/employee/Map';
 import Logs from './pages/employee/Logs';
 import Settings from './pages/employee/Settings';
 import Navbar from './components/Navbar';
@@ -96,7 +97,9 @@ export default function App() {
           {activeTab === 'contacts' ? (
             <Contacts onContactSelected={setSelectedContact} />
           ) : activeTab === 'sites' ? (
-            <Sites />
+            <Sites onMapPress={() => setActiveTab('map')} />
+          ) : activeTab === 'map' ? (
+            <Map onBack={() => setActiveTab('sites')} />
           ) : activeTab === 'logs' ? (
             <Logs />
           ) : activeTab === 'settings' ? (
@@ -118,7 +121,7 @@ export default function App() {
               onNavigateToSettings={() => setActiveTab('settings')}
             />
           )}
-          {!selectedContact && activeTab !== 'settings' && <Navbar activeTab={activeTab} onTabChange={setActiveTab} />}
+          {!selectedContact && activeTab !== 'settings' && activeTab !== 'map' && <Navbar activeTab={activeTab} onTabChange={setActiveTab} />}
         </View>
       )}
       <StatusBar style="dark" />
