@@ -1,16 +1,18 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, TouchableOpacity, StatusBar, SafeAreaView, ScrollView } from 'react-native';
+import { View, Text, TouchableOpacity, StatusBar, SafeAreaView, ScrollView, Image } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import supabase from '../../utils/supabase';
 
 export default function Settings({ 
   onLogout, 
-  onBackToDashboard 
+  onBackToDashboard,
+  onNavigateToEditProfile
 }: { 
   onLogout?: () => void;
   onBackToDashboard?: () => void;
+  onNavigateToEditProfile?: () => void;
 }) {
-  const [userData, setUserData] = useState({ full_name: 'User', email: '', phone_number: null });
+  const [userData, setUserData] = useState({ full_name: 'User', email: '', phone_number: null, profile_picture_url: null });
 
   useEffect(() => {
     fetchUserData();
@@ -23,7 +25,7 @@ export default function Settings({
       if (user?.id) {
         const { data, error } = await supabase
           .from('users')
-          .select('full_name, phone_number')
+          .select('full_name, phone_number, profile_picture_url')
           .eq('id', user.id);
 
         if (data && data.length > 0 && data[0].full_name) {
@@ -31,12 +33,14 @@ export default function Settings({
             full_name: data[0].full_name,
             email: user.email || '',
             phone_number: data[0].phone_number,
+            profile_picture_url: data[0].profile_picture_url,
           });
         } else {
           setUserData({
             full_name: user.user_metadata?.full_name || 'User',
             email: user.email || '',
             phone_number: null,
+            profile_picture_url: null,
           });
         }
       }
@@ -48,6 +52,7 @@ export default function Settings({
           full_name: user.user_metadata?.full_name || 'User',
           email: user.email || '',
           phone_number: null,
+          profile_picture_url: null,
         });
       }
     }
@@ -80,8 +85,16 @@ export default function Settings({
           {/* User Info Card */}
           <View className="bg-gradient-to-br from-white to-green-50 rounded-3xl p-6 shadow-md shadow-green-200 border-2 border-green-200 w-full mb-8">
             <View className="flex-row items-center mb-6">
-              <View className="h-16 w-16 rounded-full bg-green-500 items-center justify-center mr-4">
-                <Ionicons name="person" size={32} color="white" />
+              <View className="h-16 w-16 rounded-full bg-green-500 items-center justify-center mr-4 overflow-hidden">
+                {userData.profile_picture_url ? (
+                  <Image
+                    source={{ uri: userData.profile_picture_url }}
+                    style={{ width: 64, height: 64, borderRadius: 32 }}
+                    resizeMode="cover"
+                  />
+                ) : (
+                  <Ionicons name="person" size={32} color="white" />
+                )}
               </View>
               <View className="flex-1">
                 <Text className="text-gray-900 text-lg font-extrabold">{userData.full_name}</Text>
@@ -101,7 +114,7 @@ export default function Settings({
             icon="person-circle-outline"
             label="Edit Profile"
             description="Update your personal information"
-            onPress={() => {}}
+            onPress={onNavigateToEditProfile}
           />
           <SettingOption 
             icon="lock-closed-outline"

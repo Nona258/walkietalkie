@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, TouchableOpacity, ScrollView, StatusBar, SafeAreaView, Dimensions } from 'react-native';
+import { View, Text, TouchableOpacity, ScrollView, StatusBar, SafeAreaView, Dimensions, Image } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import supabase from '../../utils/supabase';
 
@@ -10,7 +10,7 @@ export default function Dashboard({
   onLogout?: () => void;
   onNavigateToSettings?: () => void;
 }) {
-  const [userData, setUserData] = useState({ full_name: 'User', phone_number: null });
+  const [userData, setUserData] = useState({ full_name: 'User', phone_number: null, profile_picture_url: null });
 
   useEffect(() => {
     fetchUserData();
@@ -25,7 +25,7 @@ export default function Dashboard({
         // Fetch user data from the users table with simpler query
         const { data, error } = await supabase
           .from('users')
-          .select('full_name, phone_number')
+          .select('full_name, phone_number, profile_picture_url')
           .eq('id', user.id);
 
         console.log('User data from table:', data);
@@ -35,6 +35,7 @@ export default function Dashboard({
           setUserData({
             full_name: data[0].full_name,
             phone_number: data[0].phone_number,
+            profile_picture_url: data[0].profile_picture_url,
           });
         } else {
           // If table query fails, fallback to auth metadata
@@ -42,6 +43,7 @@ export default function Dashboard({
           setUserData({
             full_name: user.user_metadata?.full_name || 'User',
             phone_number: null,
+            profile_picture_url: null,
           });
         }
       }
@@ -53,6 +55,7 @@ export default function Dashboard({
         setUserData({
           full_name: user.user_metadata?.full_name || 'User',
           phone_number: null,
+          profile_picture_url: null,
         });
       }
     }
@@ -73,14 +76,22 @@ export default function Dashboard({
       >
         {/* 1. TOP BRANDED HEADER - MINIMAL DESIGN */}
         <View className="bg-white pt-6 pb-6 px-6 flex-row items-center justify-between">
-          <View className="flex-row items-center gap-3">
+          <View className="flex-row items-center gap-3 flex-1">
             <TouchableOpacity 
-              className="h-12 w-12 rounded-full bg-green-500 items-center justify-center active:scale-95"
+              className="h-14 w-14 rounded-full bg-green-500 items-center justify-center active:scale-95 overflow-hidden flex-shrink-0"
             >
-              <Ionicons name="person" size={22} color="white" />
+              {userData.profile_picture_url ? (
+                <Image
+                  source={{ uri: userData.profile_picture_url }}
+                  style={{ width: 56, height: 56, borderRadius: 28 }}
+                  resizeMode="cover"
+                />
+              ) : (
+                <Ionicons name="person" size={26} color="white" />
+              )}
             </TouchableOpacity>
-            <View>
-              <Text className="text-gray-900 text-xl font-extrabold">{userData.full_name}</Text>
+            <View className="flex-1 min-w-0">
+              <Text className="text-gray-900 text-2xl font-extrabold" numberOfLines={1}>{userData.full_name}</Text>
               <Text className="text-gray-600 text-sm font-semibold -mt-1">Employee</Text>
             </View>
           </View>

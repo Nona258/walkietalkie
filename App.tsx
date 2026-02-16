@@ -10,6 +10,7 @@ import Sites from './pages/employee/Sites';
 import Map from './pages/employee/Map';
 import Logs from './pages/employee/Logs';
 import Settings from './pages/employee/Settings';
+import EditProfile from './pages/employee/EditProfile';
 import Navbar from './components/Navbar';
 import supabase from './utils/supabase';
 
@@ -110,6 +111,11 @@ export default function App() {
                 setCurrentPage('signin');
               }}
               onBackToDashboard={() => setActiveTab('dashboard')}
+              onNavigateToEditProfile={() => setActiveTab('edit-profile')}
+            />
+          ) : activeTab === 'edit-profile' ? (
+            <EditProfile 
+              onBackToSettings={() => setActiveTab('settings')}
             />
           ) : (
             <Dashboard 
@@ -121,7 +127,7 @@ export default function App() {
               onNavigateToSettings={() => setActiveTab('settings')}
             />
           )}
-          {!selectedContact && activeTab !== 'settings' && activeTab !== 'map' && <Navbar activeTab={activeTab} onTabChange={setActiveTab} />}
+          {!selectedContact && activeTab !== 'settings' && activeTab !== 'edit-profile' && activeTab !== 'map' && <Navbar activeTab={activeTab} onTabChange={setActiveTab} />}
         </View>
       )}
       <StatusBar style="dark" />
