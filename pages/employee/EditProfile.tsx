@@ -37,14 +37,20 @@ export default function EditProfile({
 
   const fetchUserData = async () => {
     try {
-      setLoading(true);
       const { data: { user } } = await supabase.auth.getUser();
       
       if (user?.id) {
         console.log('Current authenticated user ID:', user.id);
         setUserId(user.id);
         setEmail(user.email || '');
+        
+        // Show auth metadata immediately
+        setFullName(user.user_metadata?.full_name || '');
+        setPhoneNumber('');
+        setProfilePicture(null);
+        setLoading(false);
 
+        // Then fetch and update with database data in background
         const { data, error } = await supabase
           .from('users')
           .select('id, full_name, phone_number, profile_picture_url')
@@ -88,7 +94,6 @@ export default function EditProfile({
     } catch (err) {
       console.error('Error fetching user data:', err);
       Alert.alert('Error', 'Failed to load user data');
-    } finally {
       setLoading(false);
     }
   };
@@ -271,14 +276,6 @@ export default function EditProfile({
       setSaving(false);
     }
   };
-
-  if (loading) {
-    return (
-      <View className="flex-1 w-full bg-white items-center justify-center">
-        <ActivityIndicator size="large" color="#10b981" />
-      </View>
-    );
-  }
 
   const handleSuccessAlertConfirm = () => {
     setShowSuccessAlert(false);

@@ -22,7 +22,16 @@ export default function Settings({
     try {
       const { data: { user } } = await supabase.auth.getUser();
       
+      // Show auth metadata immediately
       if (user?.id) {
+        setUserData({
+          full_name: user.user_metadata?.full_name || 'User',
+          email: user.email || '',
+          phone_number: null,
+          profile_picture_url: null,
+        });
+        
+        // Then fetch and update with database data in background
         const { data, error } = await supabase
           .from('users')
           .select('full_name, phone_number, profile_picture_url')
@@ -34,13 +43,6 @@ export default function Settings({
             email: user.email || '',
             phone_number: data[0].phone_number,
             profile_picture_url: data[0].profile_picture_url,
-          });
-        } else {
-          setUserData({
-            full_name: user.user_metadata?.full_name || 'User',
-            email: user.email || '',
-            phone_number: null,
-            profile_picture_url: null,
           });
         }
       }

@@ -10,6 +10,8 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import supabase from '../utils/supabase';
+import { hasAcceptedEula, acceptEula } from '../utils/eula';
+import EulaModal from '../components/EulaModal';
 import '../global.css';
 
 interface SignInProps {
@@ -23,6 +25,9 @@ export default function SignIn({ onNavigateToSignUp, onSignInSuccess }: SignInPr
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [showEulaModal, setShowEulaModal] = useState(false);
+  const [eulaLoading, setEulaLoading] = useState(false);
+  const [signedInUser, setSignedInUser] = useState<any>(null);
 
   // Auto-hide error after 5 seconds
   React.useEffect(() => {
@@ -53,13 +58,63 @@ export default function SignIn({ onNavigateToSignUp, onSignInSuccess }: SignInPr
       }
 
       if (data?.user) {
-        onSignInSuccess(data.user);
+        // Check if user has accepted EULA
+        const eulaAccepted = await hasAcceptedEula(data.user.id);
+        
+        if (eulaAccepted) {
+          // User has accepted EULA, proceed to dashboard
+          onSignInSuccess(data.user);
+        } else {
+          // User hasn't accepted EULA, show modal
+          setSignedInUser(data.user);
+          setShowEulaModal(true);
+        }
       }
     } catch (err: any) {
       const errorMessage = err?.message || 'An error occurred during sign in';
       setError(errorMessage);
     } finally {
       setLoading(false);
+    }
+  }
+
+  const handleEulaAccept = async () => {
+    if (!signedInUser) return;
+
+    setEulaLoading(true);
+    try {
+      const success = await acceptEula(signedInUser.id);
+      
+      if (success) {
+        setShowEulaModal(false);
+        setSignedInUser(null);
+        onSignInSuccess(signedInUser);
+      } else {
+        setError('Failed to accept EULA. Please try again.');
+      }
+    } catch (err: any) {
+      setError('An error occurred while accepting the EULA');
+      console.error('EULA accept error:', err);
+    } finally {
+      setEulaLoading(false);
+    }
+  };
+
+  const handleEulaDecline = async () => {
+    try {
+      const success = await supabase.auth.signOut();
+      
+      if (success) {
+        setShowEulaModal(false);
+        setSignedInUser(null);
+        setEmail('');
+        setPassword('');
+      } else {
+        setError('Failed to sign out. Please try again.');
+      }
+    } catch (err: any) {
+      setError('An error occurred while signing out');
+      console.error('Sign out error:', err);
     }
   };
 
@@ -161,6 +216,14 @@ export default function SignIn({ onNavigateToSignUp, onSignInSuccess }: SignInPr
           </View>
         </View>
       </KeyboardAvoidingView>
+
+      {/* EULA Modal */}
+      <EulaModal
+        visible={showEulaModal}
+        onAccept={handleEulaAccept}
+        onDecline={handleEulaDecline}
+        loading={eulaLoading}
+      />
     </View>
   );
 }

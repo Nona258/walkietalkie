@@ -12,14 +12,17 @@ import {
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import supabase from "../utils/supabase";
+import { acceptEula } from "../utils/eula";
 import SweetAlertModal from "../components/SweetAlertModal";
+import EulaModal from "../components/EulaModal";
 import "../global.css";
 
 interface SignUpProps {
   onNavigateToSignIn: () => void;
+  onSignUpSuccess: (user: any) => void;
 }
 
-export default function SignUp({ onNavigateToSignIn }: SignUpProps) {
+export default function SignUp({ onNavigateToSignIn, onSignUpSuccess }: SignUpProps) {
   const [fullName, setFullName] = useState("");
   const [email, setEmail] = useState("");
   const [phoneNumber, setPhoneNumber] = useState("");
@@ -28,6 +31,9 @@ export default function SignUp({ onNavigateToSignIn }: SignUpProps) {
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [showEulaModal, setShowEulaModal] = useState(false);
+  const [eulaLoading, setEulaLoading] = useState(false);
+  const [signedUpUser, setSignedUpUser] = useState<any>(null);
 
   const [alertVisible, setAlertVisible] = useState(false);
   const [alertConfig, setAlertConfig] = useState({
@@ -88,31 +94,27 @@ export default function SignUp({ onNavigateToSignIn }: SignUpProps) {
         throw new Error("User creation failed.");
       }
 
-      // ✅ Insert into your public users table
+      // ✅ Insert into your public users table using upsert to handle conflicts
+      const phoneNum = phoneNumber.trim() || null;
+      
       const { error: insertError } = await supabase
         .from("users")
-        .insert({
+        .upsert({
           id: data.user.id,
           email: email.trim(),
           full_name: fullName.trim(),
-          phone_number: parseInt(phoneNumber.trim()),
+          phone_number: phoneNum,
+        }, { 
+          onConflict: 'id' 
         });
 
       if (insertError) {
         throw insertError;
       }
 
-      setAlertConfig({
-        title: "Success!",
-        message: "Your account has been created successfully!",
-        type: "success",
-        confirmText: "Go to Sign In",
-        onConfirm: () => {
-          setAlertVisible(false);
-          onNavigateToSignIn();
-        },
-      });
-      setAlertVisible(true);
+      // Show EULA modal after successful signup (user stays signed in)
+      setSignedUpUser(data.user);
+      setShowEulaModal(true);
     } catch (err: any) {
       setAlertConfig({
         title: "Error",
@@ -124,6 +126,82 @@ export default function SignUp({ onNavigateToSignIn }: SignUpProps) {
       setAlertVisible(true);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleEulaAccept = async () => {
+    if (!signedUpUser) return;
+
+    setEulaLoading(true);
+    try {
+      const success = await acceptEula(signedUpUser.id);
+      
+      if (success) {
+        setShowEulaModal(false);
+        setSignedUpUser(null);
+        // Navigate to dashboard - user is already signed in
+        onSignUpSuccess(signedUpUser);
+      } else {
+        setAlertConfig({
+          title: "Error",
+          message: "Failed to accept EULA. Please try again.",
+          type: "error",
+          confirmText: "OK",
+          onConfirm: () => setAlertVisible(false),
+        });
+        setAlertVisible(true);
+      }
+    } catch (err: any) {
+      setAlertConfig({
+        title: "Error",
+        message: "An error occurred while accepting the EULA",
+        type: "error",
+        confirmText: "OK",
+        onConfirm: () => setAlertVisible(false),
+      });
+      setAlertVisible(true);
+      console.error('EULA accept error:', err);
+    } finally {
+      setEulaLoading(false);
+    }
+  };
+
+  const handleEulaDecline = async () => {
+    try {
+      // Sign out the user since they declined EULA
+      await supabase.auth.signOut();
+      
+      setShowEulaModal(false);
+      setSignedUpUser(null);
+      
+      // Reset form
+      setFullName('');
+      setEmail('');
+      setPhoneNumber('');
+      setPassword('');
+      setConfirmPassword('');
+      
+      setAlertConfig({
+        title: "EULA Declined",
+        message: "You must accept the EULA to use this app. Please try signing up again.",
+        type: "warning",
+        confirmText: "Go to Sign In",
+        onConfirm: () => {
+          setAlertVisible(false);
+          onNavigateToSignIn();
+        },
+      });
+      setAlertVisible(true);
+    } catch (err: any) {
+      setAlertConfig({
+        title: "Error",
+        message: "An error occurred",
+        type: "error",
+        confirmText: "OK",
+        onConfirm: () => setAlertVisible(false),
+      });
+      setAlertVisible(true);
+      console.error('EULA decline error:', err);
     }
   };
 
@@ -265,6 +343,13 @@ export default function SignUp({ onNavigateToSignIn }: SignUpProps) {
         type={alertConfig.type}
         confirmText={alertConfig.confirmText}
         onConfirm={alertConfig.onConfirm}
+      />
+
+      <EulaModal
+        visible={showEulaModal}
+        onAccept={handleEulaAccept}
+        onDecline={handleEulaDecline}
+        loading={eulaLoading}
       />
     </View>
   );

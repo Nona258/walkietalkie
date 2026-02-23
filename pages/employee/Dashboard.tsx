@@ -21,8 +21,15 @@ export default function Dashboard({
       const { data: { user } } = await supabase.auth.getUser();
       console.log('Current user:', user?.id);
       
+      // Show auth metadata immediately
       if (user?.id) {
-        // Fetch user data from the users table with simpler query
+        setUserData({
+          full_name: user.user_metadata?.full_name || 'User',
+          phone_number: null,
+          profile_picture_url: null,
+        });
+        
+        // Then fetch and update with database data in background
         const { data, error } = await supabase
           .from('users')
           .select('full_name, phone_number, profile_picture_url')
@@ -36,14 +43,6 @@ export default function Dashboard({
             full_name: data[0].full_name,
             phone_number: data[0].phone_number,
             profile_picture_url: data[0].profile_picture_url,
-          });
-        } else {
-          // If table query fails, fallback to auth metadata
-          console.log('Falling back to auth metadata');
-          setUserData({
-            full_name: user.user_metadata?.full_name || 'User',
-            phone_number: null,
-            profile_picture_url: null,
           });
         }
       }
