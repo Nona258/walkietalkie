@@ -4,8 +4,9 @@ import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { showToast } from '../../components/SimpleToast';
 import AdminSidebar from '../../components/AdminSidebar';
-import AdminSidebarMobile from '../../components/AdminSidebarMobile'; // <-- Import mobile sidebar
-import AdminHeader from '../../components/AdminHeader'; // <-- Import header
+import AdminSidebarMobile from '../../components/AdminSidebarMobile'; 
+import AdminHeader from '../../components/AdminHeader'; 
+import SiteManagementCardMobile from '../../components/SiteManagementCardMobile'; 
 import '../../global.css';
 
 interface Site {
@@ -299,10 +300,8 @@ export default function SiteManagement({ onNavigate }: SiteManagementProps) {
 
   return (
     <View className="flex-row flex-1 bg-stone-50">
-      {/* Desktop Sidebar - Hidden on mobile */}
+      {/* Desktop Sidebar - */}
       <AdminSidebar onNavigate={onNavigate} activeRoute="siteManagement" />
-
-      {/* Main Content Area */}
       <ScrollView className="flex-1 bg-stone-50">
         {/* Header */}
         <AdminHeader
@@ -313,25 +312,24 @@ export default function SiteManagement({ onNavigate }: SiteManagementProps) {
           setIsNotificationOpen={setIsNotificationOpen}
           onNavigate={onNavigate}
         />
-
         {/* Page Title & Add Button */}
         <View className="px-5 pt-4 pb-3 lg:px-8 lg:pt-6">
           <View className="flex-row items-center justify-between">
             <View className="flex-1">
               <Text className="text-lg lg:text-xl font-bold text-stone-900 mb-0.5">Site Management</Text>
-              <Text className="text-xs text-stone-500 lg:text-sm">Manage all company sites and branches</Text>
+              <Text className="text-xs text-stone-900 lg:text-lg">Manage all company sites and branches</Text>
             </View>
             <TouchableOpacity 
               className="bg-emerald-600 px-3 lg:px-4 py-2 lg:py-2.5 rounded-xl flex-row items-center ml-2"
               onPress={() => setIsAddModalOpen(true)}
             >
-              <Ionicons name="add" size={18} color="white" />
-              <Text className="ml-1 text-xs font-semibold text-white lg:text-sm">Add Site</Text>
+              <Ionicons name="add" size={20} color="white" />
+              <Text className="ml-1 text-xs font-semibold text-white lg:text-lg">Add Site</Text>
             </TouchableOpacity>
           </View>
         </View>
 
-        {/* Desktop Table View - Hidden on mobile */}
+        {/* Desktop Table View -  */}
         <View className="hidden px-8 pb-6 lg:flex">
           <View className="overflow-hidden bg-white border rounded-2xl border-stone-200">
             {/* Table Header */}
@@ -339,9 +337,6 @@ export default function SiteManagement({ onNavigate }: SiteManagementProps) {
               <Text className="flex-1 text-xs font-semibold tracking-wide uppercase text-stone-600">Site Name</Text>
               <Text className="flex-1 text-xs font-semibold tracking-wide uppercase text-stone-600">Company</Text>
               <Text className="flex-1 text-xs font-semibold tracking-wide uppercase text-stone-600">Branch</Text>
-              <Text className="w-24 text-xs font-semibold tracking-wide uppercase text-stone-600">Members</Text>
-              <Text className="w-32 text-xs font-semibold tracking-wide uppercase text-stone-600">Longitude</Text>
-              <Text className="w-32 text-xs font-semibold tracking-wide uppercase text-stone-600">Latitude</Text>
               <Text className="text-xs font-semibold tracking-wide uppercase w-28 text-stone-600">Status</Text>
               <Text className="w-32 text-xs font-semibold tracking-wide text-center uppercase text-stone-600">Actions</Text>
             </View>
@@ -365,16 +360,6 @@ export default function SiteManagement({ onNavigate }: SiteManagementProps) {
 
                 {/* Branch */}
                 <Text className="flex-1 text-sm text-stone-600">{site.branch}</Text>
-
-                {/* Members */}
-                <Text className="w-24 text-sm text-stone-600">{site.members}</Text>
-
-                {/* Longitude */}
-                <Text className="w-32 text-sm text-stone-600">{site.longitude}</Text>
-
-                {/* Latitude */}
-                <Text className="w-32 text-sm text-stone-600">{site.latitude}</Text>
-
                 {/* Status */}
                 <View className="w-28">
                   <View className="bg-emerald-50 px-3 py-1.5 rounded-lg inline-flex self-start">
@@ -402,68 +387,8 @@ export default function SiteManagement({ onNavigate }: SiteManagementProps) {
           </View>
         </View>
 
-        {/* Mobile Card View - Hidden on desktop */}
-        <View className="px-5 pb-6 lg:hidden">
-          <View className="overflow-hidden bg-white border rounded-2xl border-stone-200">
-            {/* Site Items */}
-            {sites.map((site, index) => (
-              <View
-                key={site.id}
-                className={`px-3 py-3 ${index !== sites.length - 1 ? 'border-b border-stone-100' : ''}`}
-              >
-                {/* Mobile Card Layout */}
-                <View className="flex-row items-start">
-                  {/* Icon */}
-                  <View className="items-center justify-center w-10 h-10 mr-3 bg-emerald-100 rounded-xl">
-                    <Ionicons name="location" size={18} color="#10b981" />
-                  </View>
-
-                  {/* Content */}
-                  <View className="flex-1">
-                    <Text className="mb-1 text-sm font-semibold text-stone-900">{site.name}</Text>
-                    <View className="flex-row items-center mb-0.5">
-                      <Ionicons name="business-outline" size={12} color="#78716c" />
-                      <Text className="text-xs text-stone-600 ml-1.5">{site.company}</Text>
-                    </View>
-                    <View className="flex-row items-center mb-1.5">
-                      <Ionicons name="git-branch-outline" size={12} color="#78716c" />
-                      <Text className="text-xs text-stone-600 ml-1.5">{site.branch}</Text>
-                    </View>
-                    <View className="flex-row items-center mb-1.5">
-                      <Ionicons name="locate-outline" size={12} color="#78716c" />
-                      <Text className="text-xs text-stone-600 ml-1.5">Lng: {site.longitude} | Lat: {site.latitude}</Text>
-                    </View>
-                    <View className="flex-row items-center gap-3 mt-1">
-                      <View className="flex-row items-center">
-                        <Ionicons name="people-outline" size={12} color="#78716c" />
-                        <Text className="ml-1 text-xs text-stone-600">{site.members} Members</Text>
-                      </View>
-                      <View className="bg-emerald-50 px-2 py-0.5 rounded-lg">
-                        <Text className="text-xs font-semibold text-emerald-700">{site.status}</Text>
-                      </View>
-                    </View>
-                  </View>
-
-                  {/* Actions - Vertical on mobile */}
-                  <View className="ml-2">
-                    <TouchableOpacity className="items-center justify-center w-8 h-8 mb-1">
-                      <Ionicons name="create-outline" size={16} color="#78716c" />
-                    </TouchableOpacity>
-                    <TouchableOpacity className="items-center justify-center w-8 h-8 mb-1">
-                      <Ionicons name="eye-outline" size={16} color="#78716c" />
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                      className="items-center justify-center w-8 h-8"
-                      onPress={() => handleDeleteSite(site.id)}
-                    >
-                      <Ionicons name="trash-outline" size={16} color="#dc2626" />
-                    </TouchableOpacity>
-                  </View>
-                </View>
-              </View>
-            ))}
-          </View>
-        </View>
+        {/* Mobile Card View*/}
+       <SiteManagementCardMobile sites={sites} handleDeleteSite={handleDeleteSite} />
       </ScrollView>
 
       {/* Mobile Drawer Modal */}
@@ -589,74 +514,7 @@ export default function SiteManagement({ onNavigate }: SiteManagementProps) {
                 <Text className="mt-1 text-xs text-stone-400">{branch.length}/50 characters</Text>
               </View>
 
-              {/* Members */}
-              <View className="mb-4">
-                <Text className="mb-2 text-sm font-medium text-stone-700">Number of Members</Text>
-                <TextInput
-                  className={`bg-white border ${touched.members && errors.members ? 'border-red-500' : 'border-stone-300'
-                    } rounded-xl px-4 py-3 text-stone-900 text-sm`}
-                  placeholder="e.g., 24"
-                  placeholderTextColor="#a8a29e"
-                  keyboardType="numeric"
-                  value={members}
-                  onChangeText={(value) => handleFieldChange('members', value)}
-                  onBlur={() => handleFieldBlur('members', members)}
-                />
-                {touched.members && errors.members && (
-                  <View className="flex-row items-center mt-1.5">
-                    <Ionicons name="alert-circle" size={14} color="#dc2626" />
-                    <Text className="ml-1 text-xs text-red-600">{errors.members}</Text>
-                  </View>
-                )}
-                <Text className="mt-1 text-xs text-stone-400">Maximum 1000 members</Text>
-              </View>
-
-              {/* Longitude */}
-              <View className="mb-4">
-                <Text className="mb-2 text-sm font-medium text-stone-700">
-                  Longitude <Text className="text-red-500">*</Text>
-                </Text>
-                <TextInput
-                  className={`bg-white border ${touched.longitude && errors.longitude ? 'border-red-500' : 'border-stone-300'
-                    } rounded-xl px-4 py-3 text-stone-900 text-sm`}
-                  placeholder="e.g., 120.9842"
-                  placeholderTextColor="#a8a29e"
-                  keyboardType="numeric"
-                  value={longitude}
-                  onChangeText={(value) => handleFieldChange('longitude', value)}
-                  onBlur={() => handleFieldBlur('longitude', longitude)}
-                />
-                {touched.longitude && errors.longitude && (
-                  <View className="flex-row items-center mt-1.5">
-                    <Ionicons name="alert-circle" size={14} color="#dc2626" />
-                    <Text className="ml-1 text-xs text-red-600">{errors.longitude}</Text>
-                  </View>
-                )}
-              </View>
-
-              {/* Latitude */}
-              <View className="mb-1">
-                <Text className="mb-2 text-sm font-medium text-stone-700">
-                  Latitude <Text className="text-red-500">*</Text>
-                </Text>
-                <TextInput
-                  className={`bg-white border ${touched.latitude && errors.latitude ? 'border-red-500' : 'border-stone-300'
-                    } rounded-xl px-4 py-3 text-stone-900 text-sm`}
-                  placeholder="e.g., 14.5995"
-                  placeholderTextColor="#a8a29e"
-                  keyboardType="numeric"
-                  value={latitude}
-                  onChangeText={(value) => handleFieldChange('latitude', value)}
-                  onBlur={() => handleFieldBlur('latitude', latitude)}
-                />
-                {touched.latitude && errors.latitude && (
-                  <View className="flex-row items-center mt-1.5">
-                    <Ionicons name="alert-circle" size={14} color="#dc2626" />
-                    <Text className="ml-1 text-xs text-red-600">{errors.latitude}</Text>
-                  </View>
-                )}
-              </View>
-
+                  
               <Text className="mt-3 text-xs text-stone-400">
                 <Text className="text-red-500">*</Text> Required fields
               </Text>

@@ -47,14 +47,14 @@ const menuItems: MenuItem[] = [
 const AdminSidebar: React.FC<AdminSidebarProps> = ({ onNavigate, activeRoute }) => (
   <View className="hidden bg-white border-r lg:flex w-72 border-stone-200">
     {/* Sidebar Header */}
-    <View className="px-6 pt-8 pb-6 border-b bg-emerald-50 border-emerald-100">
+    <View className="px-6 pt-8 pb-6 border-b bg-emerald-100 border-emerald-100">
       <View className="flex-row items-center gap-3">
         <View className="items-center justify-center w-14 h-14 bg-emerald-100 rounded-2xl">
           <Ionicons name="chatbubble" size={24} color="#10b981" />
         </View>
         <View>
           <Text className="text-base font-bold text-stone-900">Admin Portal</Text>
-          <Text className="text-xs text-stone-500">Monitoring System</Text>
+          <Text className="text-xs text-stone-900">Monitoring System</Text>
         </View>
       </View>
     </View>

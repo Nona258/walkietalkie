@@ -30,7 +30,21 @@ export default function ActivityLogs({ onNavigate }: ActivityLogsProps) {
   const [isNotificationOpen, setIsNotificationOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [filterType, setFilterType] = useState<string>('all');
-  const [activities, setActivities] = useState<ActivityLog[]>([]);
+  // Static activity log entry
+  const [activities, setActivities] = useState<ActivityLog[]>([
+    {
+      id: 1,
+      user_name: 'John Doe',
+      initials: 'JD',
+      action: 'Logged In',
+      description: 'User John Doe logged into the system.',
+      location: 'Dashboard',
+      time: '2026-02-13 10:00:00',
+      type: 'login',
+      color: '#E0F7FA',
+      icon: 'log-in-outline',
+    },
+  ]);
   const [loading, setLoading] = useState(true);
 
   /*
@@ -89,16 +103,16 @@ export default function ActivityLogs({ onNavigate }: ActivityLogsProps) {
                 <Text className="text-base font-bold lg:text-lg text-stone-900">Activity Logs</Text>
                 <View className="flex-row items-center gap-2 lg:gap-3">
                   <TouchableOpacity 
-                    className="px-3 lg:px-4 py-2 lg:py-2.5 bg-stone-50 rounded-lg border border-stone-200"
+                    className="px-3 lg:px-4 py-2 lg:py-2.5 bg-emerald-600  rounded-lg border border-stone-200"
                     onPress={() => setFilterType('all')}
                   >
-                    <Text className="text-xs font-medium lg:text-sm text-stone-600">All Activities</Text>
+                    <Text className="font-medium text-white text-md lg:text-md">All Activities</Text>
                   </TouchableOpacity>
                   <TouchableOpacity 
-                    className="px-3 lg:px-4 py-2 lg:py-2.5 bg-stone-100 rounded-lg border border-stone-200"
+                    className="px-3 lg:px-4 py-2 lg:py-2.5 bg-emerald-600 rounded-lg border border-stone-200"
                     onPress={() => {/* Export logic */}}
                   >
-                    <Text className="text-xs font-medium lg:text-sm text-stone-700">Export</Text>
+                    <Text className="font-medium text-white text-md lg:text-md">Export</Text>
                   </TouchableOpacity>
                 </View>
               </View>

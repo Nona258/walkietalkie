@@ -6,7 +6,7 @@ import { showToast } from '../../components/SimpleToast';
 import '../../global.css';
 import AdminSidebar from '../../components/AdminSidebar';
 import AdminHeader from 'components/AdminHeader';
-import AdminSidebarMobile from '../../components/AdminSidebarMobile'; // <-- Import mobile sidebar
+import AdminSidebarMobile from '../../components/AdminSidebarMobile';
 
 interface Employee {
   id: number;
@@ -47,7 +47,6 @@ export default function Employees({ onNavigate }: EmployeesProps) {
   const [errors, setErrors] = useState<ValidationErrors>({});
   const [touched, setTouched] = useState<{ [key: string]: boolean }>({});
 
-  // Load employees from AsyncStorage
   useEffect(() => {
     loadEmployees();
   }, []);
@@ -66,7 +65,6 @@ export default function Employees({ onNavigate }: EmployeesProps) {
       if (storedEmployees) {
         setEmployees(JSON.parse(storedEmployees));
       } else {
-        // Default employees if none exist
         const defaultEmployees: Employee[] = [
           {
             id: 1,
@@ -108,57 +106,26 @@ export default function Employees({ onNavigate }: EmployeesProps) {
   const validateField = (fieldName: string, value: string): string | undefined => {
     switch (fieldName) {
       case 'name':
-        if (!value.trim()) {
-          return 'Full name is required';
-        }
-        if (value.trim().length < 2) {
-          return 'Name must be at least 2 characters';
-        }
-        if (value.trim().length > 100) {
-          return 'Name must not exceed 100 characters';
-        }
-        // Basic name validation (letters, spaces, hyphens, apostrophes)
-        if (!/^[a-zA-Z\s'-]+$/.test(value.trim())) {
-          return 'Name can only contain letters, spaces, hyphens, and apostrophes';
-        }
+        if (!value.trim()) return 'Full name is required';
+        if (value.trim().length < 2) return 'Name must be at least 2 characters';
+        if (value.trim().length > 100) return 'Name must not exceed 100 characters';
+        if (!/^[a-zA-Z\s'-]+$/.test(value.trim())) return 'Name can only contain letters, spaces, hyphens, and apostrophes';
         return undefined;
-
       case 'role':
-        if (!value.trim()) {
-          return 'Role/Position is required';
-        }
-        if (value.trim().length < 2) {
-          return 'Role must be at least 2 characters';
-        }
-        if (value.trim().length > 100) {
-          return 'Role must not exceed 100 characters';
-        }
+        if (!value.trim()) return 'Role/Position is required';
+        if (value.trim().length < 2) return 'Role must be at least 2 characters';
+        if (value.trim().length > 100) return 'Role must not exceed 100 characters';
         return undefined;
-
       case 'site':
-        if (!value.trim()) {
-          return 'Site location is required';
-        }
-        if (value.trim().length < 2) {
-          return 'Site must be at least 2 characters';
-        }
-        if (value.trim().length > 100) {
-          return 'Site must not exceed 100 characters';
-        }
+        if (!value.trim()) return 'Site location is required';
+        if (value.trim().length < 2) return 'Site must be at least 2 characters';
+        if (value.trim().length > 100) return 'Site must not exceed 100 characters';
         return undefined;
-
       case 'company':
-        if (!value.trim()) {
-          return 'Company is required';
-        }
-        if (value.trim().length < 2) {
-          return 'Company must be at least 2 characters';
-        }
-        if (value.trim().length > 100) {
-          return 'Company must not exceed 100 characters';
-        }
+        if (!value.trim()) return 'Company is required';
+        if (value.trim().length < 2) return 'Company must be at least 2 characters';
+        if (value.trim().length > 100) return 'Company must not exceed 100 characters';
         return undefined;
-
       default:
         return undefined;
     }
@@ -171,39 +138,18 @@ export default function Employees({ onNavigate }: EmployeesProps) {
       site: validateField('site', site),
       company: validateField('company', company),
     };
-
     setErrors(newErrors);
-
-    // Mark all fields as touched
-    setTouched({
-      name: true,
-      role: true,
-      site: true,
-      company: true,
-    });
-
-    // Return true if no errors
+    setTouched({ name: true, role: true, site: true, company: true });
     return !Object.values(newErrors).some(error => error !== undefined);
   };
 
   const handleFieldChange = (fieldName: string, value: string) => {
-    // Update the field value
     switch (fieldName) {
-      case 'name':
-        setName(value);
-        break;
-      case 'role':
-        setRole(value);
-        break;
-      case 'site':
-        setSite(value);
-        break;
-      case 'company':
-        setCompany(value);
-        break;
+      case 'name': setName(value); break;
+      case 'role': setRole(value); break;
+      case 'site': setSite(value); break;
+      case 'company': setCompany(value); break;
     }
-
-    // Validate the field if it's been touched
     if (touched[fieldName]) {
       const error = validateField(fieldName, value);
       setErrors(prev => ({ ...prev, [fieldName]: error }));
@@ -228,14 +174,9 @@ export default function Employees({ onNavigate }: EmployeesProps) {
 
   const handleAddEmployee = async () => {
     if (!validateForm()) {
-      showToast({
-        type: 'error',
-        text1: 'Validation Error',
-        text2: 'Please fix the errors before submitting'
-      });
+      showToast({ type: 'error', text1: 'Validation Error', text2: 'Please fix the errors before submitting' });
       return;
     }
-
     const newEmployee: Employee = {
       id: Date.now(),
       name: name.trim(),
@@ -245,31 +186,19 @@ export default function Employees({ onNavigate }: EmployeesProps) {
       status: 'Active',
       initials: getInitials(name.trim()),
     };
-
     const updatedEmployees = [...employees, newEmployee];
     await saveEmployees(updatedEmployees);
-
     resetForm();
     setIsAddModalOpen(false);
-    showToast({
-      type: 'success',
-      text1: 'Success!',
-      text2: `${name.trim()} has been added successfully`
-    });
+    showToast({ type: 'success', text1: 'Success!', text2: `${name.trim()} has been added successfully` });
   };
 
   const handleEditEmployee = async () => {
     if (!selectedEmployee) return;
-
     if (!validateForm()) {
-      showToast({
-        type: 'error',
-        text1: 'Validation Error',
-        text2: 'Please fix the errors before submitting'
-      });
+      showToast({ type: 'error', text1: 'Validation Error', text2: 'Please fix the errors before submitting' });
       return;
     }
-
     const updatedEmployee: Employee = {
       ...selectedEmployee,
       name: name.trim(),
@@ -278,20 +207,13 @@ export default function Employees({ onNavigate }: EmployeesProps) {
       company: company.trim(),
       initials: getInitials(name.trim()),
     };
-
     const updatedEmployees = employees.map(emp =>
       emp.id === selectedEmployee.id ? updatedEmployee : emp
     );
-
     await saveEmployees(updatedEmployees);
-
     resetForm();
     setIsEditModalOpen(false);
-    showToast({
-      type: 'success',
-      text1: 'Updated!',
-      text2: `${name.trim()} has been updated successfully`
-    });
+    showToast({ type: 'success', text1: 'Updated!', text2: `${name.trim()} has been updated successfully` });
   };
 
   const openEditModal = (employee: Employee) => {
@@ -311,21 +233,14 @@ export default function Employees({ onNavigate }: EmployeesProps) {
       'Delete Employee',
       `Are you sure you want to delete ${employee?.name}?`,
       [
-        {
-          text: 'Cancel',
-          style: 'cancel',
-        },
+        { text: 'Cancel', style: 'cancel' },
         {
           text: 'Delete',
           style: 'destructive',
           onPress: async () => {
             const updatedEmployees = employees.filter(emp => emp.id !== id);
             await saveEmployees(updatedEmployees);
-            showToast({
-              type: 'success',
-              text1: 'Deleted',
-              text2: `${employee?.name} has been removed`
-            });
+            showToast({ type: 'success', text1: 'Deleted', text2: `${employee?.name} has been removed` });
           },
         },
       ]
@@ -333,9 +248,7 @@ export default function Employees({ onNavigate }: EmployeesProps) {
   };
 
   // Dummy sign out handler
-  const handleSignOut = () => {
-    // Add your sign out logic here
-  };
+  const handleSignOut = () => {};
 
   return (
     <View className="flex-row flex-1 bg-stone-50">
@@ -354,160 +267,144 @@ export default function Employees({ onNavigate }: EmployeesProps) {
         />
 
         {/* Page Title & Add Button */}
-        <View className="px-5 pt-4 pb-3 lg:px-8 lg:pt-6">
-          <View className="flex-row items-center justify-between">
-            <View className="flex-1">
-              <Text className="text-lg lg:text-xl font-bold text-stone-900 mb-0.5">Employee Management</Text>
-              <Text className="text-xs text-stone-500 lg:text-sm">View and manage all employees</Text>
-            </View>
-            <TouchableOpacity 
-              className="bg-emerald-600 px-3 lg:px-4 py-2 lg:py-2.5 rounded-xl flex-row items-center ml-2"
-              onPress={() => setIsAddModalOpen(true)}
-            >
-              <Ionicons name="person-add" size={18} color="white" />
-              <Text className="ml-1 text-xs font-semibold text-white lg:text-sm">Add Employee</Text>
-            </TouchableOpacity>
+        <View className="flex-row items-center justify-between px-5 pt-6 pb-4 lg:px-8">
+          <View>
+            <Text className="mb-1 text-2xl font-bold text-stone-900">Employees</Text>
+            <Text className="text-sm text-stone-500">Manage your workforce</Text>
           </View>
+          <TouchableOpacity
+            className="flex-row items-center px-4 py-2 shadow-sm bg-emerald-600 rounded-xl"
+            onPress={() => setIsAddModalOpen(true)}
+          >
+            <Ionicons name="person-add" size={20} color="white" />
+            <Text className="ml-2 font-semibold text-white text-md">Add Employee</Text>
+          </TouchableOpacity>
         </View>
 
-        {/* Desktop Table View - Hidden on mobile */}
-        <View className="hidden px-8 pb-6 lg:flex">
-          <View className="overflow-hidden bg-white border rounded-2xl border-stone-200">
-            {/* Table Header */}
-            <View className="flex-row items-center px-6 py-4 border-b bg-stone-50 border-stone-200">
-              <Text className="flex-1 text-xs font-semibold tracking-wide uppercase text-stone-600">Employee</Text>
-              <Text className="flex-1 text-xs font-semibold tracking-wide uppercase text-stone-600">Role</Text>
-              <Text className="flex-1 text-xs font-semibold tracking-wide uppercase text-stone-600">Site</Text>
-              <Text className="flex-1 text-xs font-semibold tracking-wide uppercase text-stone-600">Company</Text>
-              <Text className="text-xs font-semibold tracking-wide uppercase w-28 text-stone-600">Status</Text>
-              <Text className="w-32 text-xs font-semibold tracking-wide text-center uppercase text-stone-600">Actions</Text>
+        {/* Desktop Card Grid */}
+        <View className="hidden grid-cols-2 gap-6 px-8 pb-8 lg:grid xl:grid-cols-3">
+          {employees.length === 0 ? (
+            <View className="items-center justify-center py-16 col-span-full">
+              <Ionicons name="people-outline" size={64} color="#d6d3d1" />
+              <Text className="mt-4 text-lg text-stone-400">No employees yet</Text>
+              <Text className="text-sm text-stone-500">Add your first employee to get started</Text>
             </View>
-
-            {/* Table Rows */}
-            {employees.map((employee, index) => (
-              <View 
+          ) : (
+            employees.map((employee) => (
+              <View
                 key={employee.id}
-                className={`flex-row items-center px-6 py-4 ${index !== employees.length - 1 ? 'border-b border-stone-100' : ''}`}
+                className="flex flex-col justify-between p-6 bg-white border shadow-sm border-stone-200 rounded-2xl"
               >
-                {/* Employee */}
-                <View className="flex-row items-center flex-1">
-                  <View className={`w-10 h-10 ${employee.status === 'Active' ? 'bg-emerald-100' : 'bg-stone-200'} rounded-xl items-center justify-center mr-3`}>
-                    <Text className={`${employee.status === 'Active' ? 'text-emerald-700' : 'text-stone-500'} font-semibold text-sm`}>
+                <View className="flex-row items-center mb-4">
+                  <View className={`w-14 h-14 ${employee.status === 'Active' ? 'bg-emerald-100' : 'bg-stone-200'} rounded-full items-center justify-center mr-4`}>
+                    <Text className={`${employee.status === 'Active' ? 'text-emerald-700' : 'text-stone-500'} font-bold text-xl`}>
                       {employee.initials}
                     </Text>
                   </View>
-                  <Text className="text-sm font-semibold text-stone-900">{employee.name}</Text>
+                  <View>
+                    <Text className="text-lg font-bold text-stone-900">{employee.name}</Text>
+                    <Text className="text-sm text-stone-500">{employee.role}</Text>
+                  </View>
                 </View>
-
-                {/* Role */}
-                <Text className="flex-1 text-sm text-stone-600">{employee.role}</Text>
-
-                {/* Site */}
-                <View className="flex-row items-center flex-1">
-                  <Ionicons name="location-outline" size={14} color="#78716c" />
-                  <Text className="ml-1 text-sm text-stone-600">{employee.site}</Text>
-                </View>
-
-                {/* Company */}
-                <View className="flex-row items-center flex-1">
-                  <Ionicons name="business-outline" size={14} color="#78716c" />
-                  <Text className="ml-1 text-sm text-stone-600">{employee.company}</Text>
-                </View>
-
-                {/* Status */}
-                <View className="w-28">
-                  <View className={`${employee.status === 'Active' ? 'bg-emerald-50' : 'bg-stone-100'} px-3 py-1.5 rounded-lg inline-flex self-start`}>
+                <View className="mb-3">
+                  <View className="flex-row items-center mb-1">
+                    <Ionicons name="location-outline" size={16} color="#78716c" />
+                    <Text className="ml-2 text-sm text-stone-600">{employee.site}</Text>
+                  </View>
+                  <View className="flex-row items-center mb-1">
+                    <Ionicons name="business-outline" size={16} color="#78716c" />
+                    <Text className="ml-2 text-sm text-stone-600">{employee.company}</Text>
+                  </View>
+                  <View className={`${employee.status === 'Active' ? 'bg-emerald-50' : 'bg-stone-100'} px-3 py-1 rounded-lg self-start mt-1`}>
                     <Text className={`${employee.status === 'Active' ? 'text-emerald-700' : 'text-stone-600'} text-xs font-semibold`}>
                       {employee.status}
                     </Text>
                   </View>
                 </View>
-
-                {/* Actions */}
-                <View className="flex-row items-center justify-center w-32 gap-2">
-                  <TouchableOpacity 
-                    className="items-center justify-center w-8 h-8 rounded-lg hover:bg-stone-100"
+                <View className="flex-row gap-2 mt-2">
+                  <TouchableOpacity
+                    className="flex-row items-center justify-center flex-1 py-2 bg-emerald-600 rounded-xl"
                     onPress={() => openEditModal(employee)}
+                    accessibilityLabel="Edit"
                   >
-                    <Ionicons name="create-outline" size={18} color="#78716c" />
+                    <Ionicons name="create-outline" size={18} color="white" />
+                    <Text className="ml-1 font-semibold text-white">Edit</Text>
                   </TouchableOpacity>
-                  <TouchableOpacity className="items-center justify-center w-8 h-8 rounded-lg hover:bg-stone-100">
-                    <Ionicons name="eye-outline" size={18} color="#78716c" />
-                  </TouchableOpacity>
-                  <TouchableOpacity 
-                    className="items-center justify-center w-8 h-8 rounded-lg hover:bg-red-50"
+                  <TouchableOpacity
+                    className="flex-row items-center justify-center flex-1 py-2 bg-stone-200 rounded-xl"
                     onPress={() => handleDeleteEmployee(employee.id)}
+                    accessibilityLabel="Delete"
                   >
                     <Ionicons name="trash-outline" size={18} color="#dc2626" />
+                    <Text className="ml-1 font-semibold text-stone-700">Delete</Text>
                   </TouchableOpacity>
                 </View>
               </View>
-            ))}
-          </View>
+            ))
+          )}
         </View>
 
-        {/* Mobile Card View - Hidden on desktop */}
-        <View className="px-5 pb-6 lg:hidden">
-          <View className="overflow-hidden bg-white border rounded-2xl border-stone-200">
-            {/* Employee Cards */}
-            {employees.map((employee, index) => (
-              <View 
+        {/* Mobile Card Stack */}
+        <View className="px-4 pb-8 lg:hidden">
+          {employees.length === 0 ? (
+            <View className="items-center justify-center py-16">
+              <Ionicons name="people-outline" size={64} color="#d6d3d1" />
+              <Text className="mt-4 text-lg text-stone-400">No employees yet</Text>
+              <Text className="text-sm text-stone-500">Add your first employee to get started</Text>
+            </View>
+          ) : (
+            employees.map((employee) => (
+              <View
                 key={employee.id}
-                className={`px-3 py-3 ${index !== employees.length - 1 ? 'border-b border-stone-100' : ''}`}
+                className="p-4 mb-4 bg-white border shadow-sm border-stone-200 rounded-2xl"
               >
-                {/* Mobile Card Layout */}
-                <View className="flex-row items-start">
-                  {/* Avatar */}
-                  <View className={`w-12 h-12 ${employee.status === 'Active' ? 'bg-emerald-100' : 'bg-stone-200'} rounded-xl items-center justify-center mr-3`}>
-                    <Text className={`${employee.status === 'Active' ? 'text-emerald-700' : 'text-stone-500'} font-semibold`}>
+                <View className="flex-row items-center mb-3">
+                  <View className={`w-12 h-12 ${employee.status === 'Active' ? 'bg-emerald-100' : 'bg-stone-200'} rounded-full items-center justify-center mr-3`}>
+                    <Text className={`${employee.status === 'Active' ? 'text-emerald-700' : 'text-stone-500'} font-bold text-lg`}>
                       {employee.initials}
                     </Text>
                   </View>
-
-                  {/* Content */}
-                  <View className="flex-1">
-                    <Text className="mb-1 text-sm font-semibold text-stone-900">{employee.name}</Text>
-                    <Text className="text-xs text-stone-500 mb-1.5">{employee.role}</Text>
-                    
-                    <View className="flex-row items-center mb-0.5">
-                      <Ionicons name="location-outline" size={12} color="#78716c" />
-                      <Text className="text-xs text-stone-600 ml-1.5">{employee.site}</Text>
-                    </View>
-                    
-                    <View className="flex-row items-center mb-1.5">
-                      <Ionicons name="business-outline" size={12} color="#78716c" />
-                      <Text className="text-xs text-stone-600 ml-1.5">{employee.company}</Text>
-                    </View>
-
-                    <View className={`${employee.status === 'Active' ? 'bg-emerald-50' : 'bg-stone-100'} px-2 py-0.5 rounded-lg self-start`}>
-                      <Text className={`${employee.status === 'Active' ? 'text-emerald-700' : 'text-stone-600'} text-xs font-semibold`}>
-                        {employee.status}
-                      </Text>
-                    </View>
-                  </View>
-
-                  {/* Actions - Vertical on mobile */}
-                  <View className="ml-2">
-                    <TouchableOpacity 
-                      className="items-center justify-center w-8 h-8 mb-1"
-                      onPress={() => openEditModal(employee)}
-                    >
-                      <Ionicons name="create-outline" size={16} color="#78716c" />
-                    </TouchableOpacity>
-                    <TouchableOpacity className="items-center justify-center w-8 h-8 mb-1">
-                      <Ionicons name="eye-outline" size={16} color="#78716c" />
-                    </TouchableOpacity>
-                    <TouchableOpacity 
-                      className="items-center justify-center w-8 h-8"
-                      onPress={() => handleDeleteEmployee(employee.id)}
-                    >
-                      <Ionicons name="trash-outline" size={16} color="#dc2626" />
-                    </TouchableOpacity>
+                  <View>
+                    <Text className="text-base font-bold text-stone-900">{employee.name}</Text>
+                    <Text className="text-xs text-stone-500">{employee.role}</Text>
                   </View>
                 </View>
+                <View className="mb-2">
+                  <View className="flex-row items-center mb-1">
+                    <Ionicons name="location-outline" size={14} color="#78716c" />
+                    <Text className="ml-2 text-xs text-stone-600">{employee.site}</Text>
+                  </View>
+                  <View className="flex-row items-center mb-1">
+                    <Ionicons name="business-outline" size={14} color="#78716c" />
+                    <Text className="ml-2 text-xs text-stone-600">{employee.company}</Text>
+                  </View>
+                  <View className={`${employee.status === 'Active' ? 'bg-emerald-50' : 'bg-stone-100'} px-2 py-0.5 rounded-lg self-start mt-1`}>
+                    <Text className={`${employee.status === 'Active' ? 'text-emerald-700' : 'text-stone-600'} text-xs font-semibold`}>
+                      {employee.status}
+                    </Text>
+                  </View>
+                </View>
+                <View className="flex-row gap-2 mt-2">
+                  <TouchableOpacity
+                    className="flex-row items-center justify-center flex-1 py-2 bg-emerald-600 rounded-xl"
+                    onPress={() => openEditModal(employee)}
+                    accessibilityLabel="Edit"
+                  >
+                    <Ionicons name="create-outline" size={16} color="white" />
+                    <Text className="ml-1 font-semibold text-white">Edit</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    className="flex-row items-center justify-center flex-1 py-2 bg-stone-200 rounded-xl"
+                    onPress={() => handleDeleteEmployee(employee.id)}
+                    accessibilityLabel="Delete"
+                  >
+                    <Ionicons name="trash-outline" size={16} color="#dc2626" />
+                    <Text className="ml-1 font-semibold text-stone-700">Delete</Text>
+                  </TouchableOpacity>
+                </View>
               </View>
-            ))}
-          </View>
+            ))
+          )}
         </View>
       </ScrollView>
 
@@ -523,209 +420,55 @@ export default function Employees({ onNavigate }: EmployeesProps) {
         onSignOut={handleSignOut}
       />
 
-      {/* Add Employee Modal */}
+      {/* Add/Edit Employee Modal */}
       <Modal
-        visible={isAddModalOpen}
+        visible={isAddModalOpen || isEditModalOpen}
         transparent
         animationType="fade"
         onRequestClose={() => {
-          setIsAddModalOpen(false);
-          resetForm();
-        }}
-      >
-        <Pressable 
-          className="items-center justify-center flex-1 px-6 bg-black/50"
-          onPress={() => {
+          if (isAddModalOpen) {
             setIsAddModalOpen(false);
-            resetForm();
-          }}
-        >
-          <Pressable className="w-full max-w-md bg-white rounded-2xl" onPress={(e) => e.stopPropagation()}>
-            {/* Modal Header */}
-            <View className="px-6 pt-6 pb-4 border-b border-stone-100">
-              <View className="flex-row items-center justify-between">
-                <View>
-                  <Text className="text-xl font-bold text-stone-900">Add New Employee</Text>
-                  <Text className="mt-1 text-xs text-stone-500">Fill in the employee details below</Text>
-                </View>
-                <TouchableOpacity 
-                  className="items-center justify-center w-8 h-8"
-                  onPress={() => {
-                    setIsAddModalOpen(false);
-                    resetForm();
-                  }}
-                >
-                  <Ionicons name="close" size={24} color="#78716c" />
-                </TouchableOpacity>
-              </View>
-            </View>
-
-            {/* Form Content */}
-            <ScrollView className="px-6 py-5 max-h-96">
-              {/* Name */}
-              <View className="mb-4">
-                <Text className="mb-2 text-sm font-medium text-stone-700">
-                  Full Name <Text className="text-red-500">*</Text>
-                </Text>
-                <TextInput
-                  className={`bg-white border ${
-                    touched.name && errors.name ? 'border-red-500' : 'border-stone-300'
-                  } rounded-xl px-4 py-3 text-stone-900 text-sm`}
-                  placeholder="e.g., John Doe"
-                  placeholderTextColor="#a8a29e"
-                  value={name}
-                  onChangeText={(value) => handleFieldChange('name', value)}
-                  onBlur={() => handleFieldBlur('name', name)}
-                  maxLength={100}
-                />
-                {touched.name && errors.name && (
-                  <View className="flex-row items-center mt-1.5">
-                    <Ionicons name="alert-circle" size={14} color="#dc2626" />
-                    <Text className="ml-1 text-xs text-red-600">{errors.name}</Text>
-                  </View>
-                )}
-                <Text className="mt-1 text-xs text-stone-400">{name.length}/100 characters</Text>
-              </View>
-
-              {/* Role */}
-              <View className="mb-4">
-                <Text className="mb-2 text-sm font-medium text-stone-700">
-                  Role/Position <Text className="text-red-500">*</Text>
-                </Text>
-                <TextInput
-                  className={`bg-white border ${
-                    touched.role && errors.role ? 'border-red-500' : 'border-stone-300'
-                  } rounded-xl px-4 py-3 text-stone-900 text-sm`}
-                  placeholder="e.g., Security Officer"
-                  placeholderTextColor="#a8a29e"
-                  value={role}
-                  onChangeText={(value) => handleFieldChange('role', value)}
-                  onBlur={() => handleFieldBlur('role', role)}
-                  maxLength={100}
-                />
-                {touched.role && errors.role && (
-                  <View className="flex-row items-center mt-1.5">
-                    <Ionicons name="alert-circle" size={14} color="#dc2626" />
-                    <Text className="ml-1 text-xs text-red-600">{errors.role}</Text>
-                  </View>
-                )}
-                <Text className="mt-1 text-xs text-stone-400">{role.length}/100 characters</Text>
-              </View>
-
-              {/* Site */}
-              <View className="mb-4">
-                <Text className="mb-2 text-sm font-medium text-stone-700">
-                  Site Location <Text className="text-red-500">*</Text>
-                </Text>
-                <TextInput
-                  className={`bg-white border ${
-                    touched.site && errors.site ? 'border-red-500' : 'border-stone-300'
-                  } rounded-xl px-4 py-3 text-stone-900 text-sm`}
-                  placeholder="e.g., Downtown HQ"
-                  placeholderTextColor="#a8a29e"
-                  value={site}
-                  onChangeText={(value) => handleFieldChange('site', value)}
-                  onBlur={() => handleFieldBlur('site', site)}
-                  maxLength={100}
-                />
-                {touched.site && errors.site && (
-                  <View className="flex-row items-center mt-1.5">
-                    <Ionicons name="alert-circle" size={14} color="#dc2626" />
-                    <Text className="ml-1 text-xs text-red-600">{errors.site}</Text>
-                  </View>
-                )}
-                <Text className="mt-1 text-xs text-stone-400">{site.length}/100 characters</Text>
-              </View>
-
-              {/* Company */}
-              <View className="mb-1">
-                <Text className="mb-2 text-sm font-medium text-stone-700">
-                  Company <Text className="text-red-500">*</Text>
-                </Text>
-                <TextInput
-                  className={`bg-white border ${
-                    touched.company && errors.company ? 'border-red-500' : 'border-stone-300'
-                  } rounded-xl px-4 py-3 text-stone-900 text-sm`}
-                  placeholder="e.g., Acme Corp"
-                  placeholderTextColor="#a8a29e"
-                  value={company}
-                  onChangeText={(value) => handleFieldChange('company', value)}
-                  onBlur={() => handleFieldBlur('company', company)}
-                  maxLength={100}
-                />
-                {touched.company && errors.company && (
-                  <View className="flex-row items-center mt-1.5">
-                    <Ionicons name="alert-circle" size={14} color="#dc2626" />
-                    <Text className="ml-1 text-xs text-red-600">{errors.company}</Text>
-                  </View>
-                )}
-                <Text className="mt-1 text-xs text-stone-400">{company.length}/100 characters</Text>
-              </View>
-
-              <Text className="mt-3 text-xs text-stone-400">
-                <Text className="text-red-500">*</Text> Required fields
-              </Text>
-            </ScrollView>
-
-            {/* Action Buttons */}
-            <View className="px-6 pt-4 pb-6 border-t border-stone-100">
-              <View className="flex-row gap-3">
-                <TouchableOpacity 
-                  className="flex-1 py-3 bg-stone-100 rounded-xl active:opacity-70"
-                  onPress={() => {
-                    setIsAddModalOpen(false);
-                    resetForm();
-                  }}
-                >
-                  <Text className="font-semibold text-center text-stone-700">Cancel</Text>
-                </TouchableOpacity>
-                <TouchableOpacity 
-                  className="flex-1 py-3 bg-emerald-600 rounded-xl active:opacity-80"
-                  onPress={handleAddEmployee}
-                >
-                  <Text className="font-semibold text-center text-white">Add Employee</Text>
-                </TouchableOpacity>
-              </View>
-            </View>
-          </Pressable>
-        </Pressable>
-      </Modal>
-
-      {/* Edit Employee Modal */}
-      <Modal
-        visible={isEditModalOpen}
-        transparent
-        animationType="fade"
-        onRequestClose={() => {
-          setIsEditModalOpen(false);
+          } else {
+            setIsEditModalOpen(false);
+          }
           resetForm();
         }}
       >
-        <Pressable 
+        <Pressable
           className="items-center justify-center flex-1 px-6 bg-black/50"
           onPress={() => {
-            setIsEditModalOpen(false);
+            if (isAddModalOpen) {
+              setIsAddModalOpen(false);
+            } else {
+              setIsEditModalOpen(false);
+            }
             resetForm();
           }}
         >
           <Pressable className="w-full max-w-md bg-white rounded-2xl" onPress={(e) => e.stopPropagation()}>
             {/* Modal Header */}
-            <View className="px-6 pt-6 pb-4 border-b border-stone-100">
-              <View className="flex-row items-center justify-between">
-                <View>
-                  <Text className="text-xl font-bold text-stone-900">Edit Employee</Text>
-                  <Text className="mt-1 text-xs text-stone-500">Update employee information</Text>
-                </View>
-                <TouchableOpacity 
-                  className="items-center justify-center w-8 h-8"
-                  onPress={() => {
-                    setIsEditModalOpen(false);
-                    resetForm();
-                  }}
-                >
-                  <Ionicons name="close" size={24} color="#78716c" />
-                </TouchableOpacity>
+            <View className="flex-row items-center justify-between px-6 pt-6 pb-4 border-b border-stone-100">
+              <View>
+                <Text className="text-xl font-bold text-stone-900">
+                  {isAddModalOpen ? 'Add New Employee' : 'Edit Employee'}
+                </Text>
+                <Text className="mt-1 text-xs text-stone-500">
+                  {isAddModalOpen ? 'Fill in the employee details below' : 'Update employee information'}
+                </Text>
               </View>
+              <TouchableOpacity
+                className="items-center justify-center w-8 h-8"
+                onPress={() => {
+                  if (isAddModalOpen) {
+                    setIsAddModalOpen(false);
+                  } else {
+                    setIsEditModalOpen(false);
+                  }
+                  resetForm();
+                }}
+              >
+                <Ionicons name="close" size={24} color="#78716c" />
+              </TouchableOpacity>
             </View>
 
             {/* Form Content */}
@@ -736,9 +479,7 @@ export default function Employees({ onNavigate }: EmployeesProps) {
                   Full Name <Text className="text-red-500">*</Text>
                 </Text>
                 <TextInput
-                  className={`bg-white border ${
-                    touched.name && errors.name ? 'border-red-500' : 'border-stone-300'
-                  } rounded-xl px-4 py-3 text-stone-900 text-sm`}
+                  className={`bg-white border ${touched.name && errors.name ? 'border-red-500' : 'border-stone-300'} rounded-xl px-4 py-3 text-stone-900 text-sm`}
                   placeholder="e.g., John Doe"
                   placeholderTextColor="#a8a29e"
                   value={name}
@@ -761,9 +502,7 @@ export default function Employees({ onNavigate }: EmployeesProps) {
                   Role/Position <Text className="text-red-500">*</Text>
                 </Text>
                 <TextInput
-                  className={`bg-white border ${
-                    touched.role && errors.role ? 'border-red-500' : 'border-stone-300'
-                  } rounded-xl px-4 py-3 text-stone-900 text-sm`}
+                  className={`bg-white border ${touched.role && errors.role ? 'border-red-500' : 'border-stone-300'} rounded-xl px-4 py-3 text-stone-900 text-sm`}
                   placeholder="e.g., Security Officer"
                   placeholderTextColor="#a8a29e"
                   value={role}
@@ -786,9 +525,7 @@ export default function Employees({ onNavigate }: EmployeesProps) {
                   Site Location <Text className="text-red-500">*</Text>
                 </Text>
                 <TextInput
-                  className={`bg-white border ${
-                    touched.site && errors.site ? 'border-red-500' : 'border-stone-300'
-                  } rounded-xl px-4 py-3 text-stone-900 text-sm`}
+                  className={`bg-white border ${touched.site && errors.site ? 'border-red-500' : 'border-stone-300'} rounded-xl px-4 py-3 text-stone-900 text-sm`}
                   placeholder="e.g., Downtown HQ"
                   placeholderTextColor="#a8a29e"
                   value={site}
@@ -811,9 +548,7 @@ export default function Employees({ onNavigate }: EmployeesProps) {
                   Company <Text className="text-red-500">*</Text>
                 </Text>
                 <TextInput
-                  className={`bg-white border ${
-                    touched.company && errors.company ? 'border-red-500' : 'border-stone-300'
-                  } rounded-xl px-4 py-3 text-stone-900 text-sm`}
+                  className={`bg-white border ${touched.company && errors.company ? 'border-red-500' : 'border-stone-300'} rounded-xl px-4 py-3 text-stone-900 text-sm`}
                   placeholder="e.g., Acme Corp"
                   placeholderTextColor="#a8a29e"
                   value={company}
@@ -836,24 +571,30 @@ export default function Employees({ onNavigate }: EmployeesProps) {
             </ScrollView>
 
             {/* Action Buttons */}
-            <View className="px-6 pt-4 pb-6 border-t border-stone-100">
-              <View className="flex-row gap-3">
-                <TouchableOpacity 
-                  className="flex-1 py-3 bg-stone-100 rounded-xl active:opacity-70"
-                  onPress={() => {
+            <View className="flex-row gap-3 px-6 pt-4 pb-6 border-t border-stone-100">
+              <TouchableOpacity
+                className="flex-1 py-3 bg-stone-100 rounded-xl active:opacity-70"
+                onPress={() => {
+                  if (isAddModalOpen) {
+                    setIsAddModalOpen(false);
+                  } else {
                     setIsEditModalOpen(false);
-                    resetForm();
-                  }}
-                >
-                  <Text className="font-semibold text-center text-stone-700">Cancel</Text>
-                </TouchableOpacity>
-                <TouchableOpacity 
-                  className="flex-1 py-3 bg-emerald-600 rounded-xl active:opacity-80"
-                  onPress={handleEditEmployee}
-                >
-                  <Text className="font-semibold text-center text-white">Update Employee</Text>
-                </TouchableOpacity>
-              </View>
+                  }
+                  resetForm();
+                }}
+              >
+                <Text className="font-semibold text-center text-stone-700">
+                  Cancel
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                className="flex-1 py-3 bg-emerald-600 rounded-xl active:opacity-80"
+                onPress={isAddModalOpen ? handleAddEmployee : handleEditEmployee}
+              >
+                <Text className="font-semibold text-center text-white">
+                  {isAddModalOpen ? 'Add Employee' : 'Update Employee'}
+                </Text>
+              </TouchableOpacity>
             </View>
           </Pressable>
         </Pressable>

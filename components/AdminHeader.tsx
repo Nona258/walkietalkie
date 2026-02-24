@@ -97,7 +97,7 @@ export default function AdminHeader({
           {/* Desktop User Info - Hidden on mobile */}
           <View className="hidden ml-2 lg:flex">
             <Text className="text-sm font-semibold text-stone-900">Admin User</Text>
-            <Text className="text-xs text-stone-500">Super Admin</Text>
+            <Text className="text-xs text-stone-900">Super Admin</Text>
           </View>
         </View>
       </View>

@@ -2,7 +2,6 @@ import React, { useState, useEffect } from 'react';
 import { View, ScrollView, TouchableOpacity, Text } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import '../../global.css';
-
 import AdminSidebar from '../../components/AdminSidebar';
 import AdminHeader from '../../components/AdminHeader';
 import AdminSidebarMobile from '../../components/AdminSidebarMobile';
@@ -92,7 +91,7 @@ export default function AdminDashboard({ onNavigate }: AdminDashboardProps) {
   };
 
   return (
-    <View className="flex-row flex-1 bg-stone-50">
+    <View className="flex-row flex-1 bg-[#f4f5f0]">
       {/* Desktop Sidebar */}
       <AdminSidebar onNavigate={onNavigate} />
 
@@ -112,7 +111,7 @@ export default function AdminDashboard({ onNavigate }: AdminDashboardProps) {
         <View className="px-6 py-6">
           <View className="flex-row flex-wrap gap-4 lg:gap-6">
             {/* Total Employees */}
-            <View className="bg-white rounded-2xl p-4 lg:p-6 border border-stone-200 flex-1 min-w-[45%] lg:min-w-[200px] lg:max-w-[280px]">
+            <View className="bg- rounded-2xl p-4 lg:p-6 border border-stone-200 flex-1 min-w-[45%] lg:min-w-[200px] lg:max-w-[280px]">
               <View className="flex-row items-center justify-between mb-3">
                 <View className="items-center justify-center w-12 h-12 lg:w-14 lg:h-14 bg-emerald-100 rounded-xl">
                   <Ionicons name="people" size={24} color="#10b981" />
@@ -194,13 +193,13 @@ export default function AdminDashboard({ onNavigate }: AdminDashboardProps) {
                   <View className="flex-1 rounded-t-lg bg-emerald-300" style={{ height: '70%' }} />
                 </View>
                 <View className="flex-row justify-between mt-3">
-                  <Text className="text-xs text-stone-400">Mon</Text>
-                  <Text className="text-xs text-stone-400">Tue</Text>
-                  <Text className="text-xs text-stone-400">Wed</Text>
-                  <Text className="text-xs text-stone-400">Thu</Text>
-                  <Text className="text-xs text-stone-400">Fri</Text>
-                  <Text className="text-xs text-stone-400">Sat</Text>
-                  <Text className="text-xs text-stone-400">Sun</Text>
+                  <Text className="text-md text-stone-400">Mon</Text>
+                  <Text className="text-md text-stone-400">Tue</Text>
+                  <Text className="text-md text-stone-400">Wed</Text>
+                  <Text className="text-md text-stone-400">Thu</Text>
+                  <Text className="text-md text-stone-400">Fri</Text>
+                  <Text className="text-md text-stone-400">Sat</Text>
+                  <Text className="text-md text-stone-400">Sun</Text>
                 </View>
               </View>
             </View>
