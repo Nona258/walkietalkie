@@ -58,6 +58,16 @@ export default function SignIn({ onNavigateToSignUp, onSignInSuccess }: SignInPr
       }
 
       if (data?.user) {
+        // Mark user as online in the users table
+        try {
+          await supabase
+            .from('users')
+            .update({ status: 'online' })
+            .eq('id', data.user.id);
+        } catch (err) {
+          console.error('Failed to set user status to online:', err);
+        }
+
         // Check if user has accepted EULA
         const eulaAccepted = await hasAcceptedEula(data.user.id);
         
@@ -102,15 +112,28 @@ export default function SignIn({ onNavigateToSignUp, onSignInSuccess }: SignInPr
 
   const handleEulaDecline = async () => {
     try {
-      const success = await supabase.auth.signOut();
-      
-      if (success) {
+      // Attempt to mark the user offline first (if we have their id)
+      const userId = signedInUser?.id;
+      if (userId) {
+        try {
+          await supabase
+            .from('users')
+            .update({ status: 'offline' })
+            .eq('id', userId);
+        } catch (err) {
+          console.error('Failed to set user status to offline:', err);
+        }
+      }
+
+      const { error: signOutError } = await supabase.auth.signOut();
+
+      if (!signOutError) {
         setShowEulaModal(false);
         setSignedInUser(null);
         setEmail('');
         setPassword('');
       } else {
-        setError('Failed to sign out. Please try again.');
+        setError(signOutError.message || 'Failed to sign out. Please try again.');
       }
     } catch (err: any) {
       setError('An error occurred while signing out');

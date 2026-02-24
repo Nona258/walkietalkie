@@ -13,7 +13,7 @@ import Settings from './pages/employee/Settings';
 import EditProfile from './pages/employee/EditProfile';
 import Navbar from './components/Navbar';
 import supabase from './utils/supabase';
-import { hasAcceptedEula } from './utils/eula';
+import { hasAcceptedEula, signOutUser } from './utils/eula';
 
 import './global.css';
 
@@ -149,9 +149,9 @@ export default function App() {
           ) : activeTab === 'logs' ? (
             <Logs />
           ) : activeTab === 'settings' ? (
-            <Settings 
+              <Settings 
               onLogout={async () => {
-                await supabase.auth.signOut();
+                await signOutUser(user?.id);
                 setUser(null);
                 setCurrentPage('signin');
               }}
@@ -165,7 +165,7 @@ export default function App() {
           ) : (
             <Dashboard 
               onLogout={async () => {
-                await supabase.auth.signOut();
+                await signOutUser(user?.id);
                 setUser(null);
                 setCurrentPage('signin');
               }}

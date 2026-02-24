@@ -12,7 +12,7 @@ import {
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import supabase from "../utils/supabase";
-import { acceptEula } from "../utils/eula";
+import { acceptEula, signOutUser } from "../utils/eula";
 import SweetAlertModal from "../components/SweetAlertModal";
 import EulaModal from "../components/EulaModal";
 import "../global.css";
@@ -168,9 +168,9 @@ export default function SignUp({ onNavigateToSignIn, onSignUpSuccess }: SignUpPr
 
   const handleEulaDecline = async () => {
     try {
-      // Sign out the user since they declined EULA
-      await supabase.auth.signOut();
-      
+      // Sign out the user since they declined EULA, and mark offline
+      await signOutUser(signedUpUser?.id);
+
       setShowEulaModal(false);
       setSignedUpUser(null);
       
