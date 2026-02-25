@@ -12,6 +12,11 @@ import { Ionicons } from '@expo/vector-icons';
 import supabase from '../../utils/supabase';
 import AdminNavbar from '../../components/AdminNavbar';
 import SiteManagement from './SiteManagement';
+import ContactManagement from './ContactManagement';
+import ActivityLogs from './ActivityLogs';
+import CompanyList from './CompanyList';
+import Employees from './Employees';
+import Settings from './Settings';
 import '../../global.css';
 
 interface AdminDashboardProps {
@@ -175,6 +180,81 @@ export default function AdminDashboard({ onLogout, onNavigate }: AdminDashboardP
           onLogout={onLogout}
         />
         <SiteManagement onNavigate={setActiveTab} />
+      </View>
+    );
+  }
+
+  // Render ContactManagement if selected
+  if (activeTab === 'walkieTalkie') {
+    return (
+      <View className="flex-1 flex-row bg-stone-50">
+        <AdminNavbar 
+          activeTab={activeTab}
+          setActiveTab={setActiveTab}
+          onNavigate={onNavigate}
+          onLogout={onLogout}
+        />
+        <ContactManagement onNavigate={setActiveTab} />
+      </View>
+    );
+  }
+
+  // Render ActivityLogs if selected
+  if (activeTab === 'activityLogs') {
+    return (
+      <View className="flex-1 flex-row bg-stone-50">
+        <AdminNavbar 
+          activeTab={activeTab}
+          setActiveTab={setActiveTab}
+          onNavigate={onNavigate}
+          onLogout={onLogout}
+        />
+        <ActivityLogs onNavigate={setActiveTab} />
+      </View>
+    );
+  }
+
+  // Render CompanyList if selected
+  if (activeTab === 'companyList') {
+    return (
+      <View className="flex-1 flex-row bg-stone-50">
+        <AdminNavbar 
+          activeTab={activeTab}
+          setActiveTab={setActiveTab}
+          onNavigate={onNavigate}
+          onLogout={onLogout}
+        />
+        <CompanyList onNavigate={setActiveTab} />
+      </View>
+    );
+  }
+
+  // Render Employees if selected
+  if (activeTab === 'employee') {
+    return (
+      <View className="flex-1 flex-row bg-stone-50">
+        <AdminNavbar 
+          activeTab={activeTab}
+          setActiveTab={setActiveTab}
+          onNavigate={onNavigate}
+          onLogout={onLogout}
+        />
+        <Employees onNavigate={setActiveTab} />
+      </View>
+    );
+  }
+
+  // Render Settings if selected
+  if (activeTab === 'settings') {
+    return (
+      <View className="flex-1 flex-row bg-stone-50">
+        <AdminNavbar 
+          activeTab={activeTab}
+          setActiveTab={setActiveTab}
+          onNavigate={onNavigate}
+          onLogout={onLogout}
+        />
+        <Settings onNavigate={setActiveTab} />
       </View>
     );
   }
