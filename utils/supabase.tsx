@@ -32,6 +32,17 @@ export async function searchUsers(query: string) {
 	return data;
 }
 
+// Get all employees
+export async function getEmployees() {
+	const { data, error } = await supabase
+		.from('users')
+		.select('*')
+		.eq('role', 'employee')
+		.order('created_at', { ascending: false });
+	if (error) throw error;
+	return data;
+}
+
 // Add a contact row for the given user id.
 // Note: `contacts` schema in your DB only has `user_id`; this inserts that user.
 export async function addContact(contactUserId: string) {
