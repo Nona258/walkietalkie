@@ -56,3 +56,50 @@ export async function addContact(contactUserId: string) {
 	return data;
 }
 
+// Get current authenticated user
+export async function getCurrentUser() {
+	const { data: { user }, error } = await supabase.auth.getUser();
+	if (error) throw error;
+	return user;
+}
+
+// Get all contacts for current user with user details
+export async function getUserContacts() {
+	const user = await getCurrentUser();
+	if (!user) return [];
+	
+	// Query contacts table where the admin user has saved contacts
+	const { data, error } = await supabase
+		.from('contacts')
+		.select('user_id, users(id, full_name, email)')
+		.order('created_at', { ascending: false });
+	
+	if (error) throw error;
+	
+	// Flatten the structure and map to Contact format
+	return (data || []).map((contact: any) => {
+		const fullName = contact.users?.full_name || 'Unknown';
+		const initials = fullName.split(' ').map((n: string) => n[0]).join('').toUpperCase().slice(0, 2);
+		
+		return {
+			id: contact.user_id,
+			name: fullName,
+			location: contact.users?.email || 'N/A',
+			members: null,
+			initials: initials || 'UU',
+			color: '#99f6e4',
+			online: true,
+		};
+	});
+}
+
+// Remove a contact by user_id
+export async function removeContact(contactUserId: string) {
+	if (!contactUserId) throw new Error('contactUserId required');
+	const { error } = await supabase
+		.from('contacts')
+		.delete()
+		.eq('user_id', contactUserId);
+	if (error) throw error;
+}
+
