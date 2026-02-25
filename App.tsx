@@ -5,6 +5,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import SignIn from './pages/SignIn';
 import SignUp from './pages/SignUp';
 import Dashboard from './pages/employee/Dashboard';
+import AdminDashboard from './pages/admin/Dashboard';
 import Contacts from './pages/employee/Contacts';
 import Sites from './pages/employee/Sites';
 import Map from './pages/employee/Map';
@@ -22,6 +23,7 @@ export default function App() {
   const [activeTab, setActiveTab] = useState<string>('dashboard');
   const [selectedContact, setSelectedContact] = useState<any>(null);
   const [user, setUser] = useState<any>(null);
+  const [userRole, setUserRole] = useState<string>('employee');
   const [loading, setLoading] = useState(true);
   const [isInSignupFlow, setIsInSignupFlow] = useState(false);
 
@@ -36,16 +38,21 @@ export default function App() {
             const eulaAccepted = await hasAcceptedEula(data.session.user.id);
             
             if (eulaAccepted) {
-              // User has accepted EULA, proceed to dashboard
+              // Fetch user role
+              const userRole = data.session.user.user_metadata?.role || 'employee';
+              
               setUser(data.session.user);
+              setUserRole(userRole);
               setCurrentPage('dashboard');
               
-              // Restore the previous active tab
-              const savedTab = await AsyncStorage.getItem('activeTab');
-              if (savedTab && savedTab !== 'settings') {
-                setActiveTab(savedTab);
-              } else {
-                setActiveTab('dashboard');
+              // Restore the previous active tab (only for non-admin users)
+              if (userRole !== 'admin') {
+                const savedTab = await AsyncStorage.getItem('activeTab');
+                if (savedTab && savedTab !== 'settings') {
+                  setActiveTab(savedTab);
+                } else {
+                  setActiveTab('dashboard');
+                }
               }
             } else {
               // User hasn't accepted EULA yet, stay on signin to show modal
@@ -123,6 +130,8 @@ export default function App() {
           }}
           onSignInSuccess={(signedInUser) => {
             setUser(signedInUser);
+            const role = signedInUser.user_metadata?.role || 'employee';
+            setUserRole(role);
             setCurrentPage('dashboard');
           }}
         />
@@ -134,13 +143,24 @@ export default function App() {
           }}
           onSignUpSuccess={(signedUpUser) => {
             setUser(signedUpUser);
+            const role = signedUpUser.user_metadata?.role || 'employee';
+            setUserRole(role);
             setIsInSignupFlow(false);
             setCurrentPage('dashboard');
           }}
         />
       ) : (
         <View style={{ flex: 1 }}>
-          {activeTab === 'contacts' ? (
+          {userRole === 'admin' ? (
+            <AdminDashboard 
+              onLogout={async () => {
+                await signOutUser(user?.id);
+                setUser(null);
+                setUserRole('employee');
+                setCurrentPage('signin');
+              }}
+            />
+          ) : activeTab === 'contacts' ? (
             <Contacts onContactSelected={setSelectedContact} />
           ) : activeTab === 'sites' ? (
             <Sites onMapPress={() => setActiveTab('map')} />
@@ -153,6 +173,7 @@ export default function App() {
               onLogout={async () => {
                 await signOutUser(user?.id);
                 setUser(null);
+                setUserRole('employee');
                 setCurrentPage('signin');
               }}
               onBackToDashboard={() => setActiveTab('dashboard')}
@@ -167,12 +188,13 @@ export default function App() {
               onLogout={async () => {
                 await signOutUser(user?.id);
                 setUser(null);
+                setUserRole('employee');
                 setCurrentPage('signin');
               }}
               onNavigateToSettings={() => setActiveTab('settings')}
             />
           )}
-          {!selectedContact && activeTab !== 'settings' && activeTab !== 'edit-profile' && activeTab !== 'map' && <Navbar activeTab={activeTab} onTabChange={setActiveTab} />}
+          {userRole !== 'admin' && !selectedContact && activeTab !== 'settings' && activeTab !== 'edit-profile' && activeTab !== 'map' && <Navbar activeTab={activeTab} onTabChange={setActiveTab} />}
         </View>
       )}
       <StatusBar style="dark" />

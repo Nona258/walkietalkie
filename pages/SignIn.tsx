@@ -58,26 +58,50 @@ export default function SignIn({ onNavigateToSignUp, onSignInSuccess }: SignInPr
       }
 
       if (data?.user) {
-        // Mark user as online in the users table
+        // Mark user as online and fetch their role
         try {
-          await supabase
+          const { data: userData } = await supabase
             .from('users')
             .update({ status: 'online' })
-            .eq('id', data.user.id);
+            .eq('id', data.user.id)
+            .select('role')
+            .single();
+          
+          const userRole = userData?.role || 'employee';
+          
+          // Update auth user metadata with role to persist it
+          await supabase.auth.updateUser({
+            data: {
+              full_name: data.user.user_metadata?.full_name,
+              role: userRole,
+            },
+          });
+          
+          // Refresh session to get updated user metadata
+          const { data: updatedSession } = await supabase.auth.getSession();
+          const userWithRole = updatedSession?.session?.user || data.user;
+          
+          // Check if user has accepted EULA
+          const eulaAccepted = await hasAcceptedEula(data.user.id);
+          
+          if (eulaAccepted) {
+            // User has accepted EULA, proceed to dashboard
+            onSignInSuccess(userWithRole);
+          } else {
+            // User hasn't accepted EULA, show modal
+            setSignedInUser(userWithRole);
+            setShowEulaModal(true);
+          }
         } catch (err) {
-          console.error('Failed to set user status to online:', err);
-        }
-
-        // Check if user has accepted EULA
-        const eulaAccepted = await hasAcceptedEula(data.user.id);
-        
-        if (eulaAccepted) {
-          // User has accepted EULA, proceed to dashboard
-          onSignInSuccess(data.user);
-        } else {
-          // User hasn't accepted EULA, show modal
-          setSignedInUser(data.user);
-          setShowEulaModal(true);
+          console.error('Failed to set user status to online or fetch role:', err);
+          // Continue anyway with the original user
+          const eulaAccepted = await hasAcceptedEula(data.user.id);
+          if (eulaAccepted) {
+            onSignInSuccess(data.user);
+          } else {
+            setSignedInUser(data.user);
+            setShowEulaModal(true);
+          }
         }
       }
     } catch (err: any) {
