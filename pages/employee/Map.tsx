@@ -30,9 +30,10 @@ export default function Map({ onBack }: { onBack?: () => void }) {
   const iframeRef = React.useRef<any>(null);
   const searchTimeoutRef = React.useRef<any>(null);
 
-  // Fetch sites from Supabase
+  // Fetch and subscribe to real-time updates for sites
   useEffect(() => {
-    const fetchSites = async () => {
+    const fetchAndSubscribeSites = async () => {
+      // Initial fetch
       const { data, error } = await supabase
         .from('sites')
         .select('id, name, latitude, longitude, company_id, branch_id, status')
@@ -40,30 +41,55 @@ export default function Map({ onBack }: { onBack?: () => void }) {
       
       if (!error && data) {
         setSitesData(data || []);
-        // Send sites to iframe after it's loaded
-        if (iframeRef.current) {
-          setTimeout(() => {
-            if (iframeRef.current) {
-              iframeRef.current.contentWindow.postMessage(
-                { type: 'loadSites', sites: data || [] },
-                '*'
-              );
-            }
-          }, 500);
-        }
       }
+      
+      // Subscribe to real-time changes
+      const subscription = supabase
+        .channel('sites-channel')
+        .on(
+          'postgres_changes',
+          {
+            event: '*', // Listen to all events (INSERT, UPDATE, DELETE)
+            schema: 'public',
+            table: 'sites',
+            filter: 'status=eq.Active' // Only listen to Active sites
+          },
+          async (payload) => {
+            // Fetch fresh data whenever there's a change
+            const { data: updatedData, error: fetchError } = await supabase
+              .from('sites')
+              .select('id, name, latitude, longitude, company_id, branch_id, status')
+              .eq('status', 'Active');
+            
+            if (!fetchError && updatedData) {
+              setSitesData(updatedData);
+            }
+          }
+        )
+        .subscribe();
+      
+      // Cleanup subscription on unmount
+      return () => {
+        subscription.unsubscribe();
+      };
     };
     
-    fetchSites();
+    fetchAndSubscribeSites();
   }, []);
 
-  // Send sites to iframe when sites data changes
+  // Send sites to iframe when sites data changes (real-time updates)
   useEffect(() => {
-    if (sitesData.length > 0 && iframeRef.current) {
-      iframeRef.current.contentWindow.postMessage(
-        { type: 'loadSites', sites: sitesData },
-        '*'
-      );
+    if (sitesData.length >= 0 && iframeRef.current) {
+      const timer = setTimeout(() => {
+        if (iframeRef.current && iframeRef.current.contentWindow) {
+          iframeRef.current.contentWindow.postMessage(
+            { type: 'loadSites', sites: sitesData },
+            '*'
+          );
+        }
+      }, 100);
+      
+      return () => clearTimeout(timer);
     }
   }, [sitesData]);
 
@@ -153,11 +179,55 @@ export default function Map({ onBack }: { onBack?: () => void }) {
           .gm-iv-address { display: none !important; }
           .gm-iv-container { display: none !important; }
           button[aria-label*="Back"] { display: none !important; }
+          @keyframes gpsFlashlight {
+            0%, 100% {
+              filter: drop-shadow(0 0 8px rgba(59, 130, 246, 0.6)) drop-shadow(0 0 16px rgba(59, 130, 246, 0.3));
+            }
+            50% {
+              filter: drop-shadow(0 0 12px rgba(59, 130, 246, 0.8)) drop-shadow(0 0 24px rgba(59, 130, 246, 0.5));
+            }
+          }
+          @keyframes gpsBlueZoom {
+            0%, 100% {
+              transform: scale(1);
+            }
+            50% {
+              transform: scale(1.4);
+            }
+          }
+          .gps-marker {
+            animation: gpsFlashlight 2s ease-in-out infinite;
+          }
+          .gps-blue-zoom {
+            animation: gpsBlueZoom 1.5s ease-in-out infinite;
+          }
         </style>
       </head>
       <body>
         <div id='map'></div>
-        <script src='https://maps.googleapis.com/maps/api/js?key=AIzaSyAq58TD9PputxnK8ZO9jRUX8KW7bTuPTPQ&libraries=places,routes'></script>
+        <script>
+          // Suppress console warnings for deprecated APIs
+          const originalWarn = console.warn;
+          console.warn = function(...args) {
+            if (args[0]?.includes('deprecated') || args[0]?.includes('Deprecation warning')) {
+              return;
+            }
+            originalWarn.apply(console, args);
+          };
+          
+          // Flag to track when Google Maps is loaded
+          window.googleMapsReady = false;
+          
+          // Callback function when Maps API is loaded
+          window.initGoogleMaps = function() {
+            window.googleMapsReady = true;
+            // Trigger initialization
+            if (window.startMapInitialization) {
+              window.startMapInitialization();
+            }
+          };
+        </script>
+        <script async src='https://maps.googleapis.com/maps/api/js?key=AIzaSyAq58TD9PputxnK8ZO9jRUX8KW7bTuPTPQ&libraries=places,routes&callback=initGoogleMaps'></script>
         <script>
           let isStreetViewActive = false;
           let userMarker = null;
@@ -169,49 +239,87 @@ export default function Map({ onBack }: { onBack?: () => void }) {
           let hasUserMovedMap = false; // Track if user has manually moved the map
           let isInitialLoad = true; // Track if this is the first location update
           let userHeading = 0; // Track user's heading/direction
+          let animationId = null; // For animation frame
+          let startTime = Date.now(); // Track animation start time
+          let map = null; // Will be initialized when Google Maps is loaded
           
-          // Function to create a custom marker using Canvas with directional indicator
-          function createDirectionalMarker(heading) {
+          // Function to create a custom marker using Canvas with flashlight effect
+          function createDirectionalMarker(heading, blueScale = 1) {
             const canvas = document.createElement('canvas');
-            canvas.width = 40;
-            canvas.height = 40;
+            canvas.width = 120;
+            canvas.height = 150;
             const ctx = canvas.getContext('2d');
             
-            // Draw outer glow circle
-            const gradient = ctx.createRadialGradient(20, 20, 0, 20, 20, 18);
-            gradient.addColorStop(0, 'rgba(59, 130, 246, 0.8)');
-            gradient.addColorStop(1, 'rgba(59, 130, 246, 0.2)');
-            ctx.fillStyle = gradient;
-            ctx.beginPath();
-            ctx.arc(20, 20, 18, 0, Math.PI * 2);
-            ctx.fill();
+            // Clear canvas
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
             
-            // Draw inner dot
-            ctx.fillStyle = '#3b82f6';
-            ctx.strokeStyle = '#ffffff';
-            ctx.lineWidth = 2;
-            ctx.beginPath();
-            ctx.arc(20, 20, 8, 0, Math.PI * 2);
-            ctx.fill();
-            ctx.stroke();
+            const centerX = 60;
+            const centerY = 67.5;
             
-            // Draw directional indicator (triangle)
+            // Save context for rotation
             ctx.save();
-            ctx.translate(20, 20);
-            ctx.rotate((heading * Math.PI) / 180);
-            ctx.fillStyle = 'rgba(59, 130, 246, 0.9)';
+            ctx.translate(centerX, centerY);
+            // Convert compass heading to canvas rotation (subtract 90° to align north to up)
+            const canvasRotation = heading - 90;
+            ctx.rotate((canvasRotation * Math.PI) / 180);
+            
+            // Draw flashlight cone beam (outer light)
+            const coneGradient = ctx.createLinearGradient(0, -45, 0, 0);
+            coneGradient.addColorStop(0, 'rgba(59, 130, 246, 0)');
+            coneGradient.addColorStop(0.7, 'rgba(59, 130, 246, 0.15)');
+            coneGradient.addColorStop(1, 'rgba(59, 130, 246, 0.4)');
+            ctx.fillStyle = coneGradient;
             ctx.beginPath();
-            ctx.moveTo(0, -12);
-            ctx.lineTo(-4, -2);
-            ctx.lineTo(4, -2);
+            ctx.moveTo(0, 0);
+            ctx.lineTo(-30, -52.5);
+            ctx.lineTo(30, -52.5);
             ctx.closePath();
             ctx.fill();
+            
+            // Draw flashlight cone beam (inner brighter)
+            const innerGradient = ctx.createLinearGradient(0, -37.5, 0, 0);
+            innerGradient.addColorStop(0, 'rgba(96, 165, 250, 0.3)');
+            innerGradient.addColorStop(1, 'rgba(59, 130, 246, 0.5)');
+            ctx.fillStyle = innerGradient;
+            ctx.beginPath();
+            ctx.moveTo(0, 0);
+            ctx.lineTo(-21, -42);
+            ctx.lineTo(21, -42);
+            ctx.closePath();
+            ctx.fill();
+            
             ctx.restore();
+            
+            // Draw outer glow circle
+            const glowGradient = ctx.createRadialGradient(centerX, centerY, 2, centerX, centerY, 27);
+            glowGradient.addColorStop(0, 'rgba(59, 130, 246, 1)');
+            glowGradient.addColorStop(0.5, 'rgba(59, 130, 246, 0.6)');
+            glowGradient.addColorStop(1, 'rgba(59, 130, 246, 0.1)');
+            ctx.fillStyle = glowGradient;
+            ctx.beginPath();
+            ctx.arc(centerX, centerY, 27, 0, Math.PI * 2);
+            ctx.fill();
+            
+            // Draw white center dot (big) - fixed size
+            ctx.fillStyle = '#ffffff';
+            ctx.beginPath();
+            ctx.arc(centerX, centerY, 11, 0, Math.PI * 2);
+            ctx.fill();
+            
+            // Draw blue center core with animation scale
+            ctx.fillStyle = '#3b82f6';
+            ctx.beginPath();
+            ctx.arc(centerX, centerY, 6 * blueScale, 0, Math.PI * 2);
+            ctx.fill();
             
             return canvas.toDataURL('image/png');
           }
           
-          const map = new google.maps.Map(document.getElementById('map'), {
+          // Initialize map when Google Maps API is ready
+          window.startMapInitialization = function() {
+            if (!window.googleMapsReady || map !== null) return;
+            
+            map = new google.maps.Map(document.getElementById('map'), {
             center: { lat: 8.2256, lng: 124.2319 },
             zoom: 12,
             mapTypeId: 'roadmap',
@@ -229,8 +337,8 @@ export default function Map({ onBack }: { onBack?: () => void }) {
           // Initialize geocoder
           geocoder = new google.maps.Geocoder();
           
-          // Get user's geolocation
-          if (navigator.geolocation) {
+            // Get user's geolocation
+            if (navigator.geolocation) {
             navigator.geolocation.watchPosition(
               function(position) {
                 const userLat = position.coords.latitude;
@@ -258,17 +366,49 @@ export default function Map({ onBack }: { onBack?: () => void }) {
                   userMarker.setMap(null);
                 }
                 
-                // Create new marker for user's location with directional indicator
+                // Create new marker for user's location with flashlight effect
                 userMarker = new google.maps.Marker({
                   position: userLocation,
                   map: map,
                   title: 'Your Location',
                   icon: {
                     url: createDirectionalMarker(userHeading),
-                    scaledSize: new google.maps.Size(40, 40),
-                    anchor: new google.maps.Point(20, 20)
+                    scaledSize: new google.maps.Size(120, 150),
+                    anchor: new google.maps.Point(60, 67.5)
                   }
                 });
+                
+                // Start animation for blue zoom effect
+                if (animationId) {
+                  cancelAnimationFrame(animationId);
+                }
+                startTime = Date.now();
+                const animateMarker = () => {
+                  if (!userMarker || !userLocation) return;
+                  
+                  const elapsed = Date.now() - startTime;
+                  const cycle = (elapsed % 1500) / 1500; // 1500ms cycle
+                  let blueScale;
+                  
+                  if (cycle < 0.5) {
+                    // Scale up from 1 to 1.4
+                    blueScale = 1 + (cycle * 2) * 0.4;
+                  } else {
+                    // Scale down from 1.4 to 1
+                    blueScale = 1.4 - ((cycle - 0.5) * 2) * 0.4;
+                  }
+                  
+                  // Update marker icon with animation
+                  userMarker.setIcon({
+                    url: createDirectionalMarker(userHeading, blueScale),
+                    scaledSize: new google.maps.Size(120, 150),
+                    anchor: new google.maps.Point(60, 67.5)
+                  });
+                  
+                  animationId = requestAnimationFrame(animateMarker);
+                };
+                
+                animateMarker();
                 
                 // Center map on user location only on initial load
                 if (isInitialLoad) {
@@ -287,11 +427,30 @@ export default function Map({ onBack }: { onBack?: () => void }) {
               }
             );
           }
+        };
           
-          // Listen for search messages from React
+          // Fallback: Attempt to initialize immediately if API already loaded
+          if (typeof google !== 'undefined' && google.maps) {
+            window.googleMapsReady = true;
+            setTimeout(() => window.startMapInitialization(), 100);
+          }
+          
+          // Listen for search messages from React (setup before Map loads)
           window.addEventListener('message', function(event) {
+            // Wait for map to be initialized if not ready
+            if (!map) {
+              if (event.data.type === 'search' || event.data.type === 'navigate' || event.data.type === 'loadSites') {
+                setTimeout(() => {
+                  // Resend the message after a delay
+                  window.postMessage(event.data, '*');
+                }, 500);
+              }
+              return;
+            }
+            
             if (event.data.type === 'search') {
               const query = event.data.query;
+              if (!geocoder) return;
               geocoder.geocode({ address: query, componentRestrictions: { country: 'PH' }, region: 'PH' }, function(results, status) {
                 if (status === 'OK' && results.length > 0) {
                   // Filter results to only include those in the Philippines and sort by relevance
@@ -404,98 +563,28 @@ export default function Map({ onBack }: { onBack?: () => void }) {
                 map.setZoom(16);
               }
             } else if (event.data.type === 'loadSites') {
-              // Clear existing site markers
-              siteMarkers.forEach(marker => marker.setMap(null));
+              // Clear existing site markers and polylines
+              siteMarkers.forEach(marker => {
+                if (marker.polyline) {
+                  marker.polyline.setMap(null);
+                }
+                marker.setMap(null);
+              });
               siteMarkers = [];
               
               const directionsService = new google.maps.DirectionsService();
-              
-              // Add markers for each site
               const sites = event.data.sites;
+              
+              // Create all markers first, then request routes
               sites.forEach(site => {
                 if (site.latitude && site.longitude) {
-                  let distanceText = '';
-                  let durationText = '';
-                  
-                  // Calculate road distance if user location is available
-                  if (userLocation) {
-                    directionsService.route({
-                      origin: userLocation,
-                      destination: { lat: site.latitude, lng: site.longitude },
-                      travelMode: google.maps.TravelMode.DRIVING
-                    }, function(response, status) {
-                      if (status === google.maps.DirectionsStatus.OK) {
-                        const route = response.routes[0];
-                        const leg = route.legs[0];
-                        const distanceInMeters = leg.distance.value;
-                        const distanceInKm = distanceInMeters / 1000;
-                        const durationInSeconds = leg.duration.value;
-                        
-                        // Format distance
-                        if (distanceInKm < 1) {
-                          distanceText = Math.round(distanceInMeters) + 'm';
-                        } else {
-                          distanceText = distanceInKm.toFixed(1) + 'km';
-                        }
-                        
-                        // Format duration
-                        const hours = Math.floor(durationInSeconds / 3600);
-                        const minutes = Math.floor((durationInSeconds % 3600) / 60);
-                        if (hours > 0) {
-                          durationText = hours + 'h ' + minutes + 'min';
-                        } else {
-                          durationText = minutes + 'min';
-                        }
-                        
-                        // Update marker title with distance and duration
-                        siteMarker.setTitle(site.name + ' - ' + durationText + ' - ' + distanceText);
-                        
-                        // Update info window with styled card
-                        infoContent = '<div style="font-family: sans-serif; padding: 12px; width: 220px;">' +
-                          '<strong style="font-size: 16px; display: block; margin-bottom: 8px;">' + site.name + '</strong>' +
-                          '<div style="display: flex; gap: 16px; align-items: center;">' +
-                          '  <div style="flex: 1;">' +
-                          '    <div style="font-size: 18px; font-weight: 700; color: #1f2937;">' + durationText + '</div>' +
-                          '    <div style="font-size: 12px; color: #6b7280; margin-top: 2px;">travel time</div>' +
-                          '  </div>' +
-                          '  <div style="flex: 1;">' +
-                          '    <div style="font-size: 18px; font-weight: 700; color: #1f2937;">' + distanceText + '</div>' +
-                          '    <div style="font-size: 12px; color: #6b7280; margin-top: 2px;">distance</div>' +
-                          '  </div>' +
-                          '</div>' +
-                          '</div>';
-                        infoWindow.setContent(infoContent);
-                        
-                        // Draw route polyline for this site
-                        const pathPoints = route.overview_path;
-                        // Ensure polyline connects from user location to site location
-                        const fullPath = [
-                          userLocation,
-                          ...pathPoints,
-                          { lat: site.latitude, lng: site.longitude }
-                        ];
-                        const sitePolyline = new google.maps.Polyline({
-                          path: fullPath,
-                          geodesic: true,
-                          strokeColor: '#ef4444',
-                          strokeOpacity: 0.7,
-                          strokeWeight: 3,
-                          map: map
-                        });
-                        
-                        // Store polyline reference on marker
-                        siteMarker.polyline = sitePolyline;
-                      }
-                    });
-                  }
-                  
                   const siteMarker = new google.maps.Marker({
                     position: { lat: site.latitude, lng: site.longitude },
                     map: map,
                     title: site.name
                   });
                   
-                  // Add info window for each site with distance and duration
+                  // Add info window for each site
                   let infoContent = '<div style="font-family: sans-serif; padding: 12px; width: 220px;">' +
                     '<strong style="font-size: 16px; display: block; margin-bottom: 8px;">' + site.name + '</strong>' +
                     '<div style="text-align: center; color: #999; font-size: 12px;">Calculating route...</div>' +
@@ -507,12 +596,86 @@ export default function Map({ onBack }: { onBack?: () => void }) {
                   });
                   
                   siteMarker.addListener('click', function() {
-                    // Close all other info windows
                     map.infoWindows?.forEach(iw => iw.close());
                     infoWindow.open(map, siteMarker);
                   });
                   
                   siteMarkers.push(siteMarker);
+                  
+                  // Calculate route for this specific marker
+                  if (userLocation) {
+                    directionsService.route({
+                      origin: userLocation,
+                      destination: { lat: site.latitude, lng: site.longitude },
+                      travelMode: google.maps.TravelMode.DRIVING
+                    }, ((marker, infoWin, currentSite) => {
+                      return (response, status) => {
+                        if (status === google.maps.DirectionsStatus.OK) {
+                          const route = response.routes[0];
+                          const leg = route.legs[0];
+                          const distanceInMeters = leg.distance.value;
+                          const distanceInKm = distanceInMeters / 1000;
+                          const durationInSeconds = leg.duration.value;
+                          
+                          // Format distance
+                          let distanceText = '';
+                          if (distanceInKm < 1) {
+                            distanceText = Math.round(distanceInMeters) + 'm';
+                          } else {
+                            distanceText = distanceInKm.toFixed(1) + 'km';
+                          }
+                          
+                          // Format duration
+                          const hours = Math.floor(durationInSeconds / 3600);
+                          const minutes = Math.floor((durationInSeconds % 3600) / 60);
+                          let durationText = '';
+                          if (hours > 0) {
+                            durationText = hours + 'h ' + minutes + 'min';
+                          } else {
+                            durationText = minutes + 'min';
+                          }
+                          
+                          // Update marker title
+                          marker.setTitle(currentSite.name + ' - ' + durationText + ' - ' + distanceText);
+                          
+                          // Update info window content
+                          const updatedContent = '<div style="font-family: sans-serif; padding: 12px; width: 220px;">' +
+                            '<strong style="font-size: 16px; display: block; margin-bottom: 8px;">' + currentSite.name + '</strong>' +
+                            '<div style="display: flex; gap: 16px; align-items: center;">' +
+                            '  <div style="flex: 1;">' +
+                            '    <div style="font-size: 18px; font-weight: 700; color: #1f2937;">' + durationText + '</div>' +
+                            '    <div style="font-size: 12px; color: #6b7280; margin-top: 2px;">travel time</div>' +
+                            '  </div>' +
+                            '  <div style="flex: 1;">' +
+                            '    <div style="font-size: 18px; font-weight: 700; color: #1f2937;">' + distanceText + '</div>' +
+                            '    <div style="font-size: 12px; color: #6b7280; margin-top: 2px;">distance</div>' +
+                            '  </div>' +
+                            '</div>' +
+                            '</div>';
+                          infoWin.setContent(updatedContent);
+                          
+                          // Draw route polyline
+                          const pathPoints = route.overview_path;
+                          const fullPath = [
+                            userLocation,
+                            ...pathPoints,
+                            { lat: currentSite.latitude, lng: currentSite.longitude }
+                          ];
+                          const sitePolyline = new google.maps.Polyline({
+                            path: fullPath,
+                            geodesic: true,
+                            strokeColor: '#ef4444',
+                            strokeOpacity: 0.7,
+                            strokeWeight: 3,
+                            map: map
+                          });
+                          
+                          // Store polyline reference on marker
+                          marker.polyline = sitePolyline;
+                        }
+                      };
+                    })(siteMarker, infoWindow, site));
+                  }
                 }
               });
             } else if (event.data.type === 'exitStreetView') {
@@ -522,25 +685,27 @@ export default function Map({ onBack }: { onBack?: () => void }) {
                 map.setCenter(userLocation);
                 map.setZoom(16);
               }
+              
+              // Setup street view (moved inside initialization)
+              const streetViewPanorama = map.getStreetView();
+              streetViewPanorama.setOptions({
+                zoomControl: false,
+                panControl: false,
+                fullscreenControl: false,
+                addressControl: false,
+                showRoadLabels: false
+              });
+              
+              streetViewPanorama.addListener('visible_changed', function() {
+                isStreetViewActive = streetViewPanorama.getVisible();
+                document.documentElement.setAttribute('data-street-view', isStreetViewActive);
+              });
+              
+              document.documentElement.setAttribute('data-street-view', streetViewPanorama.getVisible());
             }
           });
           
-          const streetViewPanorama = map.getStreetView();
-          streetViewPanorama.setOptions({
-            zoomControl: false,
-            panControl: false,
-            fullscreenControl: false,
-            addressControl: false,
-            showRoadLabels: false
-          });
-          
-          streetViewPanorama.addListener('visible_changed', function() {
-            isStreetViewActive = streetViewPanorama.getVisible();
-            document.documentElement.setAttribute('data-street-view', isStreetViewActive);
-          });
-          
-          // Initial check
-          document.documentElement.setAttribute('data-street-view', streetViewPanorama.getVisible());
+          // Removed street view code from here - it's now inside initialization function
         </script>
       </body>
     </html>
@@ -563,6 +728,17 @@ export default function Map({ onBack }: { onBack?: () => void }) {
     }
   };
 
+  // Trigger map initialization if Google Maps is already loaded
+  React.useEffect(() => {
+    const timer = setTimeout(() => {
+      if (iframeRef.current && typeof iframeRef.current.contentWindow?.initGoogleMaps === 'function') {
+        iframeRef.current.contentWindow.initGoogleMaps();
+      }
+    }, 1000);
+    
+    return () => clearTimeout(timer);
+  }, []);
+
   return (
     <View className="flex-1 bg-white">
       <StatusBar barStyle="light-content" />
@@ -578,11 +754,11 @@ export default function Map({ onBack }: { onBack?: () => void }) {
               border: 'none',
               display: 'block',
             },
-            sandbox: 'allow-same-origin allow-scripts allow-popups allow-presentation',
+            sandbox: 'allow-same-origin allow-scripts allow-popups allow-forms',
             onLoad: handleIframeLoad,
           } as any)}
           {!isStreetViewActive && (
-            <View className="absolute top-0 left-0 right-0 px-4 py-4 pt-4 z-50">
+            <View className="absolute top-0 left-0 right-0 px-4 py-4 pt-4 mt-4 z-50">
               <View className="flex-1 flex-row items-center rounded-2xl bg-white bg-opacity-95 px-4 py-3 border border-gray-300 shadow-lg">
                 <TouchableOpacity onPress={onBack}>
                   <Ionicons name="arrow-back" size={20} color="#10b981" />
