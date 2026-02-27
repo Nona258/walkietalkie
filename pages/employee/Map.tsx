@@ -361,54 +361,54 @@ export default function Map({ onBack }: { onBack?: () => void }) {
                   }
                 });
                 
-                // Remove old marker if exists
-                if (userMarker) {
-                  userMarker.setMap(null);
-                }
-                
-                // Create new marker for user's location with flashlight effect
-                userMarker = new google.maps.Marker({
-                  position: userLocation,
-                  map: map,
-                  title: 'Your Location',
-                  icon: {
-                    url: createDirectionalMarker(userHeading),
-                    scaledSize: new google.maps.Size(120, 150),
-                    anchor: new google.maps.Point(60, 67.5)
-                  }
-                });
-                
-                // Start animation for blue zoom effect
-                if (animationId) {
-                  cancelAnimationFrame(animationId);
-                }
-                startTime = Date.now();
-                const animateMarker = () => {
-                  if (!userMarker || !userLocation) return;
-                  
-                  const elapsed = Date.now() - startTime;
-                  const cycle = (elapsed % 1500) / 1500; // 1500ms cycle
-                  let blueScale;
-                  
-                  if (cycle < 0.5) {
-                    // Scale up from 1 to 1.4
-                    blueScale = 1 + (cycle * 2) * 0.4;
-                  } else {
-                    // Scale down from 1.4 to 1
-                    blueScale = 1.4 - ((cycle - 0.5) * 2) * 0.4;
-                  }
-                  
-                  // Update marker icon with animation
-                  userMarker.setIcon({
-                    url: createDirectionalMarker(userHeading, blueScale),
-                    scaledSize: new google.maps.Size(120, 150),
-                    anchor: new google.maps.Point(60, 67.5)
+                // Create marker only on first location update
+                if (!userMarker) {
+                  userMarker = new google.maps.Marker({
+                    position: userLocation,
+                    map: map,
+                    title: 'Your Location',
+                    icon: {
+                      url: createDirectionalMarker(userHeading),
+                      scaledSize: new google.maps.Size(120, 150),
+                      anchor: new google.maps.Point(60, 67.5)
+                    }
                   });
                   
-                  animationId = requestAnimationFrame(animateMarker);
-                };
-                
-                animateMarker();
+                  // Start continuous animation for blue zoom effect and heading updates
+                  startTime = Date.now();
+                  const animateMarker = () => {
+                    if (!userMarker || !userLocation) {
+                      animationId = requestAnimationFrame(animateMarker);
+                      return;
+                    }
+                    
+                    const elapsed = Date.now() - startTime;
+                    const cycle = (elapsed % 1500) / 1500; // 1500ms cycle
+                    let blueScale;
+                    
+                    if (cycle < 0.5) {
+                      // Scale up from 1 to 1.4
+                      blueScale = 1 + (cycle * 2) * 0.4;
+                    } else {
+                      // Scale down from 1.4 to 1
+                      blueScale = 1.4 - ((cycle - 0.5) * 2) * 0.4;
+                    }
+                    
+                    // Update marker icon with current heading and animation
+                    userMarker.setIcon({
+                      url: createDirectionalMarker(userHeading, blueScale),
+                      scaledSize: new google.maps.Size(120, 150),
+                      anchor: new google.maps.Point(60, 67.5)
+                    });
+                    
+                    animationId = requestAnimationFrame(animateMarker);
+                  };
+                  
+                  animateMarker();
+                } else {
+                  // Just update marker position without recreating it
+                  userMarker.setPosition(userLocation);
+                }
                 
                 // Center map on user location only on initial load
                 if (isInitialLoad) {
