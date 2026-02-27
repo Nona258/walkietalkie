@@ -1,6 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { View, Text, TouchableOpacity, TextInput, StatusBar, Modal, Platform, ScrollView } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import supabase from '../../utils/supabase';
 
 // Only import WebView for native platforms
 let WebView: any = null;
@@ -12,68 +13,59 @@ if (Platform.OS !== 'web') {
 interface Site {
   id: string;
   name: string;
-  location: string;
-  address: string;
-  status: 'active' | 'inactive';
-  securityLevel: 'high' | 'medium' | 'low';
-  staffCount: number;
+  latitude?: number;
+  longitude?: number;
+  company_id?: string;
+  branch_id?: string;
+  status?: string;
 }
 
-const MOCK_SITES: Site[] = [
-  {
-    id: '1',
-    name: 'Main Headquarters',
-    location: 'Downtown',
-    address: '123 Main Street, City Center',
-    status: 'active',
-    securityLevel: 'high',
-    staffCount: 12,
-  },
-  {
-    id: '2',
-    name: 'North Building',
-    location: 'North District',
-    address: '456 North Avenue, Industrial Zone',
-    status: 'active',
-    securityLevel: 'medium',
-    staffCount: 8,
-  },
-  {
-    id: '3',
-    name: 'South Warehouse',
-    location: 'South Suburb',
-    address: '789 South Road, Warehouse Area',
-    status: 'active',
-    securityLevel: 'medium',
-    staffCount: 6,
-  },
-  {
-    id: '4',
-    name: 'East Facility',
-    location: 'East Side',
-    address: '321 East Boulevard, Commercial Zone',
-    status: 'inactive',
-    securityLevel: 'low',
-    staffCount: 0,
-  },
-  {
-    id: '5',
-    name: 'West Branch',
-    location: 'West End',
-    address: '654 West Street, Business District',
-    status: 'active',
-    securityLevel: 'high',
-    staffCount: 10,
-  },
-];
 
 export default function Map({ onBack }: { onBack?: () => void }) {
   const [searchText, setSearchText] = useState('');
   const [isStreetViewActive, setIsStreetViewActive] = useState(false);
   const [searchResults, setSearchResults] = useState<any[]>([]);
   const [showResults, setShowResults] = useState(false);
+  const [sitesData, setSitesData] = useState<Site[]>([]);
   const iframeRef = React.useRef<any>(null);
   const searchTimeoutRef = React.useRef<any>(null);
+
+  // Fetch sites from Supabase
+  useEffect(() => {
+    const fetchSites = async () => {
+      const { data, error } = await supabase
+        .from('sites')
+        .select('id, name, latitude, longitude, company_id, branch_id, status')
+        .eq('status', 'Active');
+      
+      if (!error && data) {
+        setSitesData(data || []);
+        // Send sites to iframe after it's loaded
+        if (iframeRef.current) {
+          setTimeout(() => {
+            if (iframeRef.current) {
+              iframeRef.current.contentWindow.postMessage(
+                { type: 'loadSites', sites: data || [] },
+                '*'
+              );
+            }
+          }, 500);
+        }
+      }
+    };
+    
+    fetchSites();
+  }, []);
+
+  // Send sites to iframe when sites data changes
+  useEffect(() => {
+    if (sitesData.length > 0 && iframeRef.current) {
+      iframeRef.current.contentWindow.postMessage(
+        { type: 'loadSites', sites: sitesData },
+        '*'
+      );
+    }
+  }, [sitesData]);
 
   const handleSearch = (query: string) => {
     if (iframeRef.current && query.trim().length > 0) {
@@ -159,31 +151,65 @@ export default function Map({ onBack }: { onBack?: () => void }) {
           button[aria-label*="Full screen"] { display: none !important; }
           button[aria-label="Map camera controls"] { display: none !important; }
           .gm-iv-address { display: none !important; }
-          .gm-iv-container { margin-left: 10px !important; }
-          button[aria-label*="Back"] { 
-            margin-left: 32px !important;
-            margin-top: 12px !important;
-            background-color: rgba(60, 60, 60, 0.9) !important;
-            border-radius: 8px !important;
-            padding: 10px 12px !important;
-            border: none !important;
-            pointer-events: auto !important;
-            cursor: pointer !important;
-          }
+          .gm-iv-container { display: none !important; }
+          button[aria-label*="Back"] { display: none !important; }
         </style>
       </head>
       <body>
         <div id='map'></div>
-        <script src='https://maps.googleapis.com/maps/api/js?key=AIzaSyAq58TD9PputxnK8ZO9jRUX8KW7bTuPTPQ&libraries=places'></script>
+        <script src='https://maps.googleapis.com/maps/api/js?key=AIzaSyAq58TD9PputxnK8ZO9jRUX8KW7bTuPTPQ&libraries=places,routes'></script>
         <script>
           let isStreetViewActive = false;
           let userMarker = null;
           let searchMarker = null;
+          let siteMarkers = [];
           let geocoder = null;
           let userProvince = 'Lanao del Norte'; // Default to Lanao del Norte
           let userLocation = null; // Store user's current location
           let hasUserMovedMap = false; // Track if user has manually moved the map
           let isInitialLoad = true; // Track if this is the first location update
+          let userHeading = 0; // Track user's heading/direction
+          
+          // Function to create a custom marker using Canvas with directional indicator
+          function createDirectionalMarker(heading) {
+            const canvas = document.createElement('canvas');
+            canvas.width = 40;
+            canvas.height = 40;
+            const ctx = canvas.getContext('2d');
+            
+            // Draw outer glow circle
+            const gradient = ctx.createRadialGradient(20, 20, 0, 20, 20, 18);
+            gradient.addColorStop(0, 'rgba(59, 130, 246, 0.8)');
+            gradient.addColorStop(1, 'rgba(59, 130, 246, 0.2)');
+            ctx.fillStyle = gradient;
+            ctx.beginPath();
+            ctx.arc(20, 20, 18, 0, Math.PI * 2);
+            ctx.fill();
+            
+            // Draw inner dot
+            ctx.fillStyle = '#3b82f6';
+            ctx.strokeStyle = '#ffffff';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.arc(20, 20, 8, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.stroke();
+            
+            // Draw directional indicator (triangle)
+            ctx.save();
+            ctx.translate(20, 20);
+            ctx.rotate((heading * Math.PI) / 180);
+            ctx.fillStyle = 'rgba(59, 130, 246, 0.9)';
+            ctx.beginPath();
+            ctx.moveTo(0, -12);
+            ctx.lineTo(-4, -2);
+            ctx.lineTo(4, -2);
+            ctx.closePath();
+            ctx.fill();
+            ctx.restore();
+            
+            return canvas.toDataURL('image/png');
+          }
           
           const map = new google.maps.Map(document.getElementById('map'), {
             center: { lat: 8.2256, lng: 124.2319 },
@@ -192,7 +218,7 @@ export default function Map({ onBack }: { onBack?: () => void }) {
             mapTypeControl: false,
             fullscreenControl: false,
             gestureHandling: 'greedy',
-            zoomControl: true
+            zoomControl: false
           });
           
           // Track when user manually drags/moves the map
@@ -211,6 +237,11 @@ export default function Map({ onBack }: { onBack?: () => void }) {
                 const userLng = position.coords.longitude;
                 userLocation = { lat: userLat, lng: userLng }; // Update global userLocation
                 
+                // Get heading/bearing if available
+                if (position.coords.heading !== null && position.coords.heading !== undefined) {
+                  userHeading = position.coords.heading;
+                }
+                
                 // Reverse geocode to get user's province
                 geocoder.geocode({ location: userLocation }, function(results, status) {
                   if (status === 'OK' && results.length > 0) {
@@ -227,19 +258,15 @@ export default function Map({ onBack }: { onBack?: () => void }) {
                   userMarker.setMap(null);
                 }
                 
-                // Create new marker for user's location
+                // Create new marker for user's location with directional indicator
                 userMarker = new google.maps.Marker({
                   position: userLocation,
                   map: map,
                   title: 'Your Location',
                   icon: {
-                    path: 'M12 0C5.383 0 0 5.383 0 12c0 7 12 20 12 20s12-13 12-20c0-6.617-5.383-12-12-12zm0 16c-2.209 0-4-1.791-4-4s1.791-4 4-4 4 1.791 4 4-1.791 4-4 4z',
-                    scale: 1.5,
-                    fillColor: '#22c55e',
-                    fillOpacity: 1,
-                    strokeColor: '#ffffff',
-                    strokeWeight: 1,
-                    anchor: { x: 12, y: 20 }
+                    url: createDirectionalMarker(userHeading),
+                    scaledSize: new google.maps.Size(40, 40),
+                    anchor: new google.maps.Point(20, 20)
                   }
                 });
                 
@@ -359,16 +386,7 @@ export default function Map({ onBack }: { onBack?: () => void }) {
               searchMarker = new google.maps.Marker({
                 position: location,
                 map: map,
-                title: event.data.address,
-                icon: {
-                  path: 'M12 0C5.383 0 0 5.383 0 12c0 7 12 20 12 20s12-13 12-20c0-6.617-5.383-12-12-12zm0 16c-2.209 0-4-1.791-4-4s1.791-4 4-4 4 1.791 4 4-1.791 4-4 4z',
-                  scale: 1.5,
-                  fillColor: '#f97316',
-                  fillOpacity: 1,
-                  strokeColor: '#ffffff',
-                  strokeWeight: 1,
-                  anchor: { x: 12, y: 20 }
-                }
+                title: event.data.address
               });
               
               // Center map on search result and zoom in
@@ -385,10 +403,136 @@ export default function Map({ onBack }: { onBack?: () => void }) {
                 map.setCenter(userLocation);
                 map.setZoom(16);
               }
+            } else if (event.data.type === 'loadSites') {
+              // Clear existing site markers
+              siteMarkers.forEach(marker => marker.setMap(null));
+              siteMarkers = [];
+              
+              const directionsService = new google.maps.DirectionsService();
+              
+              // Add markers for each site
+              const sites = event.data.sites;
+              sites.forEach(site => {
+                if (site.latitude && site.longitude) {
+                  let distanceText = '';
+                  let durationText = '';
+                  
+                  // Calculate road distance if user location is available
+                  if (userLocation) {
+                    directionsService.route({
+                      origin: userLocation,
+                      destination: { lat: site.latitude, lng: site.longitude },
+                      travelMode: google.maps.TravelMode.DRIVING
+                    }, function(response, status) {
+                      if (status === google.maps.DirectionsStatus.OK) {
+                        const route = response.routes[0];
+                        const leg = route.legs[0];
+                        const distanceInMeters = leg.distance.value;
+                        const distanceInKm = distanceInMeters / 1000;
+                        const durationInSeconds = leg.duration.value;
+                        
+                        // Format distance
+                        if (distanceInKm < 1) {
+                          distanceText = Math.round(distanceInMeters) + 'm';
+                        } else {
+                          distanceText = distanceInKm.toFixed(1) + 'km';
+                        }
+                        
+                        // Format duration
+                        const hours = Math.floor(durationInSeconds / 3600);
+                        const minutes = Math.floor((durationInSeconds % 3600) / 60);
+                        if (hours > 0) {
+                          durationText = hours + 'h ' + minutes + 'min';
+                        } else {
+                          durationText = minutes + 'min';
+                        }
+                        
+                        // Update marker title with distance and duration
+                        siteMarker.setTitle(site.name + ' - ' + durationText + ' - ' + distanceText);
+                        
+                        // Update info window with styled card
+                        infoContent = '<div style="font-family: sans-serif; padding: 12px; width: 220px;">' +
+                          '<strong style="font-size: 16px; display: block; margin-bottom: 8px;">' + site.name + '</strong>' +
+                          '<div style="display: flex; gap: 16px; align-items: center;">' +
+                          '  <div style="flex: 1;">' +
+                          '    <div style="font-size: 18px; font-weight: 700; color: #1f2937;">' + durationText + '</div>' +
+                          '    <div style="font-size: 12px; color: #6b7280; margin-top: 2px;">travel time</div>' +
+                          '  </div>' +
+                          '  <div style="flex: 1;">' +
+                          '    <div style="font-size: 18px; font-weight: 700; color: #1f2937;">' + distanceText + '</div>' +
+                          '    <div style="font-size: 12px; color: #6b7280; margin-top: 2px;">distance</div>' +
+                          '  </div>' +
+                          '</div>' +
+                          '</div>';
+                        infoWindow.setContent(infoContent);
+                        
+                        // Draw route polyline for this site
+                        const pathPoints = route.overview_path;
+                        // Ensure polyline connects from user location to site location
+                        const fullPath = [
+                          userLocation,
+                          ...pathPoints,
+                          { lat: site.latitude, lng: site.longitude }
+                        ];
+                        const sitePolyline = new google.maps.Polyline({
+                          path: fullPath,
+                          geodesic: true,
+                          strokeColor: '#ef4444',
+                          strokeOpacity: 0.7,
+                          strokeWeight: 3,
+                          map: map
+                        });
+                        
+                        // Store polyline reference on marker
+                        siteMarker.polyline = sitePolyline;
+                      }
+                    });
+                  }
+                  
+                  const siteMarker = new google.maps.Marker({
+                    position: { lat: site.latitude, lng: site.longitude },
+                    map: map,
+                    title: site.name
+                  });
+                  
+                  // Add info window for each site with distance and duration
+                  let infoContent = '<div style="font-family: sans-serif; padding: 12px; width: 220px;">' +
+                    '<strong style="font-size: 16px; display: block; margin-bottom: 8px;">' + site.name + '</strong>' +
+                    '<div style="text-align: center; color: #999; font-size: 12px;">Calculating route...</div>' +
+                    '</div>';
+                  
+                  const infoWindow = new google.maps.InfoWindow({
+                    content: infoContent,
+                    closeButton: true
+                  });
+                  
+                  siteMarker.addListener('click', function() {
+                    // Close all other info windows
+                    map.infoWindows?.forEach(iw => iw.close());
+                    infoWindow.open(map, siteMarker);
+                  });
+                  
+                  siteMarkers.push(siteMarker);
+                }
+              });
+            } else if (event.data.type === 'exitStreetView') {
+              // Exit street view and return to map
+              streetViewPanorama.setVisible(false);
+              if (userLocation) {
+                map.setCenter(userLocation);
+                map.setZoom(16);
+              }
             }
           });
           
           const streetViewPanorama = map.getStreetView();
+          streetViewPanorama.setOptions({
+            zoomControl: false,
+            panControl: false,
+            fullscreenControl: false,
+            addressControl: false,
+            showRoadLabels: false
+          });
           
           streetViewPanorama.addListener('visible_changed', function() {
             isStreetViewActive = streetViewPanorama.getVisible();
@@ -440,7 +584,9 @@ export default function Map({ onBack }: { onBack?: () => void }) {
           {!isStreetViewActive && (
             <View className="absolute top-0 left-0 right-0 px-4 py-4 pt-4 z-50">
               <View className="flex-1 flex-row items-center rounded-2xl bg-white bg-opacity-95 px-4 py-3 border border-gray-300 shadow-lg">
-                <Ionicons name="location" size={20} color="#10b981" />
+                <TouchableOpacity onPress={onBack}>
+                  <Ionicons name="arrow-back" size={20} color="#10b981" />
+                </TouchableOpacity>
                 <TextInput
                   placeholder="Search locations..."
                   value={searchText}
@@ -450,9 +596,7 @@ export default function Map({ onBack }: { onBack?: () => void }) {
                   placeholderTextColor="#9ca3af"
                   returnKeyType="search"
                 />
-                <TouchableOpacity onPress={() => handleSearch(searchText)}>
-                  <Ionicons name="search" size={20} color="#10b981" />
-                </TouchableOpacity>
+                <Ionicons name="location" size={20} color="#10b981" />
               </View>
               {showResults && searchResults.length > 0 && searchText.trim().length > 0 && (
                 <View className="mt-1 bg-white rounded-2xl border border-gray-300 shadow-lg overflow-hidden">
@@ -481,11 +625,19 @@ export default function Map({ onBack }: { onBack?: () => void }) {
               )}
             </View>
           )}
-          {!isStreetViewActive && (
-            <TouchableOpacity onPress={onBack} className="absolute bottom-6 left-6">
-              <View className="bg-black bg-opacity-70 rounded-lg p-2">
-                <Ionicons name="arrow-back" size={20} color="white" />
-              </View>
+          {isStreetViewActive && (
+            <TouchableOpacity 
+              onPress={() => {
+                if (iframeRef.current) {
+                  iframeRef.current.contentWindow.postMessage(
+                    { type: 'exitStreetView' },
+                    '*'
+                  );
+                }
+              }}
+              className="absolute bottom-3 right-3 bg-white rounded-full p-3 shadow-lg z-50 animate-bounce"
+            >
+              <Ionicons name="map" size={24} color="#10b981" />
             </TouchableOpacity>
           )}
         </View>

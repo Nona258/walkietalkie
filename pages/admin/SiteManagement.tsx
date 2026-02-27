@@ -230,6 +230,34 @@ export default function SiteManagement({ onNavigate }: SiteManagementProps) {
   // Initialize edit map using Google Maps
   useEffect(() => {
     if (isEditModalOpen && selectedSite && typeof window !== 'undefined') {
+      const API_KEY = 'AIzaSyAq58TD9PputxnK8ZO9jRUX8KW7bTuPTPQ';
+
+      const loadGoogleMaps = () => {
+        if ((window as any).google && (window as any).google.maps) {
+          initEditMap();
+          return;
+        }
+
+        const scriptId = 'gmaps-script';
+        if (document.getElementById(scriptId)) {
+          const check = setInterval(() => {
+            if ((window as any).google && (window as any).google.maps) {
+              clearInterval(check);
+              initEditMap();
+            }
+          }, 100);
+          return;
+        }
+
+        const script = document.createElement('script');
+        script.id = scriptId;
+        script.src = `https://maps.googleapis.com/maps/api/js?key=${API_KEY}&libraries=places`;
+        script.async = true;
+        script.defer = true;
+        script.onload = () => initEditMap();
+        document.head.appendChild(script);
+      };
+
       const initEditMap = () => {
         const g = (window as any).google;
         if (!g || !g.maps || editMapRef.current) return;
@@ -269,16 +297,7 @@ export default function SiteManagement({ onNavigate }: SiteManagementProps) {
         editMarkerRef.current = marker;
       };
 
-      if ((window as any).google && (window as any).google.maps) {
-        setTimeout(initEditMap, 100);
-      } else {
-        const check = setInterval(() => {
-          if ((window as any).google && (window as any).google.maps) {
-            clearInterval(check);
-            initEditMap();
-          }
-        }, 100);
-      }
+      loadGoogleMaps();
     }
 
     return () => {
@@ -529,7 +548,7 @@ export default function SiteManagement({ onNavigate }: SiteManagementProps) {
   const handleEditSite = (site: Site) => {
     setSelectedSite(site);
     setSiteName(site.name);
-    setCompany(site.company || '');
+    setCompany(site.company_id || '');
     setBranchId(site.branch_id || '');
     // Removed members edit
     setLatitude(site.latitude || null);
@@ -1249,11 +1268,13 @@ export default function SiteManagement({ onNavigate }: SiteManagementProps) {
                     onBlur={() => handleFieldBlur('branch_id', branch_id)}
                   >
                     <option value="">Select a branch</option>
-                    {branchOptions.map(opt => (
-                      <option key={opt.id} value={opt.id}>
-                        {opt.name}
-                      </option>
-                    ))}
+                    {branchOptions
+                      .filter(opt => !company || String(opt.company_id) === String(company))
+                      .map(opt => (
+                        <option key={opt.id} value={opt.id}>
+                          {opt.name}
+                        </option>
+                      ))}
                   </select>
                 </View>
                 {touched.branch_id && errors.branch_id && (
