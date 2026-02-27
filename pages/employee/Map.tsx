@@ -601,7 +601,7 @@ export default function Map({ onBack }: { onBack?: () => void }) {
                           geodesic: true,
                           strokeColor: '#ef4444',
                           strokeOpacity: 0.7,
-                          strokeWeight: 3,
+                          strokeWeight: 6,
                           map: map
                         });
                         
@@ -738,7 +738,7 @@ export default function Map({ onBack }: { onBack?: () => void }) {
                   );
                 }
               }}
-              className="absolute bottom-3 right-3 bg-white rounded-full p-3 shadow-lg z-50 animate-bounce"
+              className="absolute bottom-16 right-3 bg-white rounded-full p-3 shadow-lg z-50 animate-bounce"
             >
               <Ionicons name="map" size={24} color="#10b981" />
             </TouchableOpacity>
