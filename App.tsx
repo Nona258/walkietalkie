@@ -22,6 +22,7 @@ export default function App() {
   const [currentPage, setCurrentPage] = useState<'signin' | 'signup' | 'dashboard'>('signin');
   const [activeTab, setActiveTab] = useState<string>('dashboard');
   const [selectedContact, setSelectedContact] = useState<any>(null);
+  const [selectedSite, setSelectedSite] = useState<any>(null);
   const [user, setUser] = useState<any>(null);
   const [userRole, setUserRole] = useState<string>('employee');
   const [loading, setLoading] = useState(true);
@@ -163,9 +164,15 @@ export default function App() {
           ) : activeTab === 'contacts' ? (
             <Contacts onContactSelected={setSelectedContact} />
           ) : activeTab === 'sites' ? (
-            <Sites onMapPress={() => setActiveTab('map')} />
+            <Sites onMapPress={() => setActiveTab('map')} onSiteMapPress={(site) => {
+              setSelectedSite(site);
+              setActiveTab('map');
+            }} />
           ) : activeTab === 'map' ? (
-            <Map onBack={() => setActiveTab('sites')} />
+            <Map onBack={() => {
+              setSelectedSite(null);
+              setActiveTab('sites');
+            }} selectedSite={selectedSite} />
           ) : activeTab === 'logs' ? (
             <Logs />
           ) : activeTab === 'settings' ? (

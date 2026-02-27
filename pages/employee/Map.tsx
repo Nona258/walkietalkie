@@ -21,7 +21,7 @@ interface Site {
 }
 
 
-export default function Map({ onBack }: { onBack?: () => void }) {
+export default function Map({ onBack, selectedSite }: { onBack?: () => void; selectedSite?: any }) {
   const [searchText, setSearchText] = useState('');
   const [isStreetViewActive, setIsStreetViewActive] = useState(false);
   const [searchResults, setSearchResults] = useState<any[]>([]);
@@ -34,6 +34,12 @@ export default function Map({ onBack }: { onBack?: () => void }) {
   // Fetch sites from Supabase and subscribe to real-time updates
   useEffect(() => {
     const fetchSites = async () => {
+      // If a specific site is selected, only load that site
+      if (selectedSite) {
+        setSitesData([selectedSite]);
+        return;
+      }
+
       const { data, error } = await supabase
         .from('sites')
         .select('id, name, latitude, longitude, company_id, branch_id, status')
@@ -45,6 +51,11 @@ export default function Map({ onBack }: { onBack?: () => void }) {
     };
     
     fetchSites();
+
+    // Only subscribe to real-time updates if not showing a specific site
+    if (selectedSite) {
+      return;
+    }
 
     // Subscribe to real-time updates on sites table
     const subscription = supabase
@@ -93,7 +104,7 @@ export default function Map({ onBack }: { onBack?: () => void }) {
     return () => {
       subscription.unsubscribe();
     };
-  }, []);
+  }, [selectedSite]);
 
   // Send sites to iframe when sites data changes and iframe is ready
   useEffect(() => {
@@ -581,7 +592,7 @@ export default function Map({ onBack }: { onBack?: () => void }) {
                           '    <div style="font-size: 12px; color: #6b7280; margin-top: 2px;">travel time</div>' +
                           '  </div>' +
                           '  <div style="flex: 1;">' +
-                          '    <div style="font-size: 18px; font-weight: 700; color: #1f2937;">' + distanceText + '</div>' +
+                          '    <div style="font-size: 18px; font-weight: 700; color: #ef4444;">' + distanceText + '</div>' +
                           '    <div style="font-size: 12px; color: #6b7280; margin-top: 2px;">distance</div>' +
                           '  </div>' +
                           '</div>' +
@@ -600,7 +611,7 @@ export default function Map({ onBack }: { onBack?: () => void }) {
                           path: fullPath,
                           geodesic: true,
                           strokeColor: '#ef4444',
-                          strokeOpacity: 0.7,
+                          strokeOpacity: 1,
                           strokeWeight: 6,
                           map: map
                         });
@@ -726,6 +737,16 @@ export default function Map({ onBack }: { onBack?: () => void }) {
                   </ScrollView>
                 </View>
               )}
+            </View>
+          )}
+          {selectedSite && !isStreetViewActive && (
+            <View className="absolute bottom-4 left-4 right-0 px-0">
+              <View className="bg-green-50 bg-opacity-90 rounded-2xl px-4 py-3 border border-green-200 shadow-lg" style={{ maxWidth: '70%' }}>
+                <View>
+                  <Text className="text-gray-600 text-xs font-semibold uppercase">Site Location</Text>
+                  <Text className="text-gray-900 text-lg font-bold mt-1" numberOfLines={2}>{selectedSite.name}</Text>
+                </View>
+              </View>
             </View>
           )}
           {isStreetViewActive && (

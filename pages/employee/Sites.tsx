@@ -17,9 +17,10 @@ interface Site {
 
 interface SitesProps {
   onMapPress?: () => void;
+  onSiteMapPress?: (site: Site) => void;
 }
 
-export default function Sites({ onMapPress }: SitesProps) {
+export default function Sites({ onMapPress, onSiteMapPress }: SitesProps) {
   const [sites, setSites] = useState<Site[]>([]);
   const [searchText, setSearchText] = useState('');
   const [selectedSite, setSelectedSite] = useState<Site | null>(null);
@@ -144,9 +145,12 @@ export default function Sites({ onMapPress }: SitesProps) {
                   {/* Top Section - Icon and Basic Info */}
                   <View className="flex-row items-start mb-5">
                     {/* Location Icon */}
-                    <View className={`w-14 h-14 rounded-2xl ${site.status === 'active' ? 'bg-green-500' : 'bg-gray-400'} items-center justify-center mr-4`}>
+                    <TouchableOpacity 
+                      onPress={() => onSiteMapPress?.(site)}
+                      className={`w-14 h-14 rounded-2xl ${site.status === 'active' ? 'bg-green-500' : 'bg-gray-400'} items-center justify-center mr-4 active:scale-95`}
+                    >
                       <Ionicons name="location" size={26} color="white" />
-                    </View>
+                    </TouchableOpacity>
 
                     {/* Site Info with Company & Branch */}
                     <View className="flex-1">
