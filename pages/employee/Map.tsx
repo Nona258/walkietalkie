@@ -242,8 +242,128 @@ export default function Map({ onBack }: { onBack?: () => void }) {
           let animationId = null; // For animation frame
           let startTime = Date.now(); // Track animation start time
           let map = null; // Will be initialized when Google Maps is loaded
+          let directionsService = null; // Will store reference to DirectionsService
+          let sitesCache = []; // Cache sites data for recalculation
+          let lastUserLocation = null; // Track last user location for change detection
+          let routeCalculationInProgress = false; // Prevent simultaneous route calculations
           
-          // Function to create a custom marker using Canvas with flashlight effect
+          // Function to recalculate routes for all sites when user location changes
+          function recalculateAllRoutes() {
+            if (!map || !userLocation || routeCalculationInProgress || !directionsService) return;
+            
+            // Check if user location has actually changed significantly (more than 10 meters)
+            if (lastUserLocation) {
+              const deltaLat = Math.abs(userLocation.lat - lastUserLocation.lat);
+              const deltaLng = Math.abs(userLocation.lng - lastUserLocation.lng);
+              // Rough approximation: 1 degree ≈ 111 km
+              const distanceKm = Math.sqrt(deltaLat * deltaLat + deltaLng * deltaLng) * 111;
+              const distanceMeters = distanceKm * 1000;
+              
+              if (distanceMeters < 10) {
+                return; // User hasn't moved far enough to recalculate
+              }
+            }
+            
+            lastUserLocation = { ...userLocation };
+            routeCalculationInProgress = true;
+            
+            // Find all site markers and recalculate their routes
+            siteMarkers.forEach((marker, index) => {
+              if (index < sitesCache.length) {
+                const site = sitesCache[index];
+                const infoWindow = marker.infoWindow;
+                
+                if (site.latitude && site.longitude) {
+                  directionsService.route({
+                    origin: userLocation,
+                    destination: { lat: site.latitude, lng: site.longitude },
+                    travelMode: google.maps.TravelMode.DRIVING
+                  }, ((siteMarker, infoWin, currentSite) => {
+                    return (response, status) => {
+                      if (status === google.maps.DirectionsStatus.OK) {
+                        const route = response.routes[0];
+                        const leg = route.legs[0];
+                        const distanceInMeters = leg.distance.value;
+                        const distanceInKm = distanceInMeters / 1000;
+                        const durationInSeconds = leg.duration.value;
+                        
+                        // Format distance
+                        let distanceText = '';
+                        if (distanceInKm < 1) {
+                          distanceText = Math.round(distanceInMeters) + 'm';
+                        } else {
+                          distanceText = distanceInKm.toFixed(1) + 'km';
+                        }
+                        
+                        // Format duration
+                        const hours = Math.floor(durationInSeconds / 3600);
+                        const minutes = Math.floor((durationInSeconds % 3600) / 60);
+                        let durationText = '';
+                        if (hours > 0) {
+                          durationText = hours + 'h ' + minutes + 'min';
+                        } else {
+                          durationText = minutes + 'min';
+                        }
+                        
+                        // Update marker title
+                        siteMarker.setTitle(currentSite.name + ' - ' + durationText + ' - ' + distanceText);
+                        
+                        // Update info window content
+                        const updatedContent = '<div style="font-family: sans-serif; padding: 12px; width: 220px;">' +
+                          '<strong style="font-size: 16px; display: block; margin-bottom: 8px;">' + currentSite.name + '</strong>' +
+                          '<div style="display: flex; gap: 16px; align-items: center;">' +
+                          '  <div style="flex: 1;">' +
+                          '    <div style="font-size: 18px; font-weight: 700; color: #1f2937;">' + durationText + '</div>' +
+                          '    <div style="font-size: 12px; color: #6b7280; margin-top: 2px;">travel time</div>' +
+                          '  </div>' +
+                          '  <div style="flex: 1;">' +
+                          '    <div style="font-size: 18px; font-weight: 700; color: #1f2937;">' + distanceText + '</div>' +
+                          '    <div style="font-size: 12px; color: #6b7280; margin-top: 2px;">distance</div>' +
+                          '  </div>' +
+                          '</div>' +
+                          '</div>';
+                        infoWin.setContent(updatedContent);
+                        
+                        // Update polyline if it exists
+                        if (siteMarker.polyline) {
+                          siteMarker.polyline.setMap(null);
+                        }
+                        
+                        // Draw route polyline
+                        const pathPoints = route.overview_path;
+                        const fullPath = [
+                          userLocation,
+                          ...pathPoints,
+                          { lat: currentSite.latitude, lng: currentSite.longitude }
+                        ];
+                        const sitePolyline = new google.maps.Polyline({
+                          path: fullPath,
+                          geodesic: true,
+                          strokeColor: '#ef4444',
+                          strokeOpacity: 0.7,
+                          strokeWeight: 3,
+                          map: map
+                        });
+                        
+                        // Store polyline reference on marker
+                        siteMarker.polyline = sitePolyline;
+                      } else {
+                        // Handle error - show a default message
+                        const errorContent = '<div style="font-family: sans-serif; padding: 12px; width: 220px;">' +
+                          '<strong style="font-size: 16px; display: block; margin-bottom: 8px;">' + currentSite.name + '</strong>' +
+                          '<div style="text-align: center; color: #ef4444; font-size: 12px;">Unable to calculate route</div>' +
+                          '</div>';
+                        infoWin.setContent(errorContent);
+                      }
+                    };
+                  })(siteMarker, infoWindow, site));
+                }
+              }
+            });
+            
+            routeCalculationInProgress = false;
+          }
+
           function createDirectionalMarker(heading, blueScale = 1) {
             const canvas = document.createElement('canvas');
             canvas.width = 120;
@@ -335,8 +455,7 @@ export default function Map({ onBack }: { onBack?: () => void }) {
           });
           
           // Initialize geocoder
-          geocoder = new google.maps.Geocoder();
-          
+          geocoder = new google.maps.Geocoder();          directionsService = new google.maps.DirectionsService();          
             // Get user's geolocation
             if (navigator.geolocation) {
             navigator.geolocation.watchPosition(
@@ -416,6 +535,9 @@ export default function Map({ onBack }: { onBack?: () => void }) {
                   map.setZoom(16);
                   isInitialLoad = false;
                 }
+                
+                // Recalculate routes when user location changes
+                recalculateAllRoutes();
               },
               function(error) {
                 console.log('Geolocation error: ' + error.message);
@@ -571,9 +693,10 @@ export default function Map({ onBack }: { onBack?: () => void }) {
                 marker.setMap(null);
               });
               siteMarkers = [];
+              sitesCache = []; // Clear sites cache
               
-              const directionsService = new google.maps.DirectionsService();
               const sites = event.data.sites;
+              sitesCache = sites; // Store sites for recalculation
               
               // Create all markers first, then request routes
               sites.forEach(site => {
@@ -595,6 +718,9 @@ export default function Map({ onBack }: { onBack?: () => void }) {
                     closeButton: true
                   });
                   
+                  // Store infoWindow reference on marker for later updates
+                  siteMarker.infoWindow = infoWindow;
+                  
                   siteMarker.addListener('click', function() {
                     map.infoWindows?.forEach(iw => iw.close());
                     infoWindow.open(map, siteMarker);
@@ -603,7 +729,7 @@ export default function Map({ onBack }: { onBack?: () => void }) {
                   siteMarkers.push(siteMarker);
                   
                   // Calculate route for this specific marker
-                  if (userLocation) {
+                  if (userLocation && directionsService) {
                     directionsService.route({
                       origin: userLocation,
                       destination: { lat: site.latitude, lng: site.longitude },
@@ -672,9 +798,19 @@ export default function Map({ onBack }: { onBack?: () => void }) {
                           
                           // Store polyline reference on marker
                           marker.polyline = sitePolyline;
+                        } else {
+                          // Handle error - show a default message
+                          const errorContent = '<div style="font-family: sans-serif; padding: 12px; width: 220px;">' +
+                            '<strong style="font-size: 16px; display: block; margin-bottom: 8px;">' + currentSite.name + '</strong>' +
+                            '<div style="text-align: center; color: #ef4444; font-size: 12px;">Unable to calculate route</div>' +
+                            '</div>';
+                          infoWin.setContent(errorContent);
                         }
                       };
                     })(siteMarker, infoWindow, site));
+                  } else if (!userLocation) {
+                    // If user location is not available yet, the routes will be calculated 
+                    // once user location is available via recalculateAllRoutes()
                   }
                 }
               });
