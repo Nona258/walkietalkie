@@ -233,30 +233,16 @@ export const googleMapHtml = `
                 // Redraw polylines to keep them connected to current employee location
                 if (currentSitesData && currentSitesData.length > 0) {
                   const now = Date.now();
-                  // Check if enough time has passed (10 seconds to reduce excessive updates)
-                  if (now - lastPolylineUpdate > 10000) {
-                    // Check if user has moved a significant distance to warrant redraw
-                    let shouldRedraw = false;
-                    
-                    if (!lastUserLocation) {
-                      shouldRedraw = true;
-                    } else {
-                      const distance = calculateDistance(
-                        lastUserLocation.lat, lastUserLocation.lng,
-                        userLocation.lat, userLocation.lng
-                      );
-                      shouldRedraw = distance > minDistanceForRedraw;
-                    }
-                    
-                    if (shouldRedraw) {
-                      lastPolylineUpdate = now;
-                      lastUserLocation = { ...userLocation };
-                      window.setTimeout(() => {
-                        window.dispatchEvent(new MessageEvent('message', {
-                          data: { type: 'loadSites', sites: currentSitesData }
-                        }));
-                      }, 300);
-                    }
+                  // Update polyline every 2 seconds to keep it connected to GPS marker
+                  if (now - lastPolylineUpdate > 2000) {
+                    // Always redraw when enough time has passed (no distance check needed)
+                    lastPolylineUpdate = now;
+                    lastUserLocation = { ...userLocation };
+                    window.setTimeout(() => {
+                      window.dispatchEvent(new MessageEvent('message', {
+                        data: { type: 'loadSites', sites: currentSitesData }
+                      }));
+                    }, 100);
                   }
                 }
               },
@@ -505,15 +491,21 @@ export const googleMapHtml = `
                         infoWindow.setContent(infoContent);
                         
                         // Draw route polyline for this site
+                        // Use the ORIGINAL calculated route from Google Directions
                         const pathPoints = route.overview_path;
-                        // Build accurate path from current user location through the mapped route
-                        // Ensure the polyline always starts from the current user marker and ends at the site
+                        
+                        // Start polyline from current user location (always the latest)
                         const fullPath = [currentUserLocation, ...pathPoints];
                         
-                        // Only add the destination if it's not already the last point
+                        // Ensure destination is included
                         const lastPoint = fullPath[fullPath.length - 1];
-                        if (lastPoint.lat() !== site.latitude || lastPoint.lng() !== site.longitude) {
+                        if (!lastPoint || lastPoint.lat() !== site.latitude || lastPoint.lng() !== site.longitude) {
                           fullPath.push({ lat: site.latitude, lng: site.longitude });
+                        }
+                        
+                        // Remove old polyline for this site if exists
+                        if (sitePolylines.length > sites.indexOf(site)) {
+                          sitePolylines[sites.indexOf(site)]?.setMap(null);
                         }
                         
                         const sitePolyline = new google.maps.Polyline({
@@ -522,11 +514,17 @@ export const googleMapHtml = `
                           strokeColor: '#ef4444',
                           strokeOpacity: 1,
                           strokeWeight: 6,
-                          map: map
+                          map: map,
+                          zIndex: 5  // Ensure polyline is visible
                         });
                         
-                        // Store polyline reference
-                        sitePolylines.push(sitePolyline);
+                        // Store polyline reference - update or append
+                        const siteIndex = sites.indexOf(site);
+                        if (siteIndex < sitePolylines.length) {
+                          sitePolylines[siteIndex] = sitePolyline;
+                        } else {
+                          sitePolylines.push(sitePolyline);
+                        }
                       }
                     });
                   }
