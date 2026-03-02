@@ -34,6 +34,7 @@ export default function Map({ onBack, selectedSite }: { onBack?: () => void; sel
   const searchTimeoutRef = React.useRef<any>(null);
   const streetViewIntervalRef = React.useRef<any>(null);
   const iframeReadyTimeoutRef = React.useRef<any>(null);
+  const lastSitesDataRef = React.useRef<Site[]>([]);
 
   // Fetch sites from Supabase and subscribe to real-time updates
   useEffect(() => {
@@ -113,27 +114,36 @@ export default function Map({ onBack, selectedSite }: { onBack?: () => void; sel
   // Send sites to iframe when sites data changes and iframe is ready
   useEffect(() => {
     if (sitesData.length > 0 && iframeRef.current && isIframeReady) {
-      try {
-        iframeRef.current.contentWindow.postMessage(
-          { type: 'loadSites', sites: sitesData },
-          '*'
+      // Check if sites actually changed before sending
+      const sitesChanged = sitesData.length !== lastSitesDataRef.current.length ||
+        sitesData.some((site, idx) => 
+          !lastSitesDataRef.current[idx] || lastSitesDataRef.current[idx].id !== site.id
         );
-      } catch (e) {
-        // Silently handle iframe access errors
+      
+      if (sitesChanged) {
+        try {
+          iframeRef.current.contentWindow.postMessage(
+            { type: 'loadSites', sites: sitesData },
+            '*'
+          );
+          lastSitesDataRef.current = sitesData;
+        } catch (e) {
+          // Silently handle iframe access errors
+        }
       }
     }
   }, [sitesData, isIframeReady]);
 
-  const handleSearch = (query: string) => {
+  const handleSearch = React.useCallback((query: string) => {
     if (iframeRef.current && query.trim().length > 0) {
       iframeRef.current.contentWindow.postMessage(
         { type: 'search', query: query },
         '*'
       );
     }
-  };
+  }, []);
 
-  const handleSelectResult = (location: any, address: string) => {
+  const handleSelectResult = React.useCallback((location: any, address: string) => {
     setSearchResults([]);
     setShowResults(false);
     if (iframeRef.current) {
@@ -142,7 +152,7 @@ export default function Map({ onBack, selectedSite }: { onBack?: () => void; sel
         '*'
       );
     }
-  };
+  }, []);
 
   React.useEffect(() => {
     const handleMessage = (event: MessageEvent) => {
@@ -183,16 +193,20 @@ export default function Map({ onBack, selectedSite }: { onBack?: () => void; sel
   // Remove search marker when search text is cleared and return to user location
   React.useEffect(() => {
     if (searchText.trim().length === 0 && iframeRef.current) {
-      iframeRef.current.contentWindow.postMessage(
-        { type: 'returnToUserLocation' },
-        '*'
-      );
+      try {
+        iframeRef.current.contentWindow.postMessage(
+          { type: 'returnToUserLocation' },
+          '*'
+        );
+      } catch (e) {
+        // Silently handle iframe access errors
+      }
     }
   }, [searchText]);
 
 
 
-  const handleIframeLoad = () => {
+  const handleIframeLoad = React.useCallback(() => {
     if (iframeRef.current) {
       // Clear any existing timeout
       if (iframeReadyTimeoutRef.current) {
@@ -205,15 +219,21 @@ export default function Map({ onBack, selectedSite }: { onBack?: () => void; sel
         setIsIframeReady(true);
       }, 2000);
     }
-  };
+  }, []);
 
   // Set up street view polling with proper cleanup
   React.useEffect(() => {
-    if (!iframeRef.current || !isIframeReady) return;
+    // Don't even try to check street view until iframe is ready
+    if (!isIframeReady) {
+      return;
+    }
 
+    // Check street view state once
     const checkStreetView = () => {
       try {
+        if (!iframeRef.current) return;
         const iframeDoc = iframeRef.current.contentDocument || iframeRef.current.contentWindow.document;
+        if (!iframeDoc) return;
         const streetViewActive = iframeDoc.documentElement.getAttribute('data-street-view') === 'true';
         setIsStreetViewActive(streetViewActive);
       } catch (e) {
@@ -221,16 +241,16 @@ export default function Map({ onBack, selectedSite }: { onBack?: () => void; sel
       }
     };
 
-    // Check immediately once
+    // Check immediately
     checkStreetView();
 
-    // Clear any existing interval
+    // Clear any existing interval before setting a new one
     if (streetViewIntervalRef.current) {
       clearInterval(streetViewIntervalRef.current);
     }
 
-    // Set up polling interval only once
-    streetViewIntervalRef.current = setInterval(checkStreetView, 500);
+    // Set up polling interval - only check every 1000ms to reduce CPU usage
+    streetViewIntervalRef.current = setInterval(checkStreetView, 1000);
 
     return () => {
       if (streetViewIntervalRef.current) {
