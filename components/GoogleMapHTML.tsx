@@ -35,16 +35,18 @@ export const googleMapHtml = `
           let hasUserMovedMap = false; // Track if user has manually moved the map
           let isInitialLoad = true; // Track if this is the first location update
           let userHeading = 0; // Track user's heading/direction
-          let hasUserLocationBeenSet = false; // Track if user location has been set
           let pendingSitesData = null; // Store sites to reload when user location becomes available
           let currentSitesData = null; // Store current sites data for polyline redraw
           let lastPolylineUpdate = 0; // Track last polyline update time to avoid excessive redraws
           let lastUserLocation = null; // Track last user location used for polyline
-          let minDistanceForRedraw = 50; // Minimum distance in meters to trigger polyline redraw
+          let minDistanceForRedraw = 100; // Increased from 50 to 100 meters to reduce redraws
+          let lastPositionUpdate = 0; // Track last position update to debounce
+          let locationUpdateThrottle = 1000; // Only update positions once per second
           
           // Animation time for the pulsing effect
           let animationTime = 0;
           let animationInterval = null;
+          let animationFrameId = null;
           
           // Helper function to calculate distance between two coordinates in meters
           function calculateDistance(lat1, lng1, lat2, lng2) {
@@ -58,8 +60,8 @@ export const googleMapHtml = `
             return R * c;
           }
           
-          // Function to create a custom marker using Canvas with pulsing effect
-          function createDirectionalMarker(heading, pulse = 8) {
+          // Function to create a static directional marker without pulsing
+          function createDirectionalMarker(heading) {
             const canvas = document.createElement('canvas');
             canvas.width = 40;
             canvas.height = 40;
@@ -74,33 +76,73 @@ export const googleMapHtml = `
             ctx.arc(20, 20, 18, 0, Math.PI * 2);
             ctx.fill();
             
-            // Draw inner dot with pulsing size
+            // Draw inner dot (static size)
             ctx.fillStyle = '#3b82f6';
             ctx.strokeStyle = '#ffffff';
             ctx.lineWidth = 2;
             ctx.beginPath();
-            ctx.arc(20, 20, pulse, 0, Math.PI * 2);
+            ctx.arc(20, 20, 8, 0, Math.PI * 2);
             ctx.fill();
             ctx.stroke();
             
             return canvas.toDataURL('image/png');
           }
           
-          // Start animation loop for pulsing effect
+          let pulseCircle = null;
+          
+          // Create pulsing circle overlay separate from marker
           function startPulseAnimation() {
-            if (animationInterval) clearInterval(animationInterval);
-            animationInterval = setInterval(() => {
-              animationTime += 50;
-              // Create pulsing effect: oscillate between 6 and 10 pixels
-              const pulse = 8 + 2 * Math.sin(animationTime / 1000 * Math.PI);
-              if (userMarker) {
-                userMarker.setIcon({
-                  url: createDirectionalMarker(userHeading, pulse),
-                  scaledSize: new google.maps.Size(40, 40),
-                  anchor: new google.maps.Point(20, 20)
+            // Don't start if already running
+            if (animationInterval || animationFrameId) {
+              return;
+            }
+            
+            let startTime = Date.now();
+            const updatePulse = () => {
+              const elapsed = Date.now() - startTime;
+              // Create smooth pulsing effect: oscillate between 25 and 45 meters radius
+              const radius = 35 + 10 * Math.sin((elapsed / 1500) * Math.PI);
+              const opacity = 0.4 - 0.2 * Math.cos((elapsed / 1500) * Math.PI);
+              
+              if (!pulseCircle && userLocation) {
+                // Create circle on first animation frame
+                pulseCircle = new google.maps.Circle({
+                  center: userLocation,
+                  radius: radius,
+                  map: map,
+                  fillColor: '#3b82f6',
+                  fillOpacity: opacity,
+                  strokeColor: '#3b82f6',
+                  strokeOpacity: 0.6,
+                  strokeWeight: 1
+                });
+              } else if (pulseCircle && userLocation) {
+                // Update circle position and size
+                pulseCircle.setCenter(userLocation);
+                pulseCircle.setRadius(radius);
+                pulseCircle.setOptions({
+                  fillOpacity: opacity
                 });
               }
-            }, 50);
+              
+              animationFrameId = requestAnimationFrame(updatePulse);
+            };
+            animationFrameId = requestAnimationFrame(updatePulse);
+          }
+          
+          function stopPulseAnimation() {
+            if (animationInterval) {
+              clearInterval(animationInterval);
+              animationInterval = null;
+            }
+            if (animationFrameId) {
+              cancelAnimationFrame(animationFrameId);
+              animationFrameId = null;
+            }
+            if (pulseCircle) {
+              pulseCircle.setMap(null);
+              pulseCircle = null;
+            }
           }
           
           const map = new google.maps.Map(document.getElementById('map'), {
@@ -125,6 +167,13 @@ export const googleMapHtml = `
           if (navigator.geolocation) {
             navigator.geolocation.watchPosition(
               function(position) {
+                const now = Date.now();
+                // Throttle position updates to avoid excessive marker updates and flickering
+                if (now - lastPositionUpdate < locationUpdateThrottle) {
+                  return;
+                }
+                lastPositionUpdate = now;
+                
                 const userLat = position.coords.latitude;
                 const userLng = position.coords.longitude;
                 userLocation = { lat: userLat, lng: userLng }; // Update global userLocation
@@ -145,26 +194,23 @@ export const googleMapHtml = `
                   }
                 });
                 
-                // Remove old marker if exists
-                if (userMarker) {
-                  userMarker.setMap(null);
-                }
-                
-                // Create new marker for user's location with directional indicator
-                userMarker = new google.maps.Marker({
-                  position: userLocation,
-                  map: map,
-                  title: 'Your Location',
-                  icon: {
-                    url: createDirectionalMarker(userHeading, 8),
-                    scaledSize: new google.maps.Size(40, 40),
-                    anchor: new google.maps.Point(20, 20)
-                  }
-                });
-                
-                // Start pulsing animation on first marker creation
-                if (!animationInterval) {
+                // Create marker on first location update only
+                if (!userMarker) {
+                  userMarker = new google.maps.Marker({
+                    position: userLocation,
+                    map: map,
+                    title: 'Your Location',
+                    icon: {
+                      url: createDirectionalMarker(userHeading),
+                      scaledSize: new google.maps.Size(40, 40),
+                      anchor: new google.maps.Point(20, 20)
+                    }
+                  });
+                  // Start pulsing animation only once
                   startPulseAnimation();
+                } else {
+                  // Update existing marker position without recreating it
+                  userMarker.setPosition(userLocation);
                 }
                 
                 // Center map on user location only on initial load
@@ -187,8 +233,8 @@ export const googleMapHtml = `
                 // Redraw polylines to keep them connected to current employee location
                 if (currentSitesData && currentSitesData.length > 0) {
                   const now = Date.now();
-                  // Check if enough time has passed (5 seconds instead of 2)
-                  if (now - lastPolylineUpdate > 5000) {
+                  // Check if enough time has passed (10 seconds to reduce excessive updates)
+                  if (now - lastPolylineUpdate > 10000) {
                     // Check if user has moved a significant distance to warrant redraw
                     let shouldRedraw = false;
                     
@@ -408,8 +454,11 @@ export const googleMapHtml = `
                   
                   // Calculate road distance if user location is available
                   if (userLocation) {
+                    // Capture current user location for this route calculation
+                    const currentUserLocation = { ...userLocation };
+                    
                     directionsService.route({
-                      origin: userLocation,
+                      origin: currentUserLocation,
                       destination: { lat: site.latitude, lng: site.longitude },
                       travelMode: google.maps.TravelMode.DRIVING
                     }, function(response, status) {
@@ -457,12 +506,16 @@ export const googleMapHtml = `
                         
                         // Draw route polyline for this site
                         const pathPoints = route.overview_path;
-                        // Ensure polyline connects from user location to site location
-                        const fullPath = [
-                          userLocation,
-                          ...pathPoints,
-                          { lat: site.latitude, lng: site.longitude }
-                        ];
+                        // Build accurate path from current user location through the mapped route
+                        // Ensure the polyline always starts from the current user marker and ends at the site
+                        const fullPath = [currentUserLocation, ...pathPoints];
+                        
+                        // Only add the destination if it's not already the last point
+                        const lastPoint = fullPath[fullPath.length - 1];
+                        if (lastPoint.lat() !== site.latitude || lastPoint.lng() !== site.longitude) {
+                          fullPath.push({ lat: site.latitude, lng: site.longitude });
+                        }
+                        
                         const sitePolyline = new google.maps.Polyline({
                           path: fullPath,
                           geodesic: true,
@@ -505,6 +558,11 @@ export const googleMapHtml = `
           
           // Initial check
           document.documentElement.setAttribute('data-street-view', streetViewPanorama.getVisible());
+          
+          // Cleanup on page unload
+          window.addEventListener('beforeunload', function() {
+            stopPulseAnimation();
+          });
         </script>
       </body>
     </html>
