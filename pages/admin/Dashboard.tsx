@@ -64,6 +64,7 @@ export default function AdminDashboard({ onLogout, onNavigate }: AdminDashboardP
   const [sites, setSites] = useState<Site[]>([]);
   const [employees, setEmployees] = useState<User[]>([]);
   const [activities, setActivities] = useState<Activity[]>([]);
+  const [pendingUsersCount, setPendingUsersCount] = useState(0);
 
   const windowWidth = Dimensions.get('window').width;
   const isWebView = windowWidth > 900;
@@ -78,6 +79,52 @@ export default function AdminDashboard({ onLogout, onNavigate }: AdminDashboardP
 
   useEffect(() => {
     fetchData();
+  }, []);
+
+  // Set up real-time subscription for pending users
+  useEffect(() => {
+    // Initial fetch of pending users count
+    const fetchPendingCount = async () => {
+      try {
+        const { data, error } = await supabase
+          .from('users')
+          .select('id', { count: 'exact' })
+          .eq('is_approved', false)
+          .neq('role', 'admin');
+        
+        if (error) {
+          console.error('Error fetching pending users count:', error);
+        } else {
+          setPendingUsersCount(data?.length || 0);
+        }
+      } catch (error) {
+        console.error('Error in fetchPendingCount:', error);
+      }
+    };
+
+    fetchPendingCount();
+
+    // Subscribe to real-time changes on the users table
+    const subscription = supabase
+      .channel('pending_users')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'users',
+        },
+        (payload) => {
+          // Recalculate pending users count on any user table change
+          fetchPendingCount();
+        }
+      )
+      .subscribe();
+
+    // Cleanup subscription on unmount
+    return () => {
+      subscription.unsubscribe();
+    };
   }, []);
 
   const fetchData = async () => {
@@ -178,6 +225,7 @@ export default function AdminDashboard({ onLogout, onNavigate }: AdminDashboardP
           setActiveTab={setActiveTab}
           onNavigate={onNavigate}
           onLogout={onLogout}
+          pendingUsersCount={pendingUsersCount}
         />
         <SiteManagement onNavigate={setActiveTab} />
       </View>
@@ -193,6 +241,7 @@ export default function AdminDashboard({ onLogout, onNavigate }: AdminDashboardP
           setActiveTab={setActiveTab}
           onNavigate={onNavigate}
           onLogout={onLogout}
+          pendingUsersCount={pendingUsersCount}
         />
         <ContactManagement onNavigate={setActiveTab} />
       </View>
@@ -208,6 +257,7 @@ export default function AdminDashboard({ onLogout, onNavigate }: AdminDashboardP
           setActiveTab={setActiveTab}
           onNavigate={onNavigate}
           onLogout={onLogout}
+          pendingUsersCount={pendingUsersCount}
         />
         <ActivityLogs onNavigate={setActiveTab} />
       </View>
@@ -223,6 +273,7 @@ export default function AdminDashboard({ onLogout, onNavigate }: AdminDashboardP
           setActiveTab={setActiveTab}
           onNavigate={onNavigate}
           onLogout={onLogout}
+          pendingUsersCount={pendingUsersCount}
         />
         <CompanyList onNavigate={setActiveTab} />
       </View>
@@ -238,8 +289,9 @@ export default function AdminDashboard({ onLogout, onNavigate }: AdminDashboardP
           setActiveTab={setActiveTab}
           onNavigate={onNavigate}
           onLogout={onLogout}
+          pendingUsersCount={pendingUsersCount}
         />
-        <Employees onNavigate={setActiveTab} />
+        <Employees onNavigate={setActiveTab} pendingUsersCount={pendingUsersCount} />
       </View>
     );
   }
@@ -253,6 +305,7 @@ export default function AdminDashboard({ onLogout, onNavigate }: AdminDashboardP
           setActiveTab={setActiveTab}
           onNavigate={onNavigate}
           onLogout={onLogout}
+          pendingUsersCount={pendingUsersCount}
         />
         <Settings onNavigate={setActiveTab} />
       </View>
@@ -266,6 +319,7 @@ export default function AdminDashboard({ onLogout, onNavigate }: AdminDashboardP
         setActiveTab={setActiveTab}
         onNavigate={onNavigate}
         onLogout={onLogout}
+        pendingUsersCount={pendingUsersCount}
       />
 
       {/* Main Content Area */}

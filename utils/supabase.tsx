@@ -63,6 +63,22 @@ export async function getCurrentUser() {
 	return user;
 }
 
+// Get current user's profile row from `public.users` table
+export async function getCurrentUserProfile() {
+	const { data: { user }, error: authErr } = await supabase.auth.getUser();
+	if (authErr) throw authErr;
+	if (!user || !user.id) return null;
+
+	const { data, error } = await supabase
+		.from('users')
+		.select('id, email, full_name, phone_number, profile_picture_url, role, status')
+		.eq('id', user.id)
+		.single();
+
+	if (error) throw error;
+	return data;
+}
+
 // Get all contacts for current user with user details
 export async function getUserContacts() {
 	const user = await getCurrentUser();
@@ -101,5 +117,82 @@ export async function removeContact(contactUserId: string) {
 		.delete()
 		.eq('user_id', contactUserId);
 	if (error) throw error;
+}
+
+// Upload a voice file (local URI) to the `voice_messages` storage bucket and
+// return a public URL. Caller should ensure the `voice_messages` bucket exists.
+export async function uploadVoiceFile(uri: string) {
+	if (!uri) throw new Error('uri required');
+	const resp = await fetch(uri);
+	const blob = await resp.blob();
+	const ext = (uri.split('.').pop() || '').split('?')[0] || 'm4a';
+	const name = `voice_${Date.now()}.${ext}`;
+	const contentType = blob.type || `audio/${ext}`;
+	const { data, error } = await supabase.storage
+		.from('voice_messages')
+		.upload(name, blob, { upsert: true, contentType });
+	if (error) throw error;
+
+	const { data: urlData } = supabase.storage.from('voice_messages').getPublicUrl(name);
+	return urlData?.publicUrl || null;
+}
+
+// Insert a row into `transcribe_messages` linking the uploaded file to the
+// current authenticated user. Returns the inserted row.
+export async function addTranscribeMessage(fileUrl: string, transcription: string | null = null, durationMs?: number) {
+	const { data: { user } } = await supabase.auth.getUser();
+	if (!user || !user.id) throw new Error('not authenticated');
+
+	const payload: any = {
+		user_id: user.id,
+		file_url: fileUrl,
+		transcription: transcription || null,
+	};
+	if (typeof durationMs === 'number') payload.duration_ms = durationMs;
+
+	const { data, error } = await supabase
+		.from('transcribe_messages')
+		.insert([payload])
+		.select()
+		.single();
+	if (error) throw error;
+	return data;
+}
+
+// Get pending (unapproved) users for admin approval
+export async function getPendingUsers() {
+	const { data, error } = await supabase
+		.from('users')
+		.select('*')
+		.eq('is_approved', false)
+		.neq('role', 'admin')
+		.order('created_at', { ascending: false });
+	if (error) throw error;
+	return data;
+}
+
+// Approve a user by ID
+export async function approveUser(userId: string) {
+	const { data, error } = await supabase
+		.from('users')
+		.update({ is_approved: true })
+		.eq('id', userId)
+		.select()
+		.single();
+	if (error) throw error;
+	return data;
+}
+
+// Delete a user by ID (removes from users table)
+export async function deleteUserAccount(userId: string) {
+	const { error } = await supabase
+		.from('users')
+		.delete()
+		.eq('id', userId);
+	if (error) throw error;
+	
+	// Note: Auth user deletion requires admin access. 
+	// Admins should manually delete from auth.users in Supabase dashboard if needed,
+	// or use a server-side function with admin privileges.
 }
 

@@ -7,9 +7,10 @@ interface AdminNavbarProps {
   setActiveTab: (tab: 'dashboard' | 'siteManagement' | 'walkieTalkie' | 'activityLogs' | 'companyList' | 'employee' | 'settings') => void;
   onNavigate?: (page: string) => void;
   onLogout: () => void;
+  pendingUsersCount?: number;
 }
 
-export default function AdminNavbar({ activeTab, setActiveTab, onNavigate, onLogout }: AdminNavbarProps) {
+export default function AdminNavbar({ activeTab, setActiveTab, onNavigate, onLogout, pendingUsersCount = 0 }: AdminNavbarProps) {
   return (
     <View className="hidden lg:flex w-72 bg-white border-r border-stone-200">
       {/* Header */}
@@ -44,11 +45,18 @@ export default function AdminNavbar({ activeTab, setActiveTab, onNavigate, onLog
         ].map((item) => (
           <TouchableOpacity 
             key={item.key} 
-            className={`flex-row items-center px-4 py-3 mb-1 rounded-xl ${activeTab === item.key ? 'bg-emerald-50' : ''}`}
+            className={`flex-row items-center justify-between px-4 py-3 mb-1 rounded-xl ${activeTab === item.key ? 'bg-emerald-50' : ''}`}
             onPress={() => setActiveTab(item.key as any)}
           >
-            <Ionicons name={item.icon as any} size={20} color={activeTab === item.key ? '#10b981' : '#78716c'} />
-            <Text className={`ml-3 font-medium ${activeTab === item.key ? 'text-emerald-700' : 'text-stone-700'}`}>{item.label}</Text>
+            <View className="flex-row items-center">
+              <Ionicons name={item.icon as any} size={20} color={activeTab === item.key ? '#10b981' : '#78716c'} />
+              <Text className={`ml-3 font-medium ${activeTab === item.key ? 'text-emerald-700' : 'text-stone-700'}`}>{item.label}</Text>
+            </View>
+            {item.key === 'employee' && pendingUsersCount > 0 && (
+              <View className="bg-red-500 rounded-full w-6 h-6 items-center justify-center">
+                <Text className="text-white text-xs font-bold">{pendingUsersCount > 99 ? '99+' : pendingUsersCount}</Text>
+              </View>
+            )}
           </TouchableOpacity>
         ))}
 

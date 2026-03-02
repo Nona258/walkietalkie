@@ -9,6 +9,7 @@ import {
   ActivityIndicator,
   KeyboardAvoidingView,
   Platform,
+  Modal,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import supabase from "../utils/supabase";
@@ -34,6 +35,7 @@ export default function SignUp({ onNavigateToSignIn, onSignUpSuccess }: SignUpPr
   const [showEulaModal, setShowEulaModal] = useState(false);
   const [eulaLoading, setEulaLoading] = useState(false);
   const [signedUpUser, setSignedUpUser] = useState<any>(null);
+  const [showApprovalWaitingModal, setShowApprovalWaitingModal] = useState(false);
 
   const [alertVisible, setAlertVisible] = useState(false);
   const [alertConfig, setAlertConfig] = useState({
@@ -79,13 +81,27 @@ export default function SignUp({ onNavigateToSignIn, onSignUpSuccess }: SignUpPr
       });
 
       if (error) {
-        setAlertConfig({
-          title: "Sign Up Error",
-          message: error.message,
-          type: "error",
-          confirmText: "OK",
-          onConfirm: () => setAlertVisible(false),
-        });
+        // Check for specific error cases
+        if (error.message && error.message.includes("already registered")) {
+          setAlertConfig({
+            title: "Email Already Registered",
+            message: "This email is already registered. Please sign in with your existing account instead.",
+            type: "warning",
+            confirmText: "Go to Sign In",
+            onConfirm: () => {
+              setAlertVisible(false);
+              onNavigateToSignIn();
+            },
+          });
+        } else {
+          setAlertConfig({
+            title: "Sign Up Error",
+            message: error.message || "Failed to create account. Please try again.",
+            type: "error",
+            confirmText: "OK",
+            onConfirm: () => setAlertVisible(false),
+          });
+        }
         setAlertVisible(true);
         return;
       }
@@ -104,6 +120,7 @@ export default function SignUp({ onNavigateToSignIn, onSignUpSuccess }: SignUpPr
           email: email.trim(),
           full_name: fullName.trim(),
           phone_number: phoneNum,
+          is_approved: false,
         }, { 
           onConflict: 'id' 
         });
@@ -112,18 +129,20 @@ export default function SignUp({ onNavigateToSignIn, onSignUpSuccess }: SignUpPr
         throw insertError;
       }
 
-      // Show EULA modal after successful signup (user stays signed in)
+      // Show approval waiting modal instead of EULA modal
       setSignedUpUser(data.user);
-      setShowEulaModal(true);
+      setShowApprovalWaitingModal(true);
     } catch (err: any) {
+      const errorMessage = err.message || "Something went wrong. Please try again.";
       setAlertConfig({
         title: "Error",
-        message: err.message || "Something went wrong.",
+        message: errorMessage,
         type: "error",
         confirmText: "OK",
         onConfirm: () => setAlertVisible(false),
       });
       setAlertVisible(true);
+      console.error('Sign up error:', err);
     } finally {
       setLoading(false);
     }
@@ -184,6 +203,29 @@ export default function SignUp({ onNavigateToSignIn, onSignUpSuccess }: SignUpPr
       console.error('EULA accept error:', err);
     } finally {
       setEulaLoading(false);
+    }
+  };
+
+  const handleApprovalWaitingClose = async () => {
+    try {
+      // Sign out the user since they're waiting for approval
+      await signOutUser(signedUpUser?.id);
+      
+      setShowApprovalWaitingModal(false);
+      setSignedUpUser(null);
+      
+      // Reset form
+      setFullName('');
+      setEmail('');
+      setPhoneNumber('');
+      setPassword('');
+      setConfirmPassword('');
+      
+      // Navigate to sign in
+      onNavigateToSignIn();
+    } catch (err: any) {
+      console.error('Error closing approval modal:', err);
+      onNavigateToSignIn();
     }
   };
 
@@ -372,6 +414,34 @@ export default function SignUp({ onNavigateToSignIn, onSignUpSuccess }: SignUpPr
         onDecline={handleEulaDecline}
         loading={eulaLoading}
       />
+
+      {/* Approval Waiting Modal */}
+      <Modal visible={showApprovalWaitingModal} transparent animationType="fade">
+        <View className="flex-1 bg-black/50 justify-center items-center px-6">
+          <View className="bg-white rounded-2xl w-full max-w-sm p-8 items-center">
+            <View className="mb-4">
+              <Ionicons name="checkmark-circle-outline" size={56} color="#10b981" />
+            </View>
+            <Text className="text-2xl font-bold text-stone-900 text-center mb-3">
+              Account Created
+            </Text>
+            <Text className="text-stone-600 text-center mb-6 leading-6">
+              Your account has been created successfully. Please wait for the approval of the admin before you can access the app.
+            </Text>
+            <View className="w-full bg-yellow-50 border border-yellow-200 rounded-xl px-4 py-3 mb-6">
+              <Text className="text-yellow-800 text-xs font-semibold text-center">
+                ⏱️ You will be notified once your account is approved
+              </Text>
+            </View>
+            <TouchableOpacity
+              className="bg-[#10b981] rounded-xl w-full py-3 items-center"
+              onPress={handleApprovalWaitingClose}
+            >
+              <Text className="text-white font-bold">Go to Sign In</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }

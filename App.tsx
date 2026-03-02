@@ -22,7 +22,6 @@ export default function App() {
   const [currentPage, setCurrentPage] = useState<'signin' | 'signup' | 'dashboard'>('signin');
   const [activeTab, setActiveTab] = useState<string>('dashboard');
   const [selectedContact, setSelectedContact] = useState<any>(null);
-  const [selectedSite, setSelectedSite] = useState<any>(null);
   const [user, setUser] = useState<any>(null);
   const [userRole, setUserRole] = useState<string>('employee');
   const [loading, setLoading] = useState(true);
@@ -34,36 +33,61 @@ export default function App() {
       try {
         const { data } = await supabase.auth.getSession();
         if (data?.session?.user) {
-          // Check if user has accepted EULA
+          // Verify user exists in database
           try {
-            const eulaAccepted = await hasAcceptedEula(data.session.user.id);
+            const { data: userData, error: userError } = await supabase
+              .from('users')
+              .select('id')
+              .eq('id', data.session.user.id)
+              .single();
             
-            if (eulaAccepted) {
-              // Fetch user role
-              const userRole = data.session.user.user_metadata?.role || 'employee';
+            if (userError || !userData) {
+              // User doesn't exist in database, sign them out
+              await supabase.auth.signOut();
+              // Clear Supabase cache
+              await AsyncStorage.clear();
+              setCurrentPage('signin');
+              setLoading(false);
+              return;
+            }
+
+            // Check if user has accepted EULA
+            try {
+              const eulaAccepted = await hasAcceptedEula(data.session.user.id);
               
-              setUser(data.session.user);
-              setUserRole(userRole);
-              setCurrentPage('dashboard');
-              
-              // Restore the previous active tab (only for non-admin users)
-              if (userRole !== 'admin') {
-                const savedTab = await AsyncStorage.getItem('activeTab');
-                if (savedTab && savedTab !== 'settings') {
-                  setActiveTab(savedTab);
-                } else {
-                  setActiveTab('dashboard');
+              if (eulaAccepted) {
+                // Fetch user role
+                const userRole = data.session.user.user_metadata?.role || 'employee';
+                
+                setUser(data.session.user);
+                setUserRole(userRole);
+                setCurrentPage('dashboard');
+                
+                // Restore the previous active tab (only for non-admin users)
+                if (userRole !== 'admin') {
+                  const savedTab = await AsyncStorage.getItem('activeTab');
+                  if (savedTab && savedTab !== 'settings') {
+                    setActiveTab(savedTab);
+                  } else {
+                    setActiveTab('dashboard');
+                  }
                 }
+              } else {
+                // User hasn't accepted EULA yet, stay on signin to show modal
+                setUser(data.session.user);
+                setCurrentPage('signin');
               }
-            } else {
-              // User hasn't accepted EULA yet, stay on signin to show modal
+            } catch (eulaError) {
+              // If EULA check fails, assume not accepted and show signin
+              console.error('Error checking EULA:', eulaError);
               setUser(data.session.user);
               setCurrentPage('signin');
             }
-          } catch (eulaError) {
-            // If EULA check fails, assume not accepted and show signin
-            console.error('Error checking EULA:', eulaError);
-            setUser(data.session.user);
+          } catch (userCheckError) {
+            console.error('Error checking user in database:', userCheckError);
+            // Sign out the user if we can't verify them
+            await supabase.auth.signOut();
+            await AsyncStorage.clear();
             setCurrentPage('signin');
           }
         } else {
@@ -164,15 +188,9 @@ export default function App() {
           ) : activeTab === 'contacts' ? (
             <Contacts onContactSelected={setSelectedContact} />
           ) : activeTab === 'sites' ? (
-            <Sites onMapPress={() => setActiveTab('map')} onSiteMapPress={(site) => {
-              setSelectedSite(site);
-              setActiveTab('map');
-            }} />
+            <Sites onMapPress={() => setActiveTab('map')} />
           ) : activeTab === 'map' ? (
-            <Map onBack={() => {
-              setSelectedSite(null);
-              setActiveTab('sites');
-            }} selectedSite={selectedSite} />
+            <Map onBack={() => setActiveTab('sites')} />
           ) : activeTab === 'logs' ? (
             <Logs />
           ) : activeTab === 'settings' ? (
