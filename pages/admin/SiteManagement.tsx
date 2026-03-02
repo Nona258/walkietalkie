@@ -118,8 +118,34 @@ export default function SiteManagement({ onNavigate }: SiteManagementProps) {
     }
   };
 
+  // Real-time subscription to sites table
   useEffect(() => {
     fetchSites();
+
+    // Subscribe to real-time changes using modern Supabase API
+    const channel = supabase
+      .channel('public:sites')
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'sites' },
+        (payload: any) => {
+          // Update sites list in real-time
+          if (payload.eventType === 'INSERT') {
+            setSites(prev => [payload.new, ...prev]);
+          } else if (payload.eventType === 'UPDATE') {
+            setSites(prev =>
+              prev.map(site => (site.id === payload.new.id ? payload.new : site))
+            );
+          } else if (payload.eventType === 'DELETE') {
+            setSites(prev => prev.filter(site => site.id !== payload.old.id));
+          }
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
   }, []);
 
   // Initialize Google Maps for add modal
@@ -155,7 +181,16 @@ export default function SiteManagement({ onNavigate }: SiteManagementProps) {
 
       const initMap = () => {
         const g = (window as any).google;
-        if (!g || !g.maps || mapRef.current) return;
+        if (!g || !g.maps) return;
+
+        // Clear existing map
+        if (mapRef.current) {
+          mapRef.current = null;
+        }
+        if (markerRef.current) {
+          try { markerRef.current.setMap(null); } catch (e) {}
+          markerRef.current = null;
+        }
 
         const iliganLat = 8.2280;
         const iliganLng = 124.2452;
@@ -212,9 +247,46 @@ export default function SiteManagement({ onNavigate }: SiteManagementProps) {
   // Initialize edit map
   useEffect(() => {
     if (isEditModalOpen && selectedSite && typeof window !== 'undefined') {
+      const API_KEY = 'AIzaSyAq58TD9PputxnK8ZO9jRUX8KW7bTuPTPQ';
+
+      const loadGoogleMaps = () => {
+        if ((window as any).google && (window as any).google.maps) {
+          initEditMap();
+          return;
+        }
+
+        const scriptId = 'gmaps-script';
+        if (document.getElementById(scriptId)) {
+          const check = setInterval(() => {
+            if ((window as any).google && (window as any).google.maps) {
+              clearInterval(check);
+              initEditMap();
+            }
+          }, 100);
+          return;
+        }
+
+        const script = document.createElement('script');
+        script.id = scriptId;
+        script.src = `https://maps.googleapis.com/maps/api/js?key=${API_KEY}&libraries=places`;
+        script.async = true;
+        script.defer = true;
+        script.onload = () => initEditMap();
+        document.head.appendChild(script);
+      };
+
       const initEditMap = () => {
         const g = (window as any).google;
-        if (!g || !g.maps || editMapRef.current) return;
+        if (!g || !g.maps) return;
+
+        // Clear existing map
+        if (editMapRef.current) {
+          editMapRef.current = null;
+        }
+        if (editMarkerRef.current) {
+          try { editMarkerRef.current.setMap(null); } catch { }
+          editMarkerRef.current = null;
+        }
 
         const lat = selectedSite.latitude || 8.2280;
         const lng = selectedSite.longitude || 124.2452;
@@ -251,16 +323,7 @@ export default function SiteManagement({ onNavigate }: SiteManagementProps) {
         editMarkerRef.current = marker;
       };
 
-      if ((window as any).google && (window as any).google.maps) {
-        setTimeout(initEditMap, 100);
-      } else {
-        const check = setInterval(() => {
-          if ((window as any).google && (window as any).google.maps) {
-            clearInterval(check);
-            initEditMap();
-          }
-        }, 100);
-      }
+      loadGoogleMaps();
     }
 
     return () => {
@@ -279,7 +342,16 @@ export default function SiteManagement({ onNavigate }: SiteManagementProps) {
     if (isViewLocationOpen && selectedSite && typeof window !== 'undefined') {
       const initViewMap = () => {
         const g = (window as any).google;
-        if (!g || !g.maps || viewMapRef.current) return;
+        if (!g || !g.maps) return;
+
+        // Clear existing map
+        if (viewMapRef.current) {
+          viewMapRef.current = null;
+        }
+        if (viewMarkerRef.current) {
+          try { viewMarkerRef.current.setMap(null); } catch { }
+          viewMarkerRef.current = null;
+        }
 
         const lat = selectedSite.latitude || 8.2280;
         const lng = selectedSite.longitude || 124.2452;
@@ -477,14 +549,14 @@ export default function SiteManagement({ onNavigate }: SiteManagementProps) {
       showAlert('Success!', `${siteName.trim()} has been added successfully`, 'success');
       resetForm();
       setIsAddModalOpen(false);
-      fetchSites();
+      // Real-time subscription will handle the update automatically
     }
   };
 
   const handleEditSite = (site: Site) => {
     setSelectedSite(site);
     setSiteName(site.name);
-    setCompany(site.company || '');
+    setCompany(site.company_id || '');
     setBranchId(site.branch_id || '');
     setLatitude(site.latitude || null);
     setLongitude(site.longitude || null);
@@ -521,7 +593,7 @@ export default function SiteManagement({ onNavigate }: SiteManagementProps) {
       showAlert('Updated!', `${siteName.trim()} has been updated successfully`, 'success');
       resetForm();
       setIsEditModalOpen(false);
-      fetchSites();
+      // Real-time subscription will handle the update automatically
     }
   };
 
@@ -554,7 +626,7 @@ export default function SiteManagement({ onNavigate }: SiteManagementProps) {
       showAlert('Delete Error', error.message, 'error');
     } else {
       showAlert('Deleted', `${site.name} has been removed successfully`, 'success');
-      fetchSites();
+      // Real-time subscription will handle the update automatically
     }
   };
 
@@ -1191,11 +1263,13 @@ export default function SiteManagement({ onNavigate }: SiteManagementProps) {
                     onBlur={() => handleFieldBlur('branch_id', branch_id)}
                   >
                     <option value="">Select a branch</option>
-                    {branchOptions.map(opt => (
-                      <option key={opt.id} value={opt.id}>
-                        {opt.name}
-                      </option>
-                    ))}
+                    {branchOptions
+                      .filter(opt => !company || String(opt.company_id) === String(company))
+                      .map(opt => (
+                        <option key={opt.id} value={opt.id}>
+                          {opt.name}
+                        </option>
+                      ))}
                   </select>
                 </View>
                 {touched.branch_id && errors.branch_id && (
