@@ -2,7 +2,8 @@ import React, { useState, useRef, useEffect } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, Modal, Pressable, TextInput } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import '../../global.css';
-import { supabase, addContact } from '../../utils/supabase';
+import supabase, { addContact, getSites } from '../../utils/supabase';
+import SweetAlertModal from '../../components/SweetAlertModal';
 
 interface ContactManagementProps {
   onNavigate: (page: 'dashboard' | 'siteManagement' | 'walkieTalkie' | 'activityLogs' | 'companyList' | 'employee' | 'settings') => void;
@@ -42,6 +43,12 @@ interface User {
   color: string;
 }
 
+interface SiteOption {
+  id: string;
+  name: string;
+  status?: string;
+}
+
 // Helper function to generate initials
 const getInitials = (name: string | null): string => {
   if (!name) return '??';
@@ -52,10 +59,15 @@ const getInitials = (name: string | null): string => {
   return name.substring(0, 2).toUpperCase();
 };
 
-// Helper function to generate random color
+  // Helper function to generate random color
 const getRandomColor = (): string => {
   const colors = ['#99f6e4', '#fde68a', '#bfdbfe', '#fda4af', '#c7d2fe', '#a7f3d0', '#fcd34d'];
   return colors[Math.floor(Math.random() * colors.length)];
+};
+
+// Helper function to pad a number with leading zeros
+const padZero = (num: number, length: number = 2): string => {
+  return String(num).length >= length ? String(num) : '0'.repeat(length - String(num).length) + num;
 };
 
 export default function ContactManagement({ onNavigate }: ContactManagementProps) {
@@ -77,6 +89,18 @@ export default function ContactManagement({ onNavigate }: ContactManagementProps
   const [groupLeaderId, setGroupLeaderId] = useState<string | null>(null);
   const [employeeSearch, setEmployeeSearch] = useState('');
   const [showContactsModal, setShowContactsModal] = useState(false);
+
+  // Sites for assigning a group to a specific site
+  const [sites, setSites] = useState<SiteOption[]>([]);
+  const [isLoadingSites, setIsLoadingSites] = useState(false);
+  const [selectedSiteId, setSelectedSiteId] = useState<string | null>(null);
+  const [siteSearch, setSiteSearch] = useState('');
+  const [takenSiteIds, setTakenSiteIds] = useState<string[]>([]);
+  const [takenLeaderIds, setTakenLeaderIds] = useState<string[]>([]);
+
+  // Wizard step state for Create Group modal (1 = name+site, 2 = leader)
+  const [groupStep, setGroupStep] = useState<1 | 2>(1);
+  const [leaderSearch, setLeaderSearch] = useState('');
 	
   // Database users state
   const [users, setUsers] = useState<User[]>([]);
@@ -85,12 +109,83 @@ export default function ContactManagement({ onNavigate }: ContactManagementProps
   // Authenticated user id
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
 
-  const recordingInterval = useRef<NodeJS.Timeout | null>(null);
+  const recordingInterval = useRef<ReturnType<typeof setInterval> | null>(null);
   const mediaRecorderRef = useRef<any>(null);
   const audioChunksRef = useRef<any[]>([]);
   const audioPlayerRef = useRef<HTMLAudioElement | null>(null);
   const [currentlyPlayingId, setCurrentlyPlayingId] = useState<string | null>(null);
   const messagesChannelRef = useRef<any>(null);
+
+  // Sweet alert state
+  const [sweetAlertVisible, setSweetAlertVisible] = useState(false);
+  const [sweetAlertTitle, setSweetAlertTitle] = useState('');
+  const [sweetAlertMessage, setSweetAlertMessage] = useState('');
+  const [sweetAlertType, setSweetAlertType] = useState<'success' | 'error' | 'warning' | 'info'>('success');
+
+  const showSweetAlert = (opts: { title: string; message: string; type?: 'success' | 'error' | 'warning' | 'info' }) => {
+    setSweetAlertTitle(opts.title);
+    setSweetAlertMessage(opts.message);
+    setSweetAlertType(opts.type || 'success');
+    setSweetAlertVisible(true);
+  };
+
+  const resolveActivityActor = async (): Promise<{ user_name: string; initials: string }> => {
+    try {
+      let meId = currentUserId;
+      if (!meId) {
+        const { data, error } = await supabase.auth.getUser();
+        if (!error && data?.user?.id) {
+          meId = data.user.id;
+          setCurrentUserId(meId);
+        }
+      }
+
+      if (meId) {
+        const { data: meRow, error: meError } = await supabase
+          .from('users')
+          .select('full_name, email')
+          .eq('id', meId)
+          .single();
+
+        if (!meError && meRow) {
+          const name = (meRow as any).full_name || (meRow as any).email || 'Admin User';
+          return { user_name: name, initials: getInitials(name) };
+        }
+      }
+    } catch (e) {
+      console.error('Failed to resolve activity actor:', e);
+    }
+
+    return { user_name: 'Admin User', initials: 'AD' };
+  };
+
+  const insertActivityLog = async (opts: {
+    action: string;
+    description?: string | null;
+    location?: string | null;
+    type?: string | null;
+    color?: string | null;
+    icon?: string | null;
+  }) => {
+    try {
+      const actor = await resolveActivityActor();
+      const payload = {
+        user_name: actor.user_name,
+        initials: actor.initials,
+        action: opts.action,
+        description: opts.description || null,
+        location: opts.location ?? 'Contact Management',
+        type: opts.type || 'system',
+        color: opts.color || '#d1fae5',
+        icon: opts.icon || 'notifications-outline',
+      };
+
+      const { error } = await supabase.from('activity_logs').insert([payload]);
+      if (error) console.error('Failed to insert activity log:', error);
+    } catch (e) {
+      console.error('Failed to insert activity log:', e);
+    }
+  };
 
   // Map DB row to UI Message
   const mapRowToMessage = (row: any): Message => {
@@ -99,7 +194,7 @@ export default function ContactManagement({ onNavigate }: ContactManagementProps
     const totalSeconds = durationMs !== null ? Math.round(durationMs / 1000) : null;
     const mins = totalSeconds !== null ? Math.floor(totalSeconds / 60) : 0;
     const secs = totalSeconds !== null ? totalSeconds % 60 : 0;
-    const durationStr = totalSeconds !== null ? `${mins}:${secs.toString().padStart(2, '0')}` : undefined;
+    const durationStr = totalSeconds !== null ? `${mins}:${padZero(secs)}` : undefined;
 
     const hasAudio = typeof row.file_url === 'string' && row.file_url.length > 0;
     const isVoice = !!hasAudio;
@@ -124,7 +219,7 @@ export default function ContactManagement({ onNavigate }: ContactManagementProps
     const totalSeconds = durationMs !== null ? Math.round(durationMs / 1000) : null;
     const mins = totalSeconds !== null ? Math.floor(totalSeconds / 60) : 0;
     const secs = totalSeconds !== null ? totalSeconds % 60 : 0;
-    const durationStr = totalSeconds !== null ? `${mins}:${secs.toString().padStart(2, '0')}` : undefined;
+    const durationStr = totalSeconds !== null ? `${mins}:${padZero(secs)}` : undefined;
 
     const hasAudio = typeof row.file_url === 'string' && row.file_url.length > 0;
     const isVoice = !!hasAudio;
@@ -301,7 +396,7 @@ export default function ContactManagement({ onNavigate }: ContactManagementProps
         id: user.id,
         email: user.email,
         full_name: user.full_name,
-        role: user.role,
+        role: typeof user.role === 'string' ? user.role : '',
         is_active: user.status !== 'inactive',
         initials: getInitials(user.full_name),
         color: getRandomColor(),
@@ -311,6 +406,67 @@ export default function ContactManagement({ onNavigate }: ContactManagementProps
       console.error('Error fetching users:', e);
     } finally {
       setIsLoadingUsers(false);
+    }
+  };
+
+  const fetchSitesForGroups = async () => {
+    setIsLoadingSites(true);
+    try {
+      const { data: takenRows, error: takenError } = await supabase
+        .from('groups')
+        .select('site_id, leader_id');
+
+      if (takenError) {
+        console.error('Error fetching taken site ids:', takenError);
+      }
+
+      const takenSites = Array.from(
+        new Set(
+          (takenRows || [])
+            .map((r: any) => (r?.site_id ? String(r.site_id) : null))
+            .filter((v: string | null): v is string => !!v)
+        )
+      ) as string[];
+      setTakenSiteIds(takenSites);
+
+      const takenLeaders: string[] = Array.from(
+        new Set(
+          (takenRows || [])
+            .map((r: any) => (r?.leader_id ? String(r.leader_id) : null))
+            .filter((v: string | null): v is string => !!v)
+        )
+      );
+      setTakenLeaderIds(takenLeaders);
+
+      const data = await getSites();
+      const mapped: SiteOption[] = (data || []).map((row: any) => ({
+        id: row.id,
+        name: row.name || 'Unnamed site',
+        status: row.status,
+      }));
+      setSites(mapped);
+
+      // If current selection becomes taken (race), clear it.
+      setSelectedSiteId(prev => {
+        if (!prev) return prev;
+        return takenSites.indexOf(prev) !== -1 ? null : prev;
+      });
+
+      setGroupLeaderId(prev => {
+        if (!prev) return prev;
+        return takenLeaders.indexOf(prev) !== -1 ? null : prev;
+      });
+      setSelectedMembers(prev => {
+        if (prev.length !== 1) return prev;
+        return takenLeaders.indexOf(prev[0]) !== -1 ? [] : prev;
+      });
+    } catch (e) {
+      console.error('Error fetching sites for groups:', e);
+      setSites([]);
+      setTakenSiteIds([]);
+      setTakenLeaderIds([]);
+    } finally {
+      setIsLoadingSites(false);
     }
   };
 
@@ -498,10 +654,11 @@ export default function ContactManagement({ onNavigate }: ContactManagementProps
               : await saveMessageToDb(baseMessage);
 
             if (dbRow) {
-              setMessagesList(prev => [
-                ...prev,
-                selectedContact?.isGroup ? mapGroupRowToMessage(dbRow) : mapRowToMessage(dbRow),
-              ]);
+              const mapped = selectedContact?.isGroup ? mapGroupRowToMessage(dbRow) : mapRowToMessage(dbRow);
+              setMessagesList(prev => {
+                if (prev.some(m => m.id === mapped.id)) return prev;
+                return [...prev, mapped];
+              });
             }
           } catch (e) {
             console.error('Failed to finalize recording:', e);
@@ -545,13 +702,17 @@ export default function ContactManagement({ onNavigate }: ContactManagementProps
           : await saveMessageToDb(localMessage);
 
         if (dbRow) {
-          setMessagesList(prev =>
-            prev.map(m =>
-              m.id === localMessage.id
-                ? (selectedContact?.isGroup ? mapGroupRowToMessage(dbRow) : mapRowToMessage(dbRow))
-                : m
-            )
-          );
+          const mapped = selectedContact?.isGroup ? mapGroupRowToMessage(dbRow) : mapRowToMessage(dbRow);
+          setMessagesList(prev => {
+            const replaced = prev.map(m => (m.id === localMessage.id ? mapped : m));
+
+            const seen = new Set<string>();
+            return replaced.filter(m => {
+              if (seen.has(m.id)) return false;
+              seen.add(m.id);
+              return true;
+            });
+          });
         }
       } catch (e) {
         console.error('Failed to send message:', e);
@@ -733,7 +894,7 @@ export default function ContactManagement({ onNavigate }: ContactManagementProps
   const formatRecordingTime = (seconds: number) => {
     const mins = Math.floor(seconds / 60);
     const secs = seconds % 60;
-    return `${mins}:${secs.toString().padStart(2, '0')}`;
+    return `${mins}:${padZero(secs)}`;
   };
 
   const toggleMemberSelection = (userId: string) => {
@@ -752,7 +913,12 @@ export default function ContactManagement({ onNavigate }: ContactManagementProps
     setSelectedMembers([]);
     setGroupName('');
     setGroupLeaderId(null);
+    setSelectedSiteId(null);
+    setSiteSearch('');
+    setLeaderSearch('');
+    setGroupStep(1);
     fetchUsers();
+    fetchSitesForGroups();
     setShowCreateGroupModal(true);
   };
 
@@ -767,11 +933,36 @@ export default function ContactManagement({ onNavigate }: ContactManagementProps
     contact.name.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
-  const filteredUsers = users.filter(user =>
-    (user.full_name?.toLowerCase().includes(employeeSearch.toLowerCase()) || false) ||
-    user.email.toLowerCase().includes(employeeSearch.toLowerCase()) ||
-    user.role.toLowerCase().includes(employeeSearch.toLowerCase())
-  );
+  const isAdminUser = (user: User) => {
+    const role = (user.role || '').toLowerCase().trim();
+    return role === 'admin' || role === 'administrator' || role.includes('admin');
+  };
+
+  const filteredUsers = users.filter(user => {
+    if (isAdminUser(user)) return false;
+    const q = employeeSearch.toLowerCase();
+    return (
+      (user.full_name?.toLowerCase().includes(q) || false) ||
+      user.email.toLowerCase().includes(q) ||
+      (user.role || '').toLowerCase().includes(q)
+    );
+  });
+
+  const filteredSitesForModal = sites.filter(site => {
+    const matchesSearch = site.name.toLowerCase().includes(siteSearch.toLowerCase());
+    const isTaken = takenSiteIds.indexOf(site.id) !== -1;
+    return matchesSearch && !isTaken;
+  });
+
+  const filteredLeaders = users.filter(user => {
+    if (isAdminUser(user)) return false;
+    if (takenLeaderIds.indexOf(user.id) !== -1) return false;
+    const q = leaderSearch.toLowerCase();
+    return (
+      (user.full_name?.toLowerCase().indexOf(q) !== -1 || false) ||
+      user.email.toLowerCase().indexOf(q) !== -1
+    );
+  });
 
   return (
     <View className="flex-1 flex-row bg-stone-50">
@@ -1009,183 +1200,318 @@ export default function ContactManagement({ onNavigate }: ContactManagementProps
         </Pressable>
       </Modal>
 
-      {/* Create Group Modal */}
+      {/* Create Group Modal — 2-step wizard */}
       <Modal visible={showCreateGroupModal} transparent animationType="fade">
         <Pressable
           className="flex-1 bg-black/20 items-center justify-center p-4"
           onPress={() => setShowCreateGroupModal(false)}
         >
           <Pressable onPress={e => e.stopPropagation()}>
-            <View className="w-96 bg-white rounded-2xl p-6 max-h-96">
+            <View className="w-96 bg-white rounded-2xl p-6">
+
+              {/* Header (match Add Contacts modal) */}
               <View className="flex-row items-center justify-between mb-4">
-                <Text className="font-bold text-lg">Create Group</Text>
+                <View>
+                  <Text className="font-bold text-lg">
+                    {groupStep === 1 ? 'Create Group' : 'Select Leader'}
+                  </Text>
+                  <Text className="text-xs text-stone-500 mt-0.5">
+                    {groupStep === 1 ? 'Step 1 of 2 — Name & site' : 'Step 2 of 2 — Group leader'}
+                  </Text>
+                </View>
                 <TouchableOpacity
                   onPress={() => {
                     setShowCreateGroupModal(false);
                     setGroupName('');
                     setSelectedMembers([]);
+                    setSelectedSiteId(null);
+                    setLeaderSearch('');
+                    setSiteSearch('');
+                    setGroupLeaderId(null);
+                    setGroupStep(1);
                   }}
                 >
                   <Ionicons name="close" size={22} color="#6b7280" />
                 </TouchableOpacity>
               </View>
-              <View className="mb-4">
-                <Text className="text-xs font-semibold text-stone-700 mb-1">Group Name</Text>
-                <TextInput
-                  className="border border-stone-300 rounded-lg px-3 py-2 text-sm"
-                  placeholder="Enter group name"
-                  placeholderTextColor="#a8a29e"
-                  value={groupName}
-                  onChangeText={setGroupName}
-                />
-              </View>
-              <Text className="text-xs font-semibold text-stone-700 mb-2">Members (tap to select leader)</Text>
-              <ScrollView className="max-h-56 mb-4">
-                {filteredUsers.map(user => (
-                  <TouchableOpacity
-                    key={user.id}
-                    className={`flex-row items-center p-2 mb-1 rounded-lg border ${
-                      selectedMembers.includes(user.id)
-                        ? 'bg-emerald-50 border-emerald-300'
-                        : 'bg-stone-50 border-stone-200'
-                    }`}
-                    onPress={() => toggleMemberSelection(user.id)}
-                  >
-                    <View
-                      className="w-8 h-8 rounded-full items-center justify-center mr-3"
-                      style={{ backgroundColor: user.color }}
-                    >
-                      <Text className="text-xs font-bold text-stone-800">{user.initials}</Text>
-                    </View>
-                    <View className="flex-1">
-                      <Text className="text-sm font-semibold text-stone-900">
-                        {user.full_name || 'Unnamed'}
-                      </Text>
-                      <Text className="text-[11px] text-stone-500">{user.email}</Text>
-                    </View>
-                    {selectedMembers.includes(user.id) && (
-                      <Ionicons name="checkmark" size={18} color="#10b981" />
+
+              {/* ── STEP 1: Group Name + Site ── */}
+              {groupStep === 1 && (
+                <>
+                  <View className="mb-3">
+                    <TextInput
+                      className="border border-stone-300 rounded-lg px-3 py-2 text-sm"
+                      placeholder="Group name (e.g. Alpha Site Team)"
+                      placeholderTextColor="#a8a29e"
+                      value={groupName}
+                      onChangeText={setGroupName}
+                    />
+                  </View>
+
+                  <View className="mb-3">
+                    <TextInput
+                      className="border border-stone-300 rounded-lg px-3 py-2 text-sm"
+                      placeholder="Search sites..."
+                      placeholderTextColor="#a8a29e"
+                      value={siteSearch}
+                      onChangeText={setSiteSearch}
+                    />
+                  </View>
+
+                  <ScrollView className="max-h-56 mb-4" showsVerticalScrollIndicator>
+                    {isLoadingSites ? (
+                      <Text className="text-xs text-stone-500 text-center py-4">Loading sites...</Text>
+                    ) : filteredSitesForModal.length === 0 ? (
+                      <Text className="text-xs text-stone-500 text-center py-4">No sites found</Text>
+                    ) : (
+                      filteredSitesForModal.map(site => {
+                        const isSelected = selectedSiteId === site.id;
+                        return (
+                          <TouchableOpacity
+                            key={site.id}
+                            className={`flex-row items-center justify-between p-2 mb-1 rounded-lg border ${
+                              isSelected ? 'bg-emerald-50 border-emerald-200' : 'bg-stone-50 border-stone-200'
+                            }`}
+                            onPress={() => setSelectedSiteId(prev => (prev === site.id ? null : site.id))}
+                          >
+                            <View className="flex-row items-center flex-1">
+                              <View className={`w-9 h-9 rounded-full items-center justify-center mr-3 ${
+                                isSelected ? 'bg-emerald-100' : 'bg-stone-200'
+                              }`}>
+                                <Ionicons name="location-outline" size={16} color={isSelected ? '#10b981' : '#57534e'} />
+                              </View>
+                              <View className="flex-1">
+                                <Text className="text-sm font-semibold text-stone-900" numberOfLines={1}>
+                                  {site.name}
+                                </Text>
+                                <Text className="text-[11px] text-stone-500" numberOfLines={1}>
+                                  {site.status || '—'}
+                                </Text>
+                              </View>
+                            </View>
+                            {isSelected ? (
+                              <Ionicons name="checkmark-circle" size={20} color="#10b981" />
+                            ) : (
+                              <View className="w-5 h-5 rounded-full border-2 border-stone-300" />
+                            )}
+                          </TouchableOpacity>
+                        );
+                      })
                     )}
-                  </TouchableOpacity>
-                ))}
-                {filteredUsers.length === 0 && (
-                  <Text className="text-xs text-stone-500 text-center py-4">No employees found</Text>
-                )}
-              </ScrollView>
-              <View className="flex-row gap-3 justify-end">
-                <TouchableOpacity
-                  className="px-4 py-2 rounded-lg border border-stone-300"
-                  onPress={() => {
-                    setShowCreateGroupModal(false);
-                    setGroupName('');
-                    setSelectedMembers([]);
-                  }}
-                >
-                  <Text className="text-stone-700 font-semibold">Cancel</Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  className="px-4 py-2 rounded-lg bg-emerald-500"
-                  onPress={async () => {
-                    const name = groupName.trim();
-                    if (!name) {
-                      console.warn('Group name is required');
-                      return;
-                    }
+                  </ScrollView>
 
-                    if (!groupLeaderId) {
-                      console.warn('Please select a group leader');
-                      return;
-                    }
+                  <View className="flex-row gap-2">
+                    <TouchableOpacity
+                      className="flex-1 px-4 py-2 rounded-lg border border-stone-300"
+                      onPress={() => {
+                        setShowCreateGroupModal(false);
+                        setGroupName('');
+                        setSelectedMembers([]);
+                        setSelectedSiteId(null);
+                        setGroupStep(1);
+                      }}
+                    >
+                      <Text className="text-stone-700 font-semibold text-center">Cancel</Text>
+                    </TouchableOpacity>
 
-                    try {
-                      let meId = currentUserId;
-                      if (!meId) {
-                        const { data, error } = await supabase.auth.getUser();
-                        if (error || !data?.user) {
-                          console.error('Unable to get current user for group creation:', error);
-                          return;
+                    <TouchableOpacity
+                      className={`flex-1 px-4 py-2 rounded-lg ${
+                        groupName.trim() && selectedSiteId ? 'bg-emerald-500' : 'bg-stone-200'
+                      }`}
+                      disabled={!groupName.trim() || !selectedSiteId}
+                      onPress={() => setGroupStep(2)}
+                    >
+                      <Text className={`font-semibold text-center ${
+                        groupName.trim() && selectedSiteId ? 'text-white' : 'text-stone-500'
+                      }`}
+                      >
+                        Next
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+                </>
+              )}
+
+              {/* ── STEP 2: Group Leader ── */}
+              {groupStep === 2 && (
+                <>
+                  <View className="mb-3">
+                    <TextInput
+                      className="border border-stone-300 rounded-lg px-3 py-2 text-sm"
+                      placeholder="Search employees by name, email, or role"
+                      placeholderTextColor="#a8a29e"
+                      value={leaderSearch}
+                      onChangeText={setLeaderSearch}
+                    />
+                  </View>
+
+                  <ScrollView className="max-h-56 mb-4" showsVerticalScrollIndicator>
+                    {isLoadingUsers ? (
+                      <Text className="text-xs text-stone-500 text-center py-4">Loading employees...</Text>
+                    ) : filteredLeaders.length === 0 ? (
+                      <Text className="text-xs text-stone-500 text-center py-4">No employees found</Text>
+                    ) : (
+                      filteredLeaders.map(user => {
+                        const isLeader = selectedMembers.indexOf(user.id) !== -1;
+                        return (
+                          <TouchableOpacity
+                            key={user.id}
+                            className={`flex-row items-center justify-between p-2 mb-1 rounded-lg border ${
+                              isLeader ? 'bg-emerald-50 border-emerald-200' : 'bg-stone-50 border-stone-200'
+                            }`}
+                            onPress={() => toggleMemberSelection(user.id)}
+                          >
+                            <View className="flex-row items-center flex-1">
+                              <View
+                                className="w-9 h-9 rounded-full items-center justify-center mr-3"
+                                style={{ backgroundColor: user.color }}
+                              >
+                                <Text className="text-xs font-bold text-stone-800">{user.initials}</Text>
+                              </View>
+                              <View className="flex-1">
+                                <Text className="text-sm font-semibold text-stone-900">{user.full_name || 'Unnamed'}</Text>
+                                <Text className="text-[11px] text-stone-500" numberOfLines={1}>{user.email}</Text>
+                              </View>
+                            </View>
+                            {isLeader ? (
+                              <View className="flex-row items-center rounded-full px-2.5 py-1 gap-1 bg-emerald-100 border border-emerald-200">
+                                <Ionicons name="checkmark" size={11} color="#10b981" />
+                                <Text className="text-[10px] text-emerald-700 font-bold">Leader</Text>
+                              </View>
+                            ) : (
+                              <View className="w-5 h-5 rounded-full border-2 border-stone-300" />
+                            )}
+                          </TouchableOpacity>
+                        );
+                      })
+                    )}
+                  </ScrollView>
+
+                  <View className="flex-row gap-2">
+                    <TouchableOpacity
+                      className="flex-1 px-4 py-2 rounded-lg border border-stone-300"
+                      onPress={() => {
+                        setGroupStep(1);
+                        setGroupLeaderId(null);
+                        setSelectedMembers([]);
+                      }}
+                    >
+                      <Text className="text-stone-700 font-semibold text-center">Back</Text>
+                    </TouchableOpacity>
+
+                    <TouchableOpacity
+                      className={`flex-1 px-4 py-2 rounded-lg ${groupLeaderId ? 'bg-emerald-500' : 'bg-stone-200'}`}
+                      disabled={!groupLeaderId}
+                      onPress={async () => {
+                        const name = groupName.trim();
+                        if (!name || !groupLeaderId || !selectedSiteId) return;
+                        try {
+                          let meId = currentUserId;
+                          if (!meId) {
+                            const { data, error } = await supabase.auth.getUser();
+                            if (error || !data?.user) { console.error('Unable to get current user:', error); return; }
+                            meId = data.user.id;
+                            setCurrentUserId(meId);
+                          }
+
+                          // Safety check: ensure site is still available
+                          const { data: existingForSite, error: existingForSiteError } = await supabase
+                            .from('groups')
+                            .select('id')
+                            .eq('site_id', selectedSiteId)
+                            .limit(1);
+
+                          if (existingForSiteError) {
+                            console.error('Failed to check site availability:', existingForSiteError);
+                            alert('Unable to verify site availability. Please try again.');
+                            return;
+                          }
+
+                          if (existingForSite && existingForSite.length > 0) {
+                            alert('This site is already assigned to a group. Please pick another site.');
+                            setGroupStep(1);
+                            setSelectedSiteId(null);
+                            await fetchSitesForGroups();
+                            return;
+                          }
+
+                          // Safety check: ensure leader is still available
+                          const { data: existingForLeader, error: existingForLeaderError } = await supabase
+                            .from('groups')
+                            .select('id')
+                            .eq('leader_id', groupLeaderId)
+                            .limit(1);
+
+                          if (existingForLeaderError) {
+                            console.error('Failed to check leader availability:', existingForLeaderError);
+                            alert('Unable to verify leader availability. Please try again.');
+                            return;
+                          }
+
+                          if (existingForLeader && existingForLeader.length > 0) {
+                            alert('This employee is already assigned as a group leader. Please choose another leader.');
+                            setGroupLeaderId(null);
+                            setSelectedMembers([]);
+                            await fetchSitesForGroups();
+                            return;
+                          }
+
+                          const uniqueMembers = Array.from(new Set([groupLeaderId!, meId!]));
+                          const leaderId = groupLeaderId || meId!;
+                          const { data: groupRow, error: groupError } = await supabase
+                            .from('groups')
+                            .insert([{ name, leader_id: leaderId, site_id: selectedSiteId }])
+                            .select('id, name, leader_id, site_id')
+                            .single();
+                          if (groupError || !groupRow) { console.error('Error creating group:', groupError); return; }
+                          const memberPayloads = uniqueMembers.map(userId => ({ group_id: groupRow.id, user_id: userId }));
+                          const { error: gmError } = await supabase.from('group_members').insert(memberPayloads);
+                          if (gmError) console.error('Error inserting group members:', gmError);
+                          const newGroupContact: Contact = {
+                            id: Date.now(), name: groupRow.name, members: null, location: 'Group',
+                            initials: getInitials(groupRow.name), color: getRandomColor(),
+                            online: false, isGroup: true, groupId: groupRow.id as string,
+                          };
+                          setContacts(prev => {
+                            if (prev.some(c => c.isGroup && c.groupId === groupRow.id)) return prev;
+                            return [...prev, newGroupContact];
+                          });
+                          await loadContactsFromDb();
+
+                          const siteName = sites.find(s => s.id === selectedSiteId)?.name || '';
+                          await insertActivityLog({
+                            action: `Created Group: ${groupRow.name}`,
+                            description: siteName ? `Group assigned to site: ${siteName}` : 'New group has been created',
+                            location: 'Contact Management',
+                            type: 'group',
+                            color: '#d1fae5',
+                            icon: 'people-outline',
+                          });
+
+                          showSweetAlert({
+                            title: 'Group Created',
+                            message: `${groupRow.name} has been created successfully.`,
+                            type: 'success',
+                          });
+                        } catch (err) {
+                          console.error('Unexpected error while saving group:', err);
+                        } finally {
+                          setShowCreateGroupModal(false);
+                          setGroupName('');
+                          setSelectedMembers([]);
+                          setSelectedSiteId(null);
+                          setGroupStep(1);
                         }
-                        meId = data.user.id;
-                        setCurrentUserId(meId);
-                      }
+                      }}
+                    >
+                      <Text className={`font-semibold text-center ${groupLeaderId ? 'text-white' : 'text-stone-500'}`}>
+                        Save Group
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+                </>
+              )}
 
-                      const uniqueMembers = Array.from(new Set([
-                        groupLeaderId!,
-                        meId!,
-                      ]));
-
-                      // Leader is explicitly chosen in the UI; fall back to creator only
-                      // if something goes wrong.
-                      const leaderId = groupLeaderId || meId!;
-
-                      // 1) Create the group row
-                      const { data: groupRow, error: groupError } = await supabase
-                        .from('groups')
-                        .insert([{ name, leader_id: leaderId }])
-                        .select('id, name, leader_id')
-                        .single();
-
-                      if (groupError || !groupRow) {
-                        console.error('Error creating group:', groupError);
-                        return;
-                      }
-
-                      // 2) Insert group members (creator + selected members)
-                      const memberPayloads = uniqueMembers.map(userId => ({
-                        group_id: groupRow.id,
-                        user_id: userId,
-                      }));
-
-                      const { error: gmError } = await supabase
-                        .from('group_members')
-                        .insert(memberPayloads);
-
-                      if (gmError) {
-                        console.error('Error inserting group members:', gmError);
-                      }
-
-                      // 3) Promote the leader's role to "leader" in users table
-                      try {
-                        await supabase
-                          .from('users')
-                          .update({ role: 'leader' })
-                          .eq('id', leaderId);
-                      } catch (roleError) {
-                        console.error('Error updating group leader role:', roleError);
-                      }
-
-                      // 4) Immediately add this group into the local contacts list
-                      const newGroupContact: Contact = {
-                        id: Date.now(),
-                        name: groupRow.name,
-                        members: null,
-                        location: 'Group',
-                        initials: getInitials(groupRow.name),
-                        color: getRandomColor(),
-                        online: false,
-                        isGroup: true,
-                        groupId: groupRow.id as string,
-                      };
-
-                      setContacts(prev => {
-                        if (prev.some(c => c.isGroup && c.groupId === groupRow.id)) return prev;
-                        return [...prev, newGroupContact];
-                      });
-
-                      // 5) Reload contacts/groups from Supabase so everything stays in sync
-                      await loadContactsFromDb();
-                    } catch (err) {
-                      console.error('Unexpected error while saving group:', err);
-                    } finally {
-                      setShowCreateGroupModal(false);
-                      setGroupName('');
-                      setSelectedMembers([]);
-                    }
-                  }}
-                >
-                  <Text className="text-white font-semibold">Save Group</Text>
-                </TouchableOpacity>
-              </View>
             </View>
           </Pressable>
         </Pressable>
@@ -1220,45 +1546,61 @@ export default function ContactManagement({ onNavigate }: ContactManagementProps
                 />
               </View>
               <ScrollView className="max-h-56 mb-4">
-                {filteredUsers.map(user => (
-                  <View
-                    key={user.id}
-                    className="flex-row items-center justify-between p-2 mb-1 rounded-lg bg-stone-50 border border-stone-200"
-                  >
-                    <View className="flex-row items-center flex-1">
-                      <View
-                        className="w-9 h-9 rounded-full items-center justify-center mr-3"
-                        style={{ backgroundColor: user.color }}
-                      >
-                        <Text className="text-xs font-bold text-stone-800">{user.initials}</Text>
-                      </View>
-                      <View className="flex-1">
-                        <Text className="text-sm font-semibold text-stone-900">
-                          {user.full_name || 'Unnamed'}
-                        </Text>
-                        <Text className="text-[11px] text-stone-500">{user.email}</Text>
-                      </View>
-                    </View>
-                    <TouchableOpacity
-                      className="ml-2 bg-emerald-500 px-3 py-1.5 rounded"
-                      onPress={async () => {
-                        const exists = contacts.some(c => c.userId === user.id);
-                        if (exists) {
-                          return;
-                        }
-
-                        try {
-                          await addContact(user.id);
-                          await loadContactsFromDb();
-                        } catch (error) {
-                          console.error('Failed to add contact:', error);
-                        }
-                      }}
+                {filteredUsers.map(user => {
+                  const exists = contacts.some(c => c.userId === user.id);
+                  return (
+                    <View
+                      key={user.id}
+                      className="flex-row items-center justify-between p-2 mb-1 rounded-lg bg-stone-50 border border-stone-200"
                     >
-                      <Text className="text-white text-xs font-semibold">Add</Text>
-                    </TouchableOpacity>
-                  </View>
-                ))}
+                      <View className="flex-row items-center flex-1">
+                        <View
+                          className="w-9 h-9 rounded-full items-center justify-center mr-3"
+                          style={{ backgroundColor: user.color }}
+                        >
+                          <Text className="text-xs font-bold text-stone-800">{user.initials}</Text>
+                        </View>
+                        <View className="flex-1">
+                          <Text className="text-sm font-semibold text-stone-900">
+                            {user.full_name || 'Unnamed'}
+                          </Text>
+                          <Text className="text-[11px] text-stone-500">{user.email}</Text>
+                        </View>
+                      </View>
+                      <TouchableOpacity
+                        className={`ml-2 px-3 py-1.5 rounded ${exists ? 'bg-stone-200' : 'bg-emerald-500'}`}
+                        disabled={exists}
+                        onPress={async () => {
+                          try {
+                            await addContact(user.id);
+                            await loadContactsFromDb();
+
+                            await insertActivityLog({
+                              action: `Added Contact: ${user.full_name || user.email}`,
+                              description: 'New contact has been added to the contact list',
+                              location: 'Contact Management',
+                              type: 'contact',
+                              color: '#d1fae5',
+                              icon: 'person-add-outline',
+                            });
+
+                            showSweetAlert({
+                              title: 'Contact Added',
+                              message: `${user.full_name || user.email} has been added to your contacts.`,
+                              type: 'success',
+                            });
+                          } catch (error) {
+                            console.error('Failed to add contact:', error);
+                          }
+                        }}
+                      >
+                        <Text className={`text-xs font-semibold ${exists ? 'text-stone-500' : 'text-white'}`}>
+                          {exists ? 'Added' : 'Add'}
+                        </Text>
+                      </TouchableOpacity>
+                    </View>
+                  );
+                })}
                 {filteredUsers.length === 0 && (
                   <Text className="text-xs text-stone-500 text-center py-4">No employees found</Text>
                 )}
@@ -1273,6 +1615,15 @@ export default function ContactManagement({ onNavigate }: ContactManagementProps
           </Pressable>
         </Pressable>
       </Modal>
+
+      <SweetAlertModal
+        visible={sweetAlertVisible}
+        title={sweetAlertTitle}
+        message={sweetAlertMessage}
+        type={sweetAlertType}
+        onConfirm={() => setSweetAlertVisible(false)}
+        onCancel={() => setSweetAlertVisible(false)}
+      />
     </View>
   );
 }
