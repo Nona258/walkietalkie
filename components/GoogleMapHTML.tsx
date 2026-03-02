@@ -39,10 +39,24 @@ export const googleMapHtml = `
           let pendingSitesData = null; // Store sites to reload when user location becomes available
           let currentSitesData = null; // Store current sites data for polyline redraw
           let lastPolylineUpdate = 0; // Track last polyline update time to avoid excessive redraws
+          let lastUserLocation = null; // Track last user location used for polyline
+          let minDistanceForRedraw = 50; // Minimum distance in meters to trigger polyline redraw
           
           // Animation time for the pulsing effect
           let animationTime = 0;
           let animationInterval = null;
+          
+          // Helper function to calculate distance between two coordinates in meters
+          function calculateDistance(lat1, lng1, lat2, lng2) {
+            const R = 6371000; // Earth's radius in meters
+            const dLat = (lat2 - lat1) * Math.PI / 180;
+            const dLng = (lng2 - lng1) * Math.PI / 180;
+            const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+                      Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+                      Math.sin(dLng / 2) * Math.sin(dLng / 2);
+            const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+            return R * c;
+          }
           
           // Function to create a custom marker using Canvas with pulsing effect
           function createDirectionalMarker(heading, pulse = 8) {
@@ -173,14 +187,30 @@ export const googleMapHtml = `
                 // Redraw polylines to keep them connected to current employee location
                 if (currentSitesData && currentSitesData.length > 0) {
                   const now = Date.now();
-                  // Throttle polyline redraws to prevent excessive updates (max once per 2 seconds)
-                  if (now - lastPolylineUpdate > 2000) {
-                    lastPolylineUpdate = now;
-                    window.setTimeout(() => {
-                      window.dispatchEvent(new MessageEvent('message', {
-                        data: { type: 'loadSites', sites: currentSitesData }
-                      }));
-                    }, 300);
+                  // Check if enough time has passed (5 seconds instead of 2)
+                  if (now - lastPolylineUpdate > 5000) {
+                    // Check if user has moved a significant distance to warrant redraw
+                    let shouldRedraw = false;
+                    
+                    if (!lastUserLocation) {
+                      shouldRedraw = true;
+                    } else {
+                      const distance = calculateDistance(
+                        lastUserLocation.lat, lastUserLocation.lng,
+                        userLocation.lat, userLocation.lng
+                      );
+                      shouldRedraw = distance > minDistanceForRedraw;
+                    }
+                    
+                    if (shouldRedraw) {
+                      lastPolylineUpdate = now;
+                      lastUserLocation = { ...userLocation };
+                      window.setTimeout(() => {
+                        window.dispatchEvent(new MessageEvent('message', {
+                          data: { type: 'loadSites', sites: currentSitesData }
+                        }));
+                      }, 300);
+                    }
                   }
                 }
               },
@@ -318,6 +348,16 @@ export const googleMapHtml = `
               if (!userLocation && sites.length > 0) {
                 pendingSitesData = sites;
                 // Return early, sites will be loaded once user location is available
+                return;
+              }
+              
+              // Check if sites data actually changed (compare IDs)
+              const sitesChanged = !currentSitesData || 
+                currentSitesData.length !== sites.length ||
+                sites.some((site, idx) => !currentSitesData[idx] || currentSitesData[idx].id !== site.id);
+              
+              // Only redraw if sites changed or this is the first load
+              if (!sitesChanged) {
                 return;
               }
               

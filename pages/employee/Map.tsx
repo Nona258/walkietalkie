@@ -112,10 +112,14 @@ export default function Map({ onBack, selectedSite }: { onBack?: () => void; sel
   // Send sites to iframe when sites data changes and iframe is ready
   useEffect(() => {
     if (sitesData.length > 0 && iframeRef.current && isIframeReady) {
-      iframeRef.current.contentWindow.postMessage(
-        { type: 'loadSites', sites: sitesData },
-        '*'
-      );
+      try {
+        iframeRef.current.contentWindow.postMessage(
+          { type: 'loadSites', sites: sitesData },
+          '*'
+        );
+      } catch (e) {
+        // Silently handle iframe access errors
+      }
     }
   }, [sitesData, isIframeReady]);
 
