@@ -7,6 +7,7 @@ import {
   Modal,
   Pressable,
   TextInput,
+  Dimensions,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 
@@ -35,6 +36,8 @@ interface SettingsProps {
       | 'employee'
       | 'settings'
   ) => void;
+  isMobileMenuOpen?: boolean;
+  setIsMobileMenuOpen?: (open: boolean) => void;
 }
 
 // ─── Labeled Input ────────────────────────────────────────────────────────────
@@ -46,7 +49,7 @@ function LabeledInput({
 }) {
   return (
     <View style={{ gap: 5 }}>
-      <Text style={{ fontSize: 12, fontWeight: '600', color: COLORS.textSecondary }}>{label}</Text>
+      <Text style={{ fontSize: 14, fontWeight: '600', color: COLORS.textSecondary }}>{label}</Text>
       <View style={{
         flexDirection: 'row', alignItems: 'center',
         backgroundColor: editable ? COLORS.white : COLORS.cloudMist,
@@ -58,7 +61,7 @@ function LabeledInput({
           value={value} onChangeText={onChangeText} editable={editable}
           placeholder={placeholder} placeholderTextColor={COLORS.textMuted}
           secureTextEntry={secureTextEntry}
-          style={{ flex: 1, fontSize: 13, color: editable ? COLORS.textPrimary : COLORS.textMuted }}
+          style={{ flex: 1, fontSize: 14, color: editable ? COLORS.textPrimary : COLORS.textMuted }}
         />
         {!editable && <Ionicons name="lock-closed-outline" size={12} color={COLORS.textMuted} />}
       </View>
@@ -67,7 +70,10 @@ function LabeledInput({
 }
 
 // ─── Main Component ───────────────────────────────────────────────────────────
-export default function Settings({ onNavigate }: SettingsProps) {
+export default function Settings({ onNavigate, isMobileMenuOpen, setIsMobileMenuOpen }: SettingsProps) {
+  const windowWidth = Dimensions.get('window').width;
+  const isWebView = windowWidth > 900;
+  
   const [isNotificationOpen, setIsNotificationOpen] = useState(false);
   const [isEditMode, setIsEditMode] = useState(false);
   const [isSaved, setIsSaved] = useState(false);
@@ -98,10 +104,26 @@ export default function Settings({ onNavigate }: SettingsProps) {
       <ScrollView style={{ flex: 1 }} showsVerticalScrollIndicator={false}>
 
         {/* ── Top Header ─────────────────────────────────────────────────────── */}
-        <View style={{ backgroundColor: COLORS.white, paddingHorizontal: 24, paddingTop: 18, paddingBottom: 16, borderBottomWidth: 1, borderBottomColor: COLORS.border, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-          <View>
-            <Text style={{ fontSize: 20, fontWeight: '700', color: COLORS.textPrimary, lineHeight: 26 }}>Account Settings</Text>
-            <Text style={{ fontSize: 12, color: COLORS.textMuted, marginTop: 1 }}>Welcome back, Administrator</Text>
+        <View style={{ backgroundColor: COLORS.white, paddingHorizontal: isWebView ? 24 : 16, paddingTop: 18, paddingBottom: 16, borderBottomWidth: 1, borderBottomColor: COLORS.border, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}>
+            {!isWebView && setIsMobileMenuOpen && (
+              <TouchableOpacity 
+                onPress={() => setIsMobileMenuOpen(true)}
+                style={{ 
+                  marginRight: 12,
+                  width: 40,
+                  height: 40,
+                  alignItems: 'center',
+                  justifyContent: 'center'
+                }}
+              >
+                <Ionicons name="menu" size={28} color={COLORS.green} />
+              </TouchableOpacity>
+            )}
+            <View style={{ flex: 1 }}>
+              <Text style={{ fontSize: 20, fontWeight: '700', color: COLORS.textPrimary, lineHeight: 26 }}>Account Settings</Text>
+              <Text style={{ fontSize: 12, color: COLORS.textMuted, marginTop: 1 }}>Welcome back, Administrator</Text>
+            </View>
           </View>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
             <TouchableOpacity onPress={() => setIsNotificationOpen(true)} style={{ width: 36, height: 36, borderRadius: 8, backgroundColor: COLORS.cloudMist, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: COLORS.border }}>
@@ -115,25 +137,25 @@ export default function Settings({ onNavigate }: SettingsProps) {
         </View>
 
         {/* ── Page Body — two-column, full width ───────────────────────────── */}
-        <View style={{ padding: 24, width: '100%' }}>
-          <View style={{ flexDirection: 'row', gap: 20, alignItems: 'flex-start' }}>
+        <View style={{ padding: isWebView ? 24 : 16, width: '100%' }}>
+          <View style={{ flexDirection: isWebView ? 'row' : 'column', gap: isWebView ? 20 : 16, alignItems: 'flex-start' }}>
 
             {/* ── LEFT COLUMN — Profile Card (fixed ~300) ───────────────────── */}
-            <View style={{ width: 280, flexShrink: 0 }}>
-              <View style={{ backgroundColor: COLORS.white, borderRadius: 16, borderWidth: 1, borderColor: COLORS.border, padding: 24, alignItems: 'center' }}>
+            <View style={{ width: isWebView ? 280 : '100%', flexShrink: 0 }}>
+              <View style={{ backgroundColor: COLORS.white, borderRadius: 16, borderWidth: 1, borderColor: COLORS.border, padding: isWebView ? 24 : 16, alignItems: 'center' }}>
 
                 {/* Avatar */}
-                <View style={{ width: 72, height: 72, borderRadius: 18, backgroundColor: COLORS.greenPale, alignItems: 'center', justifyContent: 'center', borderWidth: 2, borderColor: COLORS.green, marginBottom: 14 }}>
-                  <Text style={{ fontSize: 24, fontWeight: '800', color: COLORS.green }}>{initials}</Text>
+                <View style={{ width: isWebView ? 72 : 64, height: isWebView ? 72 : 64, borderRadius: isWebView ? 18 : 16, backgroundColor: COLORS.greenPale, alignItems: 'center', justifyContent: 'center', borderWidth: 2, borderColor: COLORS.green, marginBottom: 14 }}>
+                  <Text style={{ fontSize: isWebView ? 24 : 20, fontWeight: '800', color: COLORS.green }}>{initials}</Text>
                 </View>
 
                 {/* Name */}
-                <Text style={{ fontSize: 17, fontWeight: '700', color: COLORS.textPrimary, marginBottom: 3, textAlign: 'center' }}>{fullName}</Text>
-                <Text style={{ fontSize: 12, color: COLORS.textMuted, marginBottom: 8, textAlign: 'center' }}>{email}</Text>
+                <Text style={{ fontSize: isWebView ? 17 : 16, fontWeight: '700', color: COLORS.textPrimary, marginBottom: 3, textAlign: 'center' }}>{fullName}</Text>
+                <Text style={{ fontSize: 14, color: COLORS.textMuted, marginBottom: 8, textAlign: 'center' }}>{email}</Text>
 
                 {/* Role badge */}
                 <View style={{ paddingHorizontal: 12, paddingVertical: 4, borderRadius: 999, backgroundColor: COLORS.greenPale, borderWidth: 1, borderColor: COLORS.green, marginBottom: 20 }}>
-                  <Text style={{ fontSize: 11, fontWeight: '600', color: COLORS.green }}>{role}</Text>
+                  <Text style={{ fontSize: 14, fontWeight: '600', color: COLORS.green }}>{role}</Text>
                 </View>
 
                 {/* Divider */}
@@ -151,7 +173,7 @@ export default function Settings({ onNavigate }: SettingsProps) {
                     </View>
                     <View style={{ flex: 1 }}>
                       <Text style={{ fontSize: 10, color: COLORS.textMuted }}>{row.label}</Text>
-                      <Text style={{ fontSize: 12, fontWeight: '600', color: COLORS.textSecondary }}>{row.value}</Text>
+                      <Text style={{ fontSize: 14, fontWeight: '600', color: COLORS.textSecondary }}>{row.value}</Text>
                     </View>
                   </View>
                 ))}
@@ -162,7 +184,7 @@ export default function Settings({ onNavigate }: SettingsProps) {
                 {isSaved && (
                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: COLORS.greenPale, borderWidth: 1, borderColor: COLORS.green, borderRadius: 8, paddingHorizontal: 12, paddingVertical: 8, marginBottom: 14, width: '100%' }}>
                     <Ionicons name="checkmark-circle-outline" size={14} color={COLORS.green} />
-                    <Text style={{ fontSize: 11, fontWeight: '600', color: COLORS.green, flex: 1 }}>Profile updated!</Text>
+                    <Text style={{ fontSize: 14, fontWeight: '600', color: COLORS.green, flex: 1 }}>Profile updated!</Text>
                   </View>
                 )}
 
@@ -170,16 +192,16 @@ export default function Settings({ onNavigate }: SettingsProps) {
                 {!isEditMode ? (
                   <TouchableOpacity onPress={() => setIsEditMode(true)} style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 20, paddingVertical: 9, backgroundColor: COLORS.green, borderRadius: 9, width: '100%', justifyContent: 'center' }}>
                     <Ionicons name="create-outline" size={15} color={COLORS.white} />
-                    <Text style={{ fontSize: 13, fontWeight: '600', color: COLORS.white }}>Edit Profile</Text>
+                    <Text style={{ fontSize: 14, fontWeight: '600', color: COLORS.white }}>Edit Profile</Text>
                   </TouchableOpacity>
                 ) : (
                   <View style={{ gap: 8, width: '100%' }}>
                     <TouchableOpacity onPress={handleSave} style={{ height: 38, borderRadius: 9, backgroundColor: COLORS.green, alignItems: 'center', justifyContent: 'center', flexDirection: 'row', gap: 5 }}>
                       <Ionicons name="checkmark-outline" size={14} color={COLORS.white} />
-                      <Text style={{ fontSize: 13, fontWeight: '600', color: COLORS.white }}>Save Changes</Text>
+                      <Text style={{ fontSize: 14, fontWeight: '600', color: COLORS.white }}>Save Changes</Text>
                     </TouchableOpacity>
                     <TouchableOpacity onPress={handleCancel} style={{ height: 38, borderRadius: 9, borderWidth: 1, borderColor: COLORS.border, backgroundColor: COLORS.cloudMist, alignItems: 'center', justifyContent: 'center' }}>
-                      <Text style={{ fontSize: 13, fontWeight: '600', color: COLORS.textSecondary }}>Cancel</Text>
+                      <Text style={{ fontSize: 14, fontWeight: '600', color: COLORS.textSecondary }}>Cancel</Text>
                     </TouchableOpacity>
                   </View>
                 )}
@@ -187,10 +209,10 @@ export default function Settings({ onNavigate }: SettingsProps) {
             </View>
 
             {/* ── RIGHT COLUMN — Info / Security / Preferences (flex: 1) ─────── */}
-            <View style={{ flex: 1, gap: 16 }}>
+            <View style={{ flex: 1, gap: 16, width: isWebView ? undefined : '100%' }}>
 
               {/* Profile Information */}
-              <View style={{ backgroundColor: COLORS.white, borderRadius: 16, borderWidth: 1, borderColor: COLORS.border, padding: 24 }}>
+              <View style={{ backgroundColor: COLORS.white, borderRadius: 16, borderWidth: 1, borderColor: COLORS.border, padding: isWebView ? 24 : 16 }}>
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 18 }}>
                   <View style={{ width: 30, height: 30, borderRadius: 8, backgroundColor: COLORS.greenPale, alignItems: 'center', justifyContent: 'center' }}>
                     <Ionicons name="person-outline" size={15} color={COLORS.green} />
@@ -203,10 +225,10 @@ export default function Settings({ onNavigate }: SettingsProps) {
                   <LabeledInput label="Phone Number"  value={phone}    onChangeText={setPhone}    editable={isEditMode} icon="call-outline"    placeholder="Enter phone"     />
                   {/* Read-only role */}
                   <View style={{ gap: 5 }}>
-                    <Text style={{ fontSize: 12, fontWeight: '600', color: COLORS.textSecondary }}>Role</Text>
+                    <Text style={{ fontSize: 14, fontWeight: '600', color: COLORS.textSecondary }}>Role</Text>
                     <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: COLORS.cloudMist, borderWidth: 1, borderColor: COLORS.border, borderRadius: 9, paddingHorizontal: 12, height: 40, gap: 8 }}>
                       <Ionicons name="shield-outline" size={14} color={COLORS.textMuted} />
-                      <Text style={{ flex: 1, fontSize: 13, color: COLORS.textMuted }}>{role}</Text>
+                      <Text style={{ flex: 1, fontSize: 14, color: COLORS.textMuted }}>{role}</Text>
                       <Ionicons name="lock-closed-outline" size={12} color={COLORS.textMuted} />
                     </View>
                   </View>
@@ -214,7 +236,7 @@ export default function Settings({ onNavigate }: SettingsProps) {
               </View>
 
               {/* Security */}
-              <View style={{ backgroundColor: COLORS.white, borderRadius: 16, borderWidth: 1, borderColor: COLORS.border, padding: 24 }}>
+              <View style={{ backgroundColor: COLORS.white, borderRadius: 16, borderWidth: 1, borderColor: COLORS.border, padding: isWebView ? 24 : 16 }}>
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 18 }}>
                   <View style={{ width: 30, height: 30, borderRadius: 8, backgroundColor: COLORS.greenPale, alignItems: 'center', justifyContent: 'center' }}>
                     <Ionicons name="lock-closed-outline" size={15} color={COLORS.green} />
@@ -229,7 +251,7 @@ export default function Settings({ onNavigate }: SettingsProps) {
               </View>
 
               {/* Preferences */}
-              <View style={{ backgroundColor: COLORS.white, borderRadius: 16, borderWidth: 1, borderColor: COLORS.border, padding: 24 }}>
+              <View style={{ backgroundColor: COLORS.white, borderRadius: 16, borderWidth: 1, borderColor: COLORS.border, padding: isWebView ? 24 : 16 }}>
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 18 }}>
                   <View style={{ width: 30, height: 30, borderRadius: 8, backgroundColor: COLORS.greenPale, alignItems: 'center', justifyContent: 'center' }}>
                     <Ionicons name="settings-outline" size={15} color={COLORS.green} />
@@ -248,8 +270,8 @@ export default function Settings({ onNavigate }: SettingsProps) {
                         <Ionicons name={pref.icon as any} size={15} color={COLORS.textMuted} />
                       </View>
                       <View style={{ flex: 1 }}>
-                        <Text style={{ fontSize: 13, fontWeight: '600', color: COLORS.textPrimary }}>{pref.label}</Text>
-                        <Text style={{ fontSize: 11, color: COLORS.textMuted, marginTop: 1 }}>{pref.desc}</Text>
+                        <Text style={{ fontSize: 14, fontWeight: '600', color: COLORS.textPrimary }}>{pref.label}</Text>
+                        <Text style={{ fontSize: 12, color: COLORS.textMuted, marginTop: 1 }}>{pref.desc}</Text>
                       </View>
                     </View>
                     <View style={{ width: 38, height: 22, borderRadius: 11, backgroundColor: pref.value ? COLORS.green : COLORS.border, justifyContent: 'center', paddingHorizontal: 3, alignItems: pref.value ? 'flex-end' : 'flex-start' }}>

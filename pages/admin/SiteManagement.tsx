@@ -28,13 +28,13 @@ interface ValidationErrors {
 }
 
 export default function SiteManagement({ onNavigate }: SiteManagementProps) {
-  const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [isViewLocationOpen, setIsViewLocationOpen] = useState(false);
   const [selectedSite, setSelectedSite] = useState<Site | null>(null);
   const [sites, setSites] = useState<Site[]>([]);
   const [isNotificationOpen, setIsNotificationOpen] = useState(false);
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   
   const [alertVisible, setAlertVisible] = useState(false);
   const [alertConfig, setAlertConfig] = useState({
@@ -633,48 +633,73 @@ export default function SiteManagement({ onNavigate }: SiteManagementProps) {
   return (
     <View className="flex-1" style={{ backgroundColor: '#f8fafb' }}>
       <ScrollView className="flex-1">
-        {/* Minimalist Header */}
-        <View className="px-6 py-5 bg-white border-b" style={{ borderBottomColor: '#e8f5e9' }}>
-          <View className="flex-row items-center justify-between">
-            <View className="flex-row items-center flex-1">
-              <TouchableOpacity 
-                className="items-center justify-center w-10 h-10 mr-4 lg:hidden"
-                onPress={() => setIsDrawerOpen(true)}
-              >
-                <Ionicons name="menu-outline" size={24} color="#237227" />
-              </TouchableOpacity>
-              <View className="flex-1">
-                <Text className="text-2xl font-light" style={{ color: '#000000' }}>Site Management</Text>
-              </View>
-            </View>
-            <View className="flex-row items-center gap-3">
+        {/* Modern Mobile Header */}
+        <View className="bg-white" style={{ 
+          shadowColor: '#000',
+          shadowOffset: { width: 0, height: 1 },
+          shadowOpacity: 0.05,
+          shadowRadius: 3,
+          elevation: 2
+        }}>
+          <View className="px-4 py-4">
+            <View className="flex-row items-center justify-between">
+              {/* Hamburger Menu Icon (Mobile Only) */}
               <TouchableOpacity
-                className="items-center justify-center w-10 h-10"
-                onPress={() => setIsNotificationOpen(true)}
+                className="items-center justify-center w-10 h-10 mr-2 rounded-lg lg:hidden"
+                style={{ backgroundColor: '#f0fdf4' }}
+                onPress={() => setIsMobileMenuOpen(true)}
                 activeOpacity={0.7}
               >
-                <Ionicons name="notifications-outline" size={22} color="#237227" />
+                <Ionicons name="menu-outline" size={22} color="#237227" />
               </TouchableOpacity>
-              <View className="items-center justify-center w-10 h-10 rounded-full" style={{ backgroundColor: '#e8f5e9' }}>
-                <Text className="text-sm font-medium" style={{ color: '#237227' }}>AD</Text>
+              
+              <View className="flex-1">
+                <Text className="text-lg font-semibold text-stone-900">Site Managements</Text>
+                <Text className="text-xs font-semibold text-stone-900">Welcome back, Administrator</Text>
+              </View>
+              <View className="flex-row items-center gap-2">
+                <TouchableOpacity
+                  className="items-center justify-center w-10 h-10 rounded-lg"
+                  style={{ backgroundColor: '#f0fdf4' }}
+                  onPress={() => setIsNotificationOpen(true)}
+                  activeOpacity={0.7}
+                >
+                  <Ionicons name="notifications-outline" size={20} color="#237227" />
+                </TouchableOpacity>
+                <View className="items-center justify-center w-10 h-10 rounded-lg" style={{ backgroundColor: '#e8f5e9' }}>
+                  <Text className="text-sm font-semibold" style={{ color: '#237227' }}>AD</Text>
+                </View>
               </View>
             </View>
           </View>
         </View>
 
-        {/* Clean Action Bar */}
-        <View className="px-6 py-6">
+        {/* Modern Action Bar */}
+        <View className="px-4 py-4">
           <View className="flex-row items-center justify-between">
-            <Text className="text-sm font-light tracking-wide uppercase" style={{ color: '#000000' }}>
-              All Sites ({sites.length})
-            </Text>
+            <View>
+              <Text className="text-sm font-semibold text-stone-900">
+                All Sites
+              </Text>
+              <Text className="text-xs text-stone-500 mt-0.5">
+                {sites.length} {sites.length === 1 ? 'location' : 'locations'}
+              </Text>
+            </View>
             <TouchableOpacity 
-              className="flex-row items-center px-4 py-2 rounded-lg"
-              style={{ backgroundColor: '#237227' }}
+              className="flex-row items-center px-4 py-2.5 rounded-xl"
+              style={{ 
+                backgroundColor: '#237227',
+                shadowColor: '#237227',
+                shadowOffset: { width: 0, height: 2 },
+                shadowOpacity: 0.25,
+                shadowRadius: 4,
+                elevation: 4
+              }}
               onPress={() => setIsAddModalOpen(true)}
+              activeOpacity={0.8}
             >
-              <Ionicons name="add-outline" size={18} color="white" />
-              <Text className="ml-2 text-sm font-medium text-white">Add Site</Text>
+              <Ionicons name="add-circle" size={18} color="white" />
+              <Text className="ml-1.5 text-sm font-semibold text-white">Add</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -684,18 +709,18 @@ export default function SiteManagement({ onNavigate }: SiteManagementProps) {
           <View className="overflow-hidden bg-white" style={{ borderRadius: 8, borderWidth: 1, borderColor: '#e8f5e9' }}>
             {/* Clean Table Header */}
             <View className="flex-row items-center px-6 py-4 border-b" style={{ backgroundColor: '#f8fafb', borderBottomColor: '#e8f5e9' }}>
-              <Text className="flex-1 text-xs font-medium tracking-wider uppercase" style={{ color: '#237227' }}>Site Name</Text>
-              <Text className="flex-1 text-xs font-medium tracking-wider uppercase" style={{ color: '#237227' }}>Company</Text>
-              <Text className="flex-1 text-xs font-medium tracking-wider uppercase" style={{ color: '#237227' }}>Branch</Text>
-              <Text className="text-xs font-medium tracking-wider uppercase w-28" style={{ color: '#237227' }}>Status</Text>
-              <Text className="w-32 text-xs font-medium tracking-wider text-center uppercase" style={{ color: '#237227' }}>Actions</Text>
+              <Text className="flex-1 text-xs font-medium tracking-wider uppercase text-stone-900">Site Name</Text>
+              <Text className="flex-1 text-xs font-medium tracking-wider uppercase text-stone-900">Company</Text>
+              <Text className="flex-1 text-xs font-medium tracking-wider uppercase text-stone-900">Branch</Text>
+              <Text className="text-xs font-medium tracking-wider uppercase w-28 text-stone-900">Status</Text>
+              <Text className="w-32 text-xs font-medium tracking-wider text-center uppercase text-stone-900">Actions</Text>
             </View>
 
             {/* Table Rows */}
             {sites.length === 0 ? (
               <View className="items-center px-6 py-16">
                 <Ionicons name="location-outline" size={48} color="#e8f5e9" />
-                <Text className="mt-4 text-sm" style={{ color: '#237227' }}>No sites available</Text>
+                <Text className="mt-4 text-sm text-stone-900">No sites available</Text>
               </View>
             ) : (
               sites.map((site, index) => (
@@ -707,25 +732,25 @@ export default function SiteManagement({ onNavigate }: SiteManagementProps) {
                   {/* Site Name */}
                   <View className="flex-row items-center flex-1">
                     <View className="items-center justify-center w-8 h-8 mr-3 rounded" style={{ backgroundColor: '#e8f5e9' }}>
-                      <Ionicons name="location-outline" size={16} color="#237227" />
+                      <Ionicons name="location-outline" size={16} color="#1c1917" />
                     </View>
-                    <Text className="text-sm font-normal" style={{ color: '#237227' }}>{site.name}</Text>
+                    <Text className="text-sm font-normal text-stone-900">{site.name}</Text>
                   </View>
 
                   {/* Company */}
-                  <Text className="flex-1 text-sm" style={{ color: '#237227' }}>
+                  <Text className="flex-1 text-sm text-stone-900">
                     {companyOptions.find(opt => String(opt.id) === String(site.company_id))?.name || '—'}
                   </Text>
 
                   {/* Branch */}
-                  <Text className="flex-1 text-sm" style={{ color: '#237227' }}>
+                  <Text className="flex-1 text-sm text-stone-900">
                     {branchOptions.find(opt => String(opt.id) === String(site.branch_id))?.name || '—'}
                   </Text>
 
                   {/* Status */}
                   <View className="w-28">
-                    <View className="px-3 py-1 rounded" style={{ backgroundColor: '#e8f5e9', alignSelf: 'flex-start' }}>
-                      <Text className="text-xs font-medium" style={{ color: '#237227' }}>{site.status}</Text>
+                    <View className="px-3 py-1 rounded" style={{ backgroundColor: '#237227', alignSelf: 'flex-start' }}>
+                      <Text className="text-xs font-medium" style={{ color: '#f8fafb' }}>{site.status}</Text>
                     </View>
                   </View>
 
@@ -735,13 +760,13 @@ export default function SiteManagement({ onNavigate }: SiteManagementProps) {
                       className="items-center justify-center w-8 h-8"
                       onPress={() => handleEditSite(site)}
                     >
-                      <Ionicons name="create-outline" size={18} color="#237227" />
+                      <Ionicons name="create-outline" size={18} color="#1c1917" />
                     </TouchableOpacity>
                     <TouchableOpacity 
                       className="items-center justify-center w-8 h-8"
                       onPress={() => handleViewLocation(site)}
                     >
-                      <Ionicons name="eye-outline" size={18} color="#237227" />
+                      <Ionicons name="eye-outline" size={18} color="#1c1917" />
                     </TouchableOpacity>
                     <TouchableOpacity 
                       className="items-center justify-center w-8 h-8"
@@ -756,12 +781,19 @@ export default function SiteManagement({ onNavigate }: SiteManagementProps) {
           </View>
         </View>
 
-        {/* Mobile Card View */}
-        <View className="px-5 pb-6 lg:hidden">
+        {/* Modern Mobile Card View */}
+        <View className="px-4 pb-6 lg:hidden">
           {sites.length === 0 ? (
-            <View className="items-center px-6 py-12">
-              <Ionicons name="location-outline" size={48} color="#e8f5e9" />
-              <Text className="mt-4 text-sm" style={{ color: '#237227' }}>No sites found</Text>
+            <View className="items-center py-16 mx-4 bg-white rounded-2xl" style={{
+              borderWidth: 2,
+              borderColor: '#f0fdf4',
+              borderStyle: 'dashed'
+            }}>
+              <View className="items-center justify-center w-16 h-16 mb-4 rounded-full" style={{ backgroundColor: '#f0fdf4' }}>
+                <Ionicons name="location-outline" size={32} color="#237227" />
+              </View>
+              <Text className="text-base font-semibold text-stone-900">No sites yet</Text>
+              <Text className="mt-1 text-sm text-center text-stone-500">Add your first location to get started</Text>
             </View>
           ) : (
             sites.map((site) => {
@@ -771,52 +803,70 @@ export default function SiteManagement({ onNavigate }: SiteManagementProps) {
               return (
                 <TouchableOpacity
                   key={site.id}
-                  className="p-5 mb-3 bg-white"
-                  style={{ borderRadius: 8, borderWidth: 1, borderColor: '#e8f5e9' }}
+                  className="p-4 mb-3 bg-white rounded-2xl"
+                  style={{ 
+                    shadowColor: '#000',
+                    shadowOffset: { width: 0, height: 2 },
+                    shadowOpacity: 0.06,
+                    shadowRadius: 8,
+                    elevation: 3
+                  }}
                   onPress={() => handleViewLocation(site)}
                   activeOpacity={0.7}
                 >
+                  {/* Card Header */}
                   <View className="flex-row items-start justify-between mb-3">
-                    <View className="flex-1">
-                      <Text className="mb-1 text-base font-normal" style={{ color: '#237227' }}>{site.name}</Text>
-                      <Text className="text-sm mb-0.5" style={{ color: '#237227', opacity: 0.7 }}>{companyName}</Text>
-                      <Text className="text-sm" style={{ color: '#237227', opacity: 0.7 }}>{branchName}</Text>
+                    <View className="flex-row items-start flex-1 mr-3">
+                      <View className="items-center justify-center w-10 h-10 mr-3 rounded-xl" style={{ backgroundColor: '#f0fdf4' }}>
+                        <Ionicons name="location" size={18} color="#237227" />
+                      </View>
+                      <View className="flex-1">
+                        <Text className="mb-1 text-base font-semibold text-stone-900" numberOfLines={2}>{site.name}</Text>
+                        <Text className="text-sm text-stone-600" numberOfLines={1}>{companyName}</Text>
+                        <Text className="mt-0.5 text-xs text-stone-500" numberOfLines={1}>{branchName}</Text>
+                      </View>
                     </View>
-                    <View className="px-2 py-1 rounded" style={{ backgroundColor: '#e8f5e9' }}>
-                      <Text className="text-xs font-medium" style={{ color: '#237227' }}>{site.status}</Text>
+                    <View className="px-2.5 py-1 rounded-lg" style={{ backgroundColor: '#d1fae5' }}>
+                      <Text className="text-xs font-semibold" style={{ color: '#065f46' }}>{site.status}</Text>
                     </View>
                   </View>
                   
-                  <View className="flex-row gap-3 pt-3 border-t" style={{ borderTopColor: '#e8f5e9' }}>
+                  {/* Card Actions */}
+                  <View className="flex-row gap-2 pt-3 border-t" style={{ borderTopColor: '#f5f5f4' }}>
                     <TouchableOpacity 
-                      className="flex-row items-center justify-center flex-1 py-2"
+                      className="flex-row items-center justify-center flex-1 py-2.5 rounded-lg"
+                      style={{ backgroundColor: '#237227' }}
                       onPress={(e) => {
                         e.stopPropagation();
                         handleEditSite(site);
                       }}
+                      activeOpacity={0.7}
                     >
-                      <Ionicons name="create-outline" size={16} color="#237227" />
-                      <Text className="ml-1 text-xs" style={{ color: '#237227' }}>Edit</Text>
+                      <Ionicons name="create" size={16} color="#f8fafb" />
+                      <Text className="ml-1.5 text-md font-semibold" style={{ color: '#f8fafb' }}>Edit</Text>
                     </TouchableOpacity>
                     <TouchableOpacity 
-                      className="flex-row items-center justify-center flex-1 py-2"
+                      className="flex-row items-center justify-center flex-1 py-2.5 rounded-lg"
+                      style={{ backgroundColor: '#237227' }}
                       onPress={(e) => {
                         e.stopPropagation();
                         handleViewLocation(site);
                       }}
+                      activeOpacity={0.7}
                     >
-                      <Ionicons name="eye-outline" size={16} color="#237227" />
-                      <Text className="ml-1 text-xs" style={{ color: '#237227' }}>View</Text>
+                      <Ionicons name="map" size={16} color="#f8fafb" />
+                      <Text className="ml-1.5 text-sm font-semibold" style={{ color: '#f8fafb' }}>Map</Text>
                     </TouchableOpacity>
                     <TouchableOpacity 
-                      className="flex-row items-center justify-center flex-1 py-2"
+                      className="items-center justify-center py-2.5 px-3 rounded-lg"
+                      style={{ backgroundColor: '#fef2f2' }}
                       onPress={(e) => {
                         e.stopPropagation();
                         handleDeleteSite(site);
                       }}
+                      activeOpacity={0.7}
                     >
-                      <Ionicons name="trash-outline" size={16} color="#dc2626" />
-                      <Text className="ml-1 text-xs text-red-600">Delete</Text>
+                      <Ionicons name="trash" size={16} color="#dc2626" />
                     </TouchableOpacity>
                   </View>
                 </TouchableOpacity>
@@ -825,121 +875,6 @@ export default function SiteManagement({ onNavigate }: SiteManagementProps) {
           )}
         </View>
       </ScrollView>
-
-      {/* Mobile Drawer Modal */}
-      <Modal
-        visible={isDrawerOpen}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setIsDrawerOpen(false)}
-      >
-        <View className="flex-row flex-1">
-          <View className="h-full bg-white shadow-2xl w-72">
-            <View className="px-6 pt-12 pb-6 border-b" style={{ backgroundColor: '#f8fafb', borderBottomColor: '#e8f5e9' }}>
-              <View className="flex-row items-center gap-3">
-                <View className="items-center justify-center w-12 h-12 rounded" style={{ backgroundColor: '#e8f5e9' }}>
-                  <Ionicons name="business-outline" size={24} color="#237227" />
-                </View>
-                <View>
-                  <Text className="text-base font-medium" style={{ color: '#237227' }}>Admin Portal</Text>
-                  <Text className="text-xs" style={{ color: '#237227', opacity: 0.6 }}>Management System</Text>
-                </View>
-              </View>
-            </View>
-
-            <ScrollView className="flex-1 px-4 py-4">
-              <TouchableOpacity 
-                className="flex-row items-center px-4 py-3 mb-1 rounded"
-                onPress={() => {
-                  setIsDrawerOpen(false);
-                  onNavigate('dashboard');
-                }}
-              >
-                <Ionicons name="grid-outline" size={20} color="#237227" />
-                <Text className="ml-3 text-sm" style={{ color: '#237227' }}>Dashboard</Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity 
-                className="flex-row items-center px-4 py-3 mb-1 rounded"
-                style={{ backgroundColor: '#e8f5e9' }}
-                onPress={() => {
-                  setIsDrawerOpen(false);
-                  onNavigate('siteManagement');
-                }}
-              >
-                <Ionicons name="location-outline" size={20} color="#237227" />
-                <Text className="ml-3 text-sm font-medium" style={{ color: '#237227' }}>Site Management</Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity 
-                className="flex-row items-center px-4 py-3 mb-1 rounded"
-                onPress={() => {
-                  setIsDrawerOpen(false);
-                  onNavigate('walkieTalkie');
-                }}
-              >
-                <Ionicons name="mic-outline" size={20} color="#237227" />
-                <Text className="ml-3 text-sm" style={{ color: '#237227' }}>Walkie Talkie</Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity 
-                className="flex-row items-center px-4 py-3 mb-1 rounded"
-                onPress={() => {
-                  setIsDrawerOpen(false);
-                  onNavigate('activityLogs');
-                }}
-              >
-                <Ionicons name="clipboard-outline" size={20} color="#237227" />
-                <Text className="ml-3 text-sm" style={{ color: '#237227' }}>Activity Logs</Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity 
-                className="flex-row items-center px-4 py-3 mb-1 rounded"
-                onPress={() => {
-                  setIsDrawerOpen(false);
-                  onNavigate('companyList');
-                }}
-              >
-                <Ionicons name="business-outline" size={20} color="#237227" />
-                <Text className="ml-3 text-sm" style={{ color: '#237227' }}>Company Lists</Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity 
-                className="flex-row items-center px-4 py-3 mb-1 rounded"
-                onPress={() => {
-                  setIsDrawerOpen(false);
-                  onNavigate('employee');
-                }}
-              >
-                <Ionicons name="people-outline" size={20} color="#237227" />
-                <Text className="ml-3 text-sm" style={{ color: '#237227' }}>Employees</Text>
-              </TouchableOpacity>
-
-              <View className="my-4 border-t" style={{ borderTopColor: '#e8f5e9' }} />
-
-              <TouchableOpacity 
-                className="flex-row items-center px-4 py-3 mb-1 rounded" 
-                onPress={() => onNavigate('settings')}
-              >
-                <Ionicons name="settings-outline" size={20} color="#237227" />
-                <Text className="ml-3 text-sm" style={{ color: '#237227' }}>Settings</Text>
-              </TouchableOpacity>
-            </ScrollView>
-
-            <View className="px-4 pt-4 pb-6 border-t" style={{ borderTopColor: '#e8f5e9' }}>
-              <TouchableOpacity className="flex-row items-center px-4 py-3 rounded">
-                <Ionicons name="log-out-outline" size={20} color="#dc2626" />
-                <Text className="ml-3 text-sm text-red-600">Sign Out</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-
-          <Pressable 
-            className="flex-1 bg-black/40" 
-            onPress={() => setIsDrawerOpen(false)}
-          />
-        </View>
-      </Modal>
 
       {/* Notification Modal */}
       <Modal
@@ -962,9 +897,9 @@ export default function SiteManagement({ onNavigate }: SiteManagementProps) {
               borderColor: '#e8f5e9',
             }}
           >
-            <Ionicons name="notifications-outline" size={32} color="#237227" style={{ marginBottom: 12, alignSelf: 'center' }} />
-            <Text style={{ fontWeight: '500', fontSize: 18, color: '#237227', marginBottom: 8, textAlign: 'center' }}>Notifications</Text>
-            <Text style={{ color: '#237227', opacity: 0.7, textAlign: 'center', marginBottom: 16 }}>
+            <Ionicons name="notifications-outline" size={32} color="#1c1917" style={{ marginBottom: 12, alignSelf: 'center' }} />
+            <Text style={{ fontWeight: '500', fontSize: 18, color: '#1c1917', marginBottom: 8, textAlign: 'center' }}>Notifications</Text>
+            <Text style={{ color: '#1c1917', opacity: 0.7, textAlign: 'center', marginBottom: 16 }}>
               You have no new notifications.
             </Text>
             <TouchableOpacity
@@ -997,7 +932,7 @@ export default function SiteManagement({ onNavigate }: SiteManagementProps) {
           <Pressable className="w-full max-w-md bg-white" style={{ borderRadius: 8 }} onPress={(e) => e.stopPropagation()}>
             <View className="px-6 pt-6 pb-4 border-b" style={{ borderBottomColor: '#e8f5e9' }}>
               <View className="flex-row items-center justify-between">
-                <Text className="text-xl font-light" style={{ color: '#237227' }}>Add New Site</Text>
+                <Text className="text-xl font-light text-stone-900">Add New Site</Text>
                 <TouchableOpacity 
                   className="items-center justify-center w-8 h-8"
                   onPress={() => {
@@ -1005,7 +940,7 @@ export default function SiteManagement({ onNavigate }: SiteManagementProps) {
                     resetForm();
                   }}
                 >
-                  <Ionicons name="close-outline" size={24} color="#237227" />
+                  <Ionicons name="close-outline" size={24} color="#1c1917" />
                 </TouchableOpacity>
               </View>
             </View>
@@ -1033,11 +968,11 @@ export default function SiteManagement({ onNavigate }: SiteManagementProps) {
                     <Text className="ml-1 text-xs text-red-600">{errors.siteName}</Text>
                   </View>
                 )}
-                <Text className="mt-1 text-xs" style={{ color: '#237227', opacity: 0.5 }}>Auto-filled from map coordinates</Text>
+                <Text className="mt-1 text-xs text-stone-900" style={{ opacity: 0.5 }}>Auto-filled from map coordinates</Text>
               </View>
 
               <View className="mb-4">
-                <Text className="mb-2 text-sm" style={{ color: '#237227' }}>
+                <Text className="mb-2 text-sm text-stone-900">
                   Company Name <Text className="text-red-500">*</Text>
                 </Text>
                 <View className="px-4 py-3 bg-white" style={{ 
@@ -1046,7 +981,7 @@ export default function SiteManagement({ onNavigate }: SiteManagementProps) {
                   borderRadius: 6
                 }}>
                   <select
-                    style={{ width: '100%', background: 'transparent', border: 'none', fontSize: 14, color: '#237227' }}
+                    style={{ width: '100%', background: 'transparent', border: 'none', fontSize: 14, color: '#1c1917' }}
                     value={company}
                     onChange={e => handleFieldChange('company', e.target.value)}
                     onBlur={() => handleFieldBlur('company', company)}
@@ -1068,14 +1003,14 @@ export default function SiteManagement({ onNavigate }: SiteManagementProps) {
               </View>
 
               <View className="mb-4">
-                <Text className="mb-2 text-sm" style={{ color: '#237227' }}>Branch/Department</Text>
+                <Text className="mb-2 text-sm text-stone-900">Branch/Department</Text>
                 <View className="px-4 py-3 bg-white" style={{ 
                   borderWidth: 1, 
                   borderColor: touched.branch_id && errors.branch_id ? '#dc2626' : '#e8f5e9',
                   borderRadius: 6
                 }}>
                   <select
-                    style={{ width: '100%', background: 'transparent', border: 'none', fontSize: 14, color: '#237227' }}
+                    style={{ width: '100%', background: 'transparent', border: 'none', fontSize: 14, color: '#1c1917' }}
                     value={branch_id}
                     onChange={e => handleFieldChange('branch_id', e.target.value)}
                     onBlur={() => handleFieldBlur('branch_id', branch_id)}
@@ -1134,13 +1069,13 @@ export default function SiteManagement({ onNavigate }: SiteManagementProps) {
               <View className="flex-row gap-3">
                 <TouchableOpacity 
                   className="flex-1 py-3"
-                  style={{ backgroundColor: '#f8fafb', borderRadius: 6 }}
+                  style={{ backgroundColor: '#237227', borderRadius: 6 }}
                   onPress={() => {
                     setIsAddModalOpen(false);
                     resetForm();
                   }}
                 >
-                  <Text className="text-sm font-medium text-center" style={{ color: '#237227' }}>Cancel</Text>
+                  <Text className="text-sm font-medium text-center" style={{ color: '#f8fafb' }}>Cancel</Text>
                 </TouchableOpacity>
                 <TouchableOpacity 
                   className="flex-1 py-3"
@@ -1175,7 +1110,7 @@ export default function SiteManagement({ onNavigate }: SiteManagementProps) {
           <Pressable className="w-full max-w-md bg-white" style={{ borderRadius: 8 }} onPress={(e) => e.stopPropagation()}>
             <View className="px-6 pt-6 pb-4 border-b" style={{ borderBottomColor: '#e8f5e9' }}>
               <View className="flex-row items-center justify-between">
-                <Text className="text-xl font-light" style={{ color: '#237227' }}>Edit Site</Text>
+                <Text className="text-xl font-light text-stone-900">Edit Site</Text>
                 <TouchableOpacity 
                   className="items-center justify-center w-8 h-8"
                   onPress={() => {
@@ -1183,14 +1118,14 @@ export default function SiteManagement({ onNavigate }: SiteManagementProps) {
                     resetForm();
                   }}
                 >
-                  <Ionicons name="close-outline" size={24} color="#237227" />
+                  <Ionicons name="close-outline" size={24} color="#1c1917" />
                 </TouchableOpacity>
               </View>
             </View>
 
             <ScrollView className="px-6 py-5 max-h-96">
               <View className="mb-4">
-                <Text className="mb-2 text-sm" style={{ color: '#237227' }}>
+                <Text className="mb-2 text-sm text-stone-900">
                   Site Name <Text className="text-red-500">*</Text>
                 </Text>
                 <TextInput
@@ -1199,7 +1134,7 @@ export default function SiteManagement({ onNavigate }: SiteManagementProps) {
                     borderWidth: 1, 
                     borderColor: touched.siteName && errors.siteName ? '#dc2626' : '#e8f5e9',
                     borderRadius: 6,
-                    color: '#237227'
+                    color: '#1c1917'
                   }}
                   placeholder="e.g., Downtown Office"
                   placeholderTextColor="#a8a29e"
@@ -1248,7 +1183,7 @@ export default function SiteManagement({ onNavigate }: SiteManagementProps) {
               </View>
 
               <View className="mb-4">
-                <Text className="mb-2 text-sm" style={{ color: '#237227' }}>
+                <Text className="mb-2 text-sm text-stone-900">
                   Branch/Department <Text className="text-red-500">*</Text>
                 </Text>
                 <View className="px-4 py-3 bg-white" style={{ 
@@ -1257,7 +1192,7 @@ export default function SiteManagement({ onNavigate }: SiteManagementProps) {
                   borderRadius: 6
                 }}>
                   <select
-                    style={{ width: '100%', background: 'transparent', border: 'none', fontSize: 14, color: '#237227' }}
+                    style={{ width: '100%', background: 'transparent', border: 'none', fontSize: 14, color: '#1c1917' }}
                     value={branch_id}
                     onChange={e => handleFieldChange('branch_id', e.target.value)}
                     onBlur={() => handleFieldBlur('branch_id', branch_id)}
@@ -1281,7 +1216,7 @@ export default function SiteManagement({ onNavigate }: SiteManagementProps) {
               </View>
 
               <View className="mb-1">
-                <Text className="mb-2 text-sm" style={{ color: '#237227' }}>
+                <Text className="mb-2 text-sm text-stone-900">
                   Location <Text className="text-red-500">*</Text>
                 </Text>
                 <View 
@@ -1304,7 +1239,7 @@ export default function SiteManagement({ onNavigate }: SiteManagementProps) {
                 )}
                 {latitude !== null && longitude !== null && (
                   <View className="px-3 py-2 mt-2" style={{ backgroundColor: '#f8fafb', borderRadius: 6 }}>
-                    <Text className="text-xs" style={{ color: '#237227' }}>
+                    <Text className="text-xs text-stone-900">
                       <Text className="font-medium">Coordinates:</Text> {latitude.toFixed(6)}, {longitude.toFixed(6)}
                     </Text>
                   </View>
@@ -1316,13 +1251,13 @@ export default function SiteManagement({ onNavigate }: SiteManagementProps) {
               <View className="flex-row gap-3">
                 <TouchableOpacity 
                   className="flex-1 py-3"
-                  style={{ backgroundColor: '#f8fafb', borderRadius: 6 }}
+                  style={{ backgroundColor: '#237227', borderRadius: 6 }}
                   onPress={() => {
                     setIsEditModalOpen(false);
                     resetForm();
                   }}
                 >
-                  <Text className="text-sm font-medium text-center" style={{ color: '#237227' }}>Cancel</Text>
+                  <Text className="text-sm font-medium text-center" style={{ color: '#f8fafb' }}>Cancel</Text>
                 </TouchableOpacity>
                 <TouchableOpacity 
                   className="flex-1 py-3"
@@ -1358,8 +1293,8 @@ export default function SiteManagement({ onNavigate }: SiteManagementProps) {
             <View className="px-6 pt-6 pb-4 border-b" style={{ borderBottomColor: '#e8f5e9' }}>
               <View className="flex-row items-center justify-between">
                 <View>
-                  <Text className="text-xl font-light" style={{ color: '#237227' }}>{selectedSite?.name}</Text>
-                  <Text className="mt-1 text-xs" style={{ color: '#237227', opacity: 0.6 }}>Location on Map</Text>
+                  <Text className="text-xl font-light text-stone-900">{selectedSite?.name}</Text>
+                  <Text className="mt-1 text-xs text-stone-900" style={{ opacity: 0.6 }}>Location on Map</Text>
                 </View>
                 <TouchableOpacity 
                   className="items-center justify-center w-8 h-8"
@@ -1368,7 +1303,7 @@ export default function SiteManagement({ onNavigate }: SiteManagementProps) {
                     setSelectedSite(null);
                   }}
                 >
-                  <Ionicons name="close-outline" size={24} color="#237227" />
+                  <Ionicons name="close-outline" size={24} color="#1c1917" />
                 </TouchableOpacity>
               </View>
             </View>
@@ -1402,9 +1337,9 @@ export default function SiteManagement({ onNavigate }: SiteManagementProps) {
                   }}>
                     <View style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
                       <View style={{ flex: 1, paddingRight: 8 }}>
-                        <Text style={{ fontSize: 16, fontWeight: '500', color: '#237227' }}>{selectedSite.name}</Text>
-                        <Text style={{ fontSize: 13, color: '#237227', opacity: 0.7, marginTop: 4 }}>{selectedSite.company}</Text>
-                        <Text style={{ fontSize: 13, color: '#237227', opacity: 0.7, marginTop: 2 }}>
+                        <Text style={{ fontSize: 16, fontWeight: '500', color: '#1c1917' }}>{selectedSite.name}</Text>
+                        <Text style={{ fontSize: 13, color: '#1c1917', opacity: 0.7, marginTop: 4 }}>{selectedSite.company}</Text>
+                        <Text style={{ fontSize: 13, color: '#1c1917', opacity: 0.7, marginTop: 2 }}>
                           {branchOptions.find(opt => opt.id === selectedSite.branch_id)?.name || 'No branch selected'}
                         </Text>
                       </View>
@@ -1440,6 +1375,136 @@ export default function SiteManagement({ onNavigate }: SiteManagementProps) {
             </View>
           </Pressable>
         </Pressable>
+      </Modal>
+
+      {/* Mobile Sidebar Navigation */}
+      <Modal
+        visible={isMobileMenuOpen}
+        animationType="slide"
+        transparent={true}
+        onRequestClose={() => setIsMobileMenuOpen(false)}
+      >
+        <View style={{ flex: 1, backgroundColor: 'rgba(0, 0, 0, 0.5)' }}>
+          <TouchableOpacity 
+            style={{ flex: 1 }} 
+            activeOpacity={1} 
+            onPress={() => setIsMobileMenuOpen(false)}
+          />
+          <View style={{ width: '80%', height: '100%', position: 'absolute', left: 0 }}>
+            <View className="flex-1 bg-[#f8fafb]">
+              {/* Header */}
+              <View className="bg-[#e8f5e9] px-6 pt-8 pb-6 border-b border-emerald-100">
+                <View className="flex-row items-center justify-between">
+                  <View className="flex-row items-center gap-3">
+                    <View className="items-center justify-center w-14 h-14 bg-[#f8fafb] rounded-2xl">
+                      <Ionicons name="chatbubble" size={24} color="#237227" />
+                    </View>
+                    <View>
+                      <Text className="text-base font-bold text-stone-900">Admin Portal</Text>
+                      <Text className="text-xs text-stone-500">Monitoring System</Text>
+                    </View>
+                  </View>
+                  <TouchableOpacity onPress={() => setIsMobileMenuOpen(false)}>
+                    <Ionicons name="close" size={28} color="#237227" />
+                  </TouchableOpacity>
+                </View>
+              </View>
+
+              {/* Navigation Items */}
+              <ScrollView className="flex-1 px-4 py-4">
+                <TouchableOpacity 
+                  onPress={() => {
+                    onNavigate('dashboard');
+                    setIsMobileMenuOpen(false);
+                  }}
+                  className="flex-row items-center px-4 py-3 mb-1 rounded-xl"
+                >
+                  <Ionicons name="grid-outline" size={20} color="#78716c" />
+                  <Text className="ml-3 font-medium text-stone-900">Dashboard</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity 
+                  className="flex-row items-center px-4 py-3 mb-1 rounded-xl bg-[#e8f5e9]"
+                  onPress={() => setIsMobileMenuOpen(false)}
+                >
+                  <Ionicons name="location-outline" size={20} color="#237227" />
+                  <Text className="ml-3 font-medium text-[#237227]">Site Management</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity 
+                  className="flex-row items-center px-4 py-3 mb-1 rounded-xl"
+                  onPress={() => {
+                    onNavigate('walkieTalkie');
+                    setIsMobileMenuOpen(false);
+                  }}
+                >
+                  <Ionicons name="mail-outline" size={20} color="#78716c" />
+                  <Text className="ml-3 font-medium text-stone-900">Contact Management</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity 
+                  className="flex-row items-center px-4 py-3 mb-1 rounded-xl"
+                  onPress={() => {
+                    onNavigate('activityLogs');
+                    setIsMobileMenuOpen(false);
+                  }}
+                >
+                  <Ionicons name="clipboard-outline" size={20} color="#78716c" />
+                  <Text className="ml-3 font-medium text-stone-900">Activity Logs</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity 
+                  className="flex-row items-center px-4 py-3 mb-1 rounded-xl"
+                  onPress={() => {
+                    onNavigate('companyList');
+                    setIsMobileMenuOpen(false);
+                  }}
+                >
+                  <Ionicons name="business-outline" size={20} color="#78716c" />
+                  <Text className="ml-3 font-medium text-stone-900">Company Lists</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity 
+                  className="flex-row items-center px-4 py-3 mb-1 rounded-xl"
+                  onPress={() => {
+                    onNavigate('employee');
+                    setIsMobileMenuOpen(false);
+                  }}
+                >
+                  <Ionicons name="people-outline" size={20} color="#78716c" />
+                  <Text className="ml-3 font-medium text-stone-900">Employees</Text>
+                </TouchableOpacity>
+
+                <View className="my-4 border-t border-stone-200" />
+
+                <TouchableOpacity 
+                  className="flex-row items-center px-4 py-3 mb-1 rounded-xl"
+                  onPress={() => {
+                    onNavigate('settings');
+                    setIsMobileMenuOpen(false);
+                  }}
+                >
+                  <Ionicons name="settings-outline" size={20} color="#78716c" />
+                  <Text className="ml-3 font-medium text-stone-900">Settings</Text>
+                </TouchableOpacity>
+              </ScrollView>
+
+              {/* Sign Out */}
+              <View className="px-4 pt-4 pb-6 border-t border-stone-200">
+                <TouchableOpacity 
+                  className="flex-row items-center px-4 py-3 rounded-xl"
+                  onPress={() => {
+                    setIsMobileMenuOpen(false);
+                    // Add logout functionality here if needed
+                  }}
+                >
+                  <Ionicons name="log-out-outline" size={20} color="#dc2626" />
+                  <Text className="ml-3 font-medium text-red-600">Sign Out</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </View>
+        </View>
       </Modal>
 
       <SweetAlertModal

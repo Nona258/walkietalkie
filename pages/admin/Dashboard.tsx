@@ -65,6 +65,7 @@ export default function AdminDashboard({ onLogout, onNavigate }: AdminDashboardP
   const [sites, setSites] = useState<Site[]>([]);
   const [employees, setEmployees] = useState<User[]>([]);
   const [activities, setActivities] = useState<Activity[]>([]);
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
   const windowWidth = Dimensions.get('window').width;
   const isWebView = windowWidth > 900;
@@ -158,26 +159,44 @@ export default function AdminDashboard({ onLogout, onNavigate }: AdminDashboardP
 
   const StatCard = ({ item }: { item: StatCard }) => (
     <View 
-      className="rounded-xl p-5 lg:p-6 flex-1 min-w-[45%] lg:min-w-[200px]"
-      style={{ backgroundColor: item.bgColor }}
+      style={{ 
+        backgroundColor: item.bgColor,
+        padding: isWebView ? 24 : 16,
+        borderRadius: 12
+      }}
     >
-      <View className="flex-row items-center justify-between mb-4">
+      <View className="flex-row items-center justify-between" style={{ marginBottom: isWebView ? 12 : 8 }}>
         <View 
-          className="items-center justify-center rounded-lg w-11 h-11"
-          style={{ backgroundColor: colors.white }}
+          style={{ 
+            backgroundColor: colors.white,
+            width: isWebView ? 44 : 40,
+            height: isWebView ? 44 : 40,
+            borderRadius: 8,
+            alignItems: 'center',
+            justifyContent: 'center'
+          }}
         >
-          <Ionicons name={item.icon as any} size={22} color={item.color} />
+          <Ionicons name={item.icon as any} size={isWebView ? 22 : 18} color={item.color} />
         </View>
       </View>
       <Text 
-        className="mb-1 text-3xl font-light lg:text-4xl"
-        style={{ color: colors.green }}
+        style={{ 
+          color: colors.green,
+          fontSize: isWebView ? 36 : 24,
+          fontWeight: '300',
+          marginBottom: 4
+        }}
       >
         {item.value}
       </Text>
       <Text 
-        className="text-xs font-medium tracking-wide lg:text-sm"
-        style={{ color: colors.green, opacity: 0.7 }}
+        style={{ 
+          color: colors.green,
+          opacity: 0.7,
+          fontSize: isWebView ? 14 : 11,
+          fontWeight: '500',
+          letterSpacing: 0.5
+        }}
       >
         {item.label.toUpperCase()}
       </Text>
@@ -201,6 +220,8 @@ export default function AdminDashboard({ onLogout, onNavigate }: AdminDashboardP
           setActiveTab={setActiveTab}
           onNavigate={onNavigate}
           onLogout={onLogout}
+          isMobileMenuOpen={isMobileMenuOpen}
+          setIsMobileMenuOpen={setIsMobileMenuOpen}
         />
         <SiteManagement onNavigate={setActiveTab} />
       </View>
@@ -216,8 +237,14 @@ export default function AdminDashboard({ onLogout, onNavigate }: AdminDashboardP
           setActiveTab={setActiveTab}
           onNavigate={onNavigate}
           onLogout={onLogout}
+          isMobileMenuOpen={isMobileMenuOpen}
+          setIsMobileMenuOpen={setIsMobileMenuOpen}
         />
-        <ContactManagement onNavigate={setActiveTab} />
+        <ContactManagement 
+          onNavigate={setActiveTab}
+          isMobileMenuOpen={isMobileMenuOpen}
+          setIsMobileMenuOpen={setIsMobileMenuOpen}
+        />
       </View>
     );
   }
@@ -231,8 +258,14 @@ export default function AdminDashboard({ onLogout, onNavigate }: AdminDashboardP
           setActiveTab={setActiveTab}
           onNavigate={onNavigate}
           onLogout={onLogout}
+          isMobileMenuOpen={isMobileMenuOpen}
+          setIsMobileMenuOpen={setIsMobileMenuOpen}
         />
-        <ActivityLogs onNavigate={setActiveTab} />
+        <ActivityLogs 
+          onNavigate={setActiveTab}
+          isMobileMenuOpen={isMobileMenuOpen}
+          setIsMobileMenuOpen={setIsMobileMenuOpen}
+        />
       </View>
     );
   }
@@ -246,8 +279,14 @@ export default function AdminDashboard({ onLogout, onNavigate }: AdminDashboardP
           setActiveTab={setActiveTab}
           onNavigate={onNavigate}
           onLogout={onLogout}
+          isMobileMenuOpen={isMobileMenuOpen}
+          setIsMobileMenuOpen={setIsMobileMenuOpen}
         />
-        <CompanyList onNavigate={setActiveTab} />
+        <CompanyList 
+          onNavigate={setActiveTab}
+          isMobileMenuOpen={isMobileMenuOpen}
+          setIsMobileMenuOpen={setIsMobileMenuOpen}
+        />
       </View>
     );
   }
@@ -261,8 +300,14 @@ export default function AdminDashboard({ onLogout, onNavigate }: AdminDashboardP
           setActiveTab={setActiveTab}
           onNavigate={onNavigate}
           onLogout={onLogout}
+          isMobileMenuOpen={isMobileMenuOpen}
+          setIsMobileMenuOpen={setIsMobileMenuOpen}
         />
-        <Employees onNavigate={setActiveTab} />
+        <Employees 
+          onNavigate={setActiveTab}
+          isMobileMenuOpen={isMobileMenuOpen}
+          setIsMobileMenuOpen={setIsMobileMenuOpen}
+        />
       </View>
     );
   }
@@ -276,8 +321,14 @@ export default function AdminDashboard({ onLogout, onNavigate }: AdminDashboardP
           setActiveTab={setActiveTab}
           onNavigate={onNavigate}
           onLogout={onLogout}
+          isMobileMenuOpen={isMobileMenuOpen}
+          setIsMobileMenuOpen={setIsMobileMenuOpen}
         />
-        <Settings onNavigate={setActiveTab} />
+        <Settings 
+          onNavigate={setActiveTab}
+          isMobileMenuOpen={isMobileMenuOpen}
+          setIsMobileMenuOpen={setIsMobileMenuOpen}
+        />
       </View>
     );
   }
@@ -289,6 +340,8 @@ export default function AdminDashboard({ onLogout, onNavigate }: AdminDashboardP
         setActiveTab={setActiveTab}
         onNavigate={onNavigate}
         onLogout={onLogout}
+        isMobileMenuOpen={isMobileMenuOpen}
+        setIsMobileMenuOpen={setIsMobileMenuOpen}
       />
 
       {/* Main Content Area */}
@@ -300,25 +353,47 @@ export default function AdminDashboard({ onLogout, onNavigate }: AdminDashboardP
       >
         {/* Header - Minimalist */}
         <View 
-          className="px-6 pt-8 pb-6"
-          style={{ backgroundColor: colors.cloudMist, borderBottomWidth: 1, borderBottomColor: colors.border }}
+          style={{ 
+            backgroundColor: colors.cloudMist, 
+            borderBottomWidth: 1, 
+            borderBottomColor: colors.border,
+            paddingHorizontal: isWebView ? 24 : 16,
+            paddingTop: isWebView ? 32 : 16,
+            paddingBottom: isWebView ? 24 : 16
+          }}
         >
           <View className="flex-row items-center justify-between">
-            <View className="flex-1">
-              <Text 
-                className="mb-1 text-2xl font-light lg:text-3xl"
-                style={{ color: colors.black }}
-              >
-                Dashboard
-              </Text>
-              <Text 
-                className="text-sm lg:text-base"
-                style={{ color: colors.black }}
-              >
-                Welcome back, Administrator
-              </Text>
+            <View className="flex-row items-center flex-1">
+              {!isWebView && (
+                <TouchableOpacity 
+                  onPress={() => setIsMobileMenuOpen(true)}
+                  style={{ 
+                    marginRight: 12,
+                    width: 40,
+                    height: 40,
+                    alignItems: 'center',
+                    justifyContent: 'center'
+                  }}
+                >
+                  <Ionicons name="menu" size={28} color={colors.green} />
+                </TouchableOpacity>
+              )}
+              <View className="flex-1">
+                <Text 
+                  className="mb-1 text-xl font-light lg:text-3xl"
+                  style={{ color: colors.black }}
+                >
+                  Dashboard
+                </Text>
+                <Text 
+                  className="text-xs lg:text-base"
+                  style={{ color: colors.black }}
+                >
+                  Welcome back, Administrator
+                </Text>
+              </View>
             </View>
-            <View className="flex-row items-center gap-3">
+            <View className="flex-row items-center" style={{ gap: isWebView ? 12 : 8 }}>
               <TouchableOpacity 
                 className="relative items-center justify-center w-10 h-10 rounded-full"
                 style={{ backgroundColor: colors.cloudMist }}
@@ -345,54 +420,67 @@ export default function AdminDashboard({ onLogout, onNavigate }: AdminDashboardP
         </View>
 
         {/* Stats Grid - Clean spacing */}
-        <View className="px-6 py-8">
-          <View className="flex-row flex-wrap gap-4">
-            {/* Row 1: Total Employees and Active Sites */}
-            <View style={{ width: isWebView ? '23.5%' : '48%' }}>
-              <StatCard item={stats[0]} />
-            </View>
-            <View style={{ width: isWebView ? '23.5%' : '48%' }}>
-              <StatCard item={stats[1]} />
-            </View>
-            {/* Row 2: Messages Today and Active Tracking */}
-            <View style={{ width: isWebView ? '23.5%' : '48%' }}>
-              <StatCard item={stats[2]} />
-            </View>
-            <View style={{ width: isWebView ? '23.5%' : '48%' }}>
-              <StatCard item={stats[3]} />
-            </View>
+        <View style={{ paddingHorizontal: isWebView ? 24 : 16, paddingVertical: isWebView ? 32 : 20 }}>
+          <View className="flex-row flex-wrap" style={{ marginHorizontal: isWebView ? -8 : -6 }}>
+            {stats.map((stat, index) => (
+              <View 
+                key={index}
+                style={{ 
+                  width: isWebView ? '25%' : '50%',
+                  paddingHorizontal: isWebView ? 8 : 6,
+                  marginBottom: isWebView ? 16 : 12
+                }}
+              >
+                <StatCard item={stat} />
+              </View>
+            ))}
           </View>
         </View>
 
-        <View className="px-6 pb-8 lg:flex-row lg:gap-6">
+        <View style={{ 
+          paddingHorizontal: isWebView ? 24 : 16, 
+          paddingBottom: isWebView ? 32 : 20,
+          flexDirection: isWebView ? 'row' : 'column'
+        }}>
           {/* Left Column */}
-          <View className="flex-1 mb-6 lg:mb-0">
+          <View className="flex-1" style={{ marginBottom: isWebView ? 0 : 16, marginRight: isWebView ? 24 : 0 }}>
             {/* Communication Activity - Minimalist Chart */}
             <View 
-              className="p-6 mb-6 rounded-xl lg:p-7"
-              style={{ backgroundColor: colors.white }}
+              style={{ 
+                backgroundColor: colors.white,
+                padding: isWebView ? 28 : 16,
+                borderRadius: 12,
+                marginBottom: isWebView ? 24 : 16
+              }}
             >
-              <View className="flex-row items-center justify-between mb-6">
+              <View className="flex-row items-center justify-between" style={{ marginBottom: isWebView ? 24 : 16 }}>
                 <Text 
-                  className="text-lg font-light lg:text-xl"
-                  style={{ color: colors.textPrimary }}
+                  style={{ 
+                    color: colors.textPrimary,
+                    fontSize: isWebView ? 20 : 16,
+                    fontWeight: '300'
+                  }}
                 >
                   Communication Activity
                 </Text>
                 <TouchableOpacity 
-                  className="flex-row items-center px-3 py-2 rounded-lg"
-                  style={{ backgroundColor: colors.cloudMist }}
+                  className="flex-row items-center rounded-lg"
+                  style={{ 
+                    backgroundColor: colors.cloudMist,
+                    paddingHorizontal: isWebView ? 12 : 8,
+                    paddingVertical: isWebView ? 8 : 6
+                  }}
                 >
                   <Text 
-                    className="mr-1 text-xs"
-                    style={{ color: colors.textSecondary }}
+                    className="text-xs"
+                    style={{ color: colors.textSecondary, marginRight: 4 }}
                   >
                     7 Days
                   </Text>
                   <Ionicons name="chevron-down" size={14} color={colors.textSecondary} />
                 </TouchableOpacity>
               </View>
-              <View className="flex-row items-end justify-between gap-2 h-36 lg:h-44">
+              <View className="flex-row items-end justify-between" style={{ gap: isWebView ? 8 : 4, height: isWebView ? 176 : 120 }}>
                 {[45, 60, 75, 55, 85, 95, 70].map((h, i) => (
                   <View 
                     key={i} 
@@ -419,18 +507,28 @@ export default function AdminDashboard({ onLogout, onNavigate }: AdminDashboardP
 
             {/* Map Preview - Clean */}
             <View 
-              className="p-6 rounded-xl lg:p-7"
-              style={{ backgroundColor: colors.white }}
+              style={{ 
+                backgroundColor: colors.white,
+                padding: isWebView ? 28 : 16,
+                borderRadius: 12
+              }}
             >
               <Text 
-                className="mb-5 text-lg font-light lg:text-xl"
-                style={{ color: colors.textPrimary }}
+                style={{ 
+                  color: colors.textPrimary,
+                  fontSize: isWebView ? 20 : 16,
+                  fontWeight: '300',
+                  marginBottom: isWebView ? 20 : 16
+                }}
               >
                 Live Location Tracking
               </Text>
               <View 
-                className="items-center justify-center rounded-lg h-52 lg:h-64"
-                style={{ backgroundColor: colors.cloudMist }}
+                className="items-center justify-center rounded-lg"
+                style={{ 
+                  backgroundColor: colors.cloudMist,
+                  height: isWebView ? 256 : 180
+                }}
               >
                 <View 
                   className="items-center justify-center w-16 h-16 mb-3 rounded-full"
@@ -449,22 +547,34 @@ export default function AdminDashboard({ onLogout, onNavigate }: AdminDashboardP
           </View>
 
           {/* Right Column - Recent Activity */}
-          <View className="lg:w-96">
+          <View style={{ width: isWebView ? 384 : '100%' }}>
             <View 
-              className="p-6 rounded-xl lg:p-7"
-              style={{ backgroundColor: colors.white }}
+              style={{ 
+                backgroundColor: colors.white,
+                padding: isWebView ? 28 : 16,
+                borderRadius: 12
+              }}
             >
               <Text 
-                className="mb-5 text-lg font-light lg:text-xl"
-                style={{ color: colors.textPrimary }}
+                style={{ 
+                  color: colors.textPrimary,
+                  fontSize: isWebView ? 20 : 16,
+                  fontWeight: '300',
+                  marginBottom: isWebView ? 20 : 16
+                }}
               >
                 Recent Activity
               </Text>
               {MOCK_ACTIVITIES.map((activity, idx) => (
                 <View 
                   key={activity.id} 
-                  className={`flex-row items-start ${idx !== MOCK_ACTIVITIES.length - 1 ? 'mb-5 pb-5' : ''}`}
-                  style={idx !== MOCK_ACTIVITIES.length - 1 ? { borderBottomWidth: 1, borderBottomColor: colors.border } : {}}
+                  className="flex-row items-start"
+                  style={{
+                    marginBottom: idx !== MOCK_ACTIVITIES.length - 1 ? (isWebView ? 20 : 16) : 0,
+                    paddingBottom: idx !== MOCK_ACTIVITIES.length - 1 ? (isWebView ? 20 : 16) : 0,
+                    borderBottomWidth: idx !== MOCK_ACTIVITIES.length - 1 ? 1 : 0,
+                    borderBottomColor: colors.border
+                  }}
                 >
                   <View 
                     className="items-center justify-center w-10 h-10 mr-4 rounded-lg"

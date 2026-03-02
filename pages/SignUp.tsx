@@ -227,25 +227,26 @@ export default function SignUp({ onNavigateToSignIn, onSignUpSuccess }: SignUpPr
   };
 
   return (
-    <View className="flex-1 bg-white overflow-hidden">
+    <View className="flex-1 overflow-hidden bg-[#f8fafb]">
       {/* Background decorative elements */}
-      <View className="absolute top-20 -left-20 w-48 h-48 rounded-full bg-[#34d399] opacity-10" />
-      <View className="absolute -bottom-32 -left-32 w-80 h-80 rounded-full bg-[#10b981] opacity-10" />
-      <View className="absolute bottom-40 -right-16 w-48 h-48 rounded-full bg-[#059669] opacity-10" />
-
+       <View className="absolute top-20 -left-20 w-48 h-48 rounded-full bg-[#237227] opacity-10 md:w-64 md:h-64 md:top-10 md:-left-10" />
+       <View className="absolute -bottom-32 -left-32 w-80 h-80 rounded-full bg-[#1e5c22] opacity-10 md:w-96 md:h-96" />
+       <View className="absolute bottom-40 -right-16 w-48 h-48 rounded-full bg-[#164418] opacity-10 md:w-72 md:h-72 md:bottom-20 md:-right-20" />
+     
       {/* Decorative rings */}
-      <View className="absolute -bottom-20 -left-20 w-56 h-56 rounded-full border-2 border-[#10b981]/15" />
-      <View className="absolute bottom-48 -right-12 w-32 h-32 rounded-full border border-[#34d399]/20" />
+     <View className="absolute -bottom-20 -left-20 w-56 h-56 rounded-full border-2 border-[#164418]/15 md:w-72 md:h-72" />
+     <View className="absolute bottom-48 -right-12 w-32 h-32 rounded-full border border-[#1e5c22]/20 md:w-48 md:h-48" />
 
       <KeyboardAvoidingView
         behavior={Platform.OS === "ios" ? "padding" : "height"}
         className="flex-1 overflow-hidden"
       >
-        <View className="justify-center flex-1 px-8 overflow-hidden">
+        <View className="items-center justify-center flex-1 px-8 overflow-hidden">
+          <View className="w-full max-w-md md:p-8 md:bg-white md:shadow-2xl md:rounded-3xl">
           {/* Logo */}
           <View className="items-center mb-10">
-          <View className="w-20 h-20 bg-[#10b981] rounded-3xl items-center justify-center mb-6 shadow-lg shadow-[#10b981]/30">
-            <Ionicons name="radio" size={38} color="#ffffff" />
+          <View className="w-20 h-20 bg-[#237227] rounded-3xl items-center justify-center mb-6 shadow-lg shadow-[#10b981]/30">
+            <Ionicons name="radio" size={38} color="#f8fafb" />
           </View>
           <Text className="text-[#111827] text-3xl font-bold italic">
             SyncSpeak
@@ -256,8 +257,8 @@ export default function SignUp({ onNavigateToSignIn, onSignUpSuccess }: SignUpPr
         </View>
 
         {/* Full Name */}
-        <View className="flex-row items-center px-3 py-3 mb-4 border border-green-300 rounded-xl">
-          <Ionicons name="person-outline" size={20} color="#4ade80" />
+        <View className="flex-row items-center px-3 py-3 mb-4 border border-[#237227] rounded-xl">
+          <Ionicons name="person-outline" size={20} color="#237227" />
           <TextInput
             className="flex-1 ml-2"
             placeholder="Full Name"
@@ -268,8 +269,8 @@ export default function SignUp({ onNavigateToSignIn, onSignUpSuccess }: SignUpPr
         </View>
 
         {/* Email */}
-        <View className="flex-row items-center px-3 py-3 mb-4 border border-green-300 rounded-xl">
-          <Ionicons name="mail-outline" size={20} color="#4ade80" />
+        <View className="flex-row items-center px-3 py-3 mb-4 border border-[#237227] rounded-xl">
+          <Ionicons name="mail-outline" size={20} color="#237227" />
           <TextInput
             className="flex-1 ml-2"
             placeholder="Email address"
@@ -281,8 +282,8 @@ export default function SignUp({ onNavigateToSignIn, onSignUpSuccess }: SignUpPr
         </View>
 
         {/* Phone Number */}
-        <View className="flex-row items-center px-3 py-3 mb-4 border border-green-300 rounded-xl">
-          <Ionicons name="call-outline" size={20} color="#4ade80" />
+        <View className="flex-row items-center px-3 py-3 mb-4 border border-[#237227] rounded-xl">
+          <Ionicons name="call-outline" size={20} color="#237227" />
           <TextInput
             className="flex-1 ml-2"
             placeholder="Phone Number"
@@ -293,8 +294,8 @@ export default function SignUp({ onNavigateToSignIn, onSignUpSuccess }: SignUpPr
         </View>
 
         {/* Password */}
-        <View className="flex-row items-center px-3 py-3 mb-4 border border-green-300 rounded-xl">
-          <Ionicons name="lock-closed-outline" size={20} color="#4ade80" />
+        <View className="flex-row items-center px-3 py-3 mb-4 border border-[#237227] rounded-xl">
+          <Ionicons name="lock-closed-outline" size={20} color="#237227" />
           <TextInput
             className="flex-1 ml-2"
             placeholder="Password"
@@ -312,8 +313,8 @@ export default function SignUp({ onNavigateToSignIn, onSignUpSuccess }: SignUpPr
         </View>
 
         {/* Confirm Password */}
-        <View className="flex-row items-center px-3 py-3 mb-6 border border-green-300 rounded-xl">
-          <Ionicons name="lock-closed-outline" size={20} color="#4ade80" />
+        <View className="flex-row items-center px-3 py-3 mb-6 border border-[#237227] rounded-xl">
+          <Ionicons name="lock-closed-outline" size={20} color="#237227" />
           <TextInput
             className="flex-1 ml-2"
             placeholder="Confirm Password"
@@ -336,7 +337,7 @@ export default function SignUp({ onNavigateToSignIn, onSignUpSuccess }: SignUpPr
 
         {/* Button */}
         <TouchableOpacity
-          className="bg-[#10b981] rounded-2xl h-14 items-center justify-center"
+          className="bg-[#237227] rounded-2xl h-14 items-center justify-center md:hover:bg-[#1a5a1e]"
           onPress={handleSignUp}
           disabled={loading}
         >
@@ -351,8 +352,9 @@ export default function SignUp({ onNavigateToSignIn, onSignUpSuccess }: SignUpPr
         <View className="flex-row justify-center mt-4">
           <Text>Already have an account? </Text>
           <TouchableOpacity onPress={onNavigateToSignIn}>
-            <Text className="text-[#10b981] font-bold">Sign In</Text>
+            <Text className="text-[#237227] font-bold">Sign In</Text>
           </TouchableOpacity>
+        </View>
         </View>
         </View>
       </KeyboardAvoidingView>

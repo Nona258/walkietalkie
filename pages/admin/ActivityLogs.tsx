@@ -7,6 +7,7 @@ import {
   Modal,
   Pressable,
   TextInput,
+  Dimensions,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 
@@ -19,8 +20,8 @@ const COLORS = {
   white: '#ffffff',
   border: '#e5e7eb',
   borderLight: '#f0f4f0',
-  textPrimary: '#1a2e1b',
-  textSecondary: '#4b6b4d',
+  textPrimary: '#292524',
+  textSecondary: '#292524',
   textMuted: '#8fa88f',
   iconBg: '#e8f5e9',
 };
@@ -90,16 +91,45 @@ function UserChip({ initials, name }: { initials: string; name: string }) {
   );
 }
 
-function ActivityRow({ item, isLast }: { item: Activity; isLast: boolean }) {
+function ActivityRow({ item, isLast, isMobile }: { item: Activity; isLast: boolean; isMobile: boolean }) {
+  if (isMobile) {
+    return (
+      <View style={{ paddingVertical: 14, paddingHorizontal: 16, borderBottomWidth: isLast ? 0 : 1, borderBottomColor: COLORS.borderLight, backgroundColor: COLORS.white }}>
+        <View style={{ flexDirection: 'row', alignItems: 'flex-start', marginBottom: 8 }}>
+          <View style={{ marginRight: 10 }}>
+            <LogIconBadge type={item.type} size={16} />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={{ fontSize: 13, fontWeight: '600', color: COLORS.textPrimary, marginBottom: 2 }}>{item.action}</Text>
+            <Text style={{ fontSize: 12, color: COLORS.textSecondary }}>{item.description}</Text>
+          </View>
+        </View>
+        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8, marginTop: 4 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+            <UserChip initials={item.userInitials} name={item.user} />
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 3, paddingHorizontal: 6, paddingVertical: 2, borderRadius: 999, borderWidth: 1, borderColor: COLORS.border, backgroundColor: COLORS.cloudMist }}>
+              <Ionicons name={LOG_ICON[item.type].icon as any} size={9} color={COLORS.textMuted} />
+              <Text style={{ fontSize: 9, color: COLORS.textMuted, fontWeight: '500' }}>{LOG_ICON[item.type].label}</Text>
+            </View>
+          </View>
+          <View style={{ alignItems: 'flex-end' }}>
+            <Text style={{ fontSize: 11, fontWeight: '600', color: COLORS.textSecondary }}>{item.timeAgo}</Text>
+            <Text style={{ fontSize: 10, color: COLORS.textMuted }}>{item.timestamp}</Text>
+          </View>
+        </View>
+      </View>
+    );
+  }
+
   return (
     <View style={{ flexDirection: 'row', alignItems: 'flex-start', paddingVertical: 16, paddingHorizontal: 24, borderBottomWidth: isLast ? 0 : 1, borderBottomColor: COLORS.borderLight, backgroundColor: COLORS.white }}>
       <View style={{ marginRight: 14, paddingTop: 2 }}>
         <LogIconBadge type={item.type} size={18} />
       </View>
-      <View style={{ flex: 1, gap: 4 }}>
-        <Text style={{ fontSize: 14, fontWeight: '600', color: COLORS.textPrimary, lineHeight: 20 }}>{item.action}</Text>
-        <Text style={{ fontSize: 13, color: COLORS.textSecondary, lineHeight: 18 }}>{item.description}</Text>
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, marginTop: 4 }}>
+      <View style={{ flex: 1, gap: 2 }}>
+        <Text style={{ fontSize: 14, fontWeight: '600', color: COLORS.textPrimary }}>{item.action}</Text>
+        <Text style={{ fontSize: 13, color: COLORS.textSecondary }}>{item.description}</Text>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, marginTop: 2 }}>
           <UserChip initials={item.userInitials} name={item.user} />
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 8, paddingVertical: 2, borderRadius: 999, borderWidth: 1, borderColor: COLORS.border, backgroundColor: COLORS.cloudMist }}>
             <Ionicons name={LOG_ICON[item.type].icon as any} size={10} color={COLORS.textMuted} />
@@ -118,12 +148,17 @@ function ActivityRow({ item, isLast }: { item: Activity; isLast: boolean }) {
 // ─── Main Component ───────────────────────────────────────────────────────────
 interface ActivityLogsProps {
   onNavigate: (page: 'dashboard' | 'siteManagement' | 'walkieTalkie' | 'activityLogs' | 'companyList' | 'employee' | 'settings') => void;
+  isMobileMenuOpen?: boolean;
+  setIsMobileMenuOpen?: (open: boolean) => void;
 }
 
-export default function ActivityLogs({ onNavigate }: ActivityLogsProps) {
+export default function ActivityLogs({ onNavigate, isMobileMenuOpen, setIsMobileMenuOpen }: ActivityLogsProps) {
   const [activeFilter, setActiveFilter] = useState<'all' | LogType>('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [isNotificationOpen, setIsNotificationOpen] = useState(false);
+  
+  const windowWidth = Dimensions.get('window').width;
+  const isWebView = windowWidth > 900;
 
   const filtered = MOCK_ACTIVITIES.filter((a) => {
     const matchesFilter = activeFilter === 'all' || a.type === activeFilter;
@@ -137,12 +172,28 @@ export default function ActivityLogs({ onNavigate }: ActivityLogsProps) {
       <ScrollView style={{ flex: 1 }} showsVerticalScrollIndicator={false}>
 
         {/* ── Top Header ─────────────────────────────────────────────────────── */}
-        <View style={{ backgroundColor: COLORS.white, paddingHorizontal: 24, paddingTop: 18, paddingBottom: 16, borderBottomWidth: 1, borderBottomColor: COLORS.border, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+        <View style={{ backgroundColor: COLORS.white, paddingHorizontal: isWebView ? 24 : 16, paddingTop: 18, paddingBottom: 16, borderBottomWidth: 1, borderBottomColor: COLORS.border, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
 
-          {/* Left: Title only — hamburger removed */}
-          <View>
-            <Text style={{ fontSize: 20, fontWeight: '700', color: COLORS.textPrimary, lineHeight: 26 }}>Activity Logs</Text>
-            <Text style={{ fontSize: 12, color: COLORS.textMuted, marginTop: 1 }}>Welcome back, Administrator</Text>
+          {/* Left: Title with hamburger on mobile */}
+          <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}>
+            {!isWebView && setIsMobileMenuOpen && (
+              <TouchableOpacity 
+                onPress={() => setIsMobileMenuOpen(true)}
+                style={{ 
+                  marginRight: 12,
+                  width: 40,
+                  height: 40,
+                  alignItems: 'center',
+                  justifyContent: 'center'
+                }}
+              >
+                <Ionicons name="menu" size={28} color={COLORS.green} />
+              </TouchableOpacity>
+            )}
+            <View style={{ flex: 1 }}>
+              <Text style={{ fontSize: isWebView ? 20 : 18, fontWeight: '700', color: COLORS.textPrimary, lineHeight: 26 }}>Activity Logs</Text>
+              <Text style={{ fontSize: 12, color: COLORS.textMuted, marginTop: 1 }}>Welcome back, Administrator</Text>
+            </View>
           </View>
 
           {/* Right: Notification + Avatar */}
@@ -158,42 +209,67 @@ export default function ActivityLogs({ onNavigate }: ActivityLogsProps) {
         </View>
 
         {/* ── Page Body ─────────────────────────────────────────────────────── */}
-        <View style={{ paddingHorizontal: 24, paddingTop: 24, paddingBottom: 40, width: '100%' }}>
+        <View style={{ paddingHorizontal: isWebView ? 24 : 16, paddingTop: isWebView ? 24 : 16, paddingBottom: 40, width: '100%' }}>
 
           {/* Stats Row */}
-          <View style={{ flexDirection: 'row', gap: 12, marginBottom: 20, flexWrap: 'wrap' }}>
+          <View style={{ flexDirection: 'row', gap: isWebView ? 12 : 8, marginBottom: isWebView ? 20 : 16, flexWrap: 'wrap' }}>
             {[
               { label: 'Total Events', value: '1,284', icon: 'list-outline'        },
               { label: 'Today',        value: '38',    icon: 'today-outline'        },
               { label: 'Alerts',       value: '5',     icon: 'alert-circle-outline' },
               { label: 'Active Users', value: '12',    icon: 'people-outline'       },
             ].map((stat) => (
-              <View key={stat.label} style={{ flex: 1, minWidth: 140, backgroundColor: COLORS.white, borderRadius: 12, borderWidth: 1, borderColor: COLORS.border, padding: 16, flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-                <View style={{ width: 38, height: 38, borderRadius: 10, backgroundColor: COLORS.greenPale, alignItems: 'center', justifyContent: 'center' }}>
-                  <Ionicons name={stat.icon as any} size={18} color={COLORS.green} />
+              <View 
+                key={stat.label} 
+                style={{ 
+                  flex: isWebView ? 1 : undefined,
+                  width: isWebView ? undefined : '48%',
+                  minWidth: isWebView ? 140 : undefined,
+                  backgroundColor: COLORS.greenPale, 
+                  borderRadius: isWebView ? 12 : 10, 
+                  borderWidth: 1, 
+                  borderColor: COLORS.border, 
+                  padding: isWebView ? 16 : 12, 
+                  flexDirection: 'row', 
+                  alignItems: 'center', 
+                  gap: isWebView ? 12 : 10 
+                }}
+              >
+                <View style={{ width: isWebView ? 38 : 34, height: isWebView ? 38 : 34, borderRadius: isWebView ? 10 : 8, backgroundColor: COLORS.white, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: COLORS.borderLight }}>
+                  <Ionicons name={stat.icon as any} size={isWebView ? 18 : 16} color={COLORS.green} />
                 </View>
-                <View>
-                  <Text style={{ fontSize: 20, fontWeight: '700', color: COLORS.textPrimary }}>{stat.value}</Text>
-                  <Text style={{ fontSize: 11, color: COLORS.textMuted, marginTop: 1 }}>{stat.label}</Text>
+                <View style={{ flex: 1 }}>
+                  <Text style={{ fontSize: isWebView ? 20 : 18, fontWeight: '700', color: COLORS.textPrimary }}>{stat.value}</Text>
+                  <Text style={{ fontSize: isWebView ? 11 : 10, color: COLORS.textMuted, marginTop: 1 }}>{stat.label}</Text>
                 </View>
               </View>
             ))}
           </View>
 
           {/* ── Main Card ─────────────────────────────────────────────────────── */}
-          <View style={{ backgroundColor: COLORS.white, borderRadius: 14, borderWidth: 1, borderColor: COLORS.border, overflow: 'hidden', width: '100%' }}>
+          <View style={{ backgroundColor: COLORS.white, borderRadius: isWebView ? 14 : 12, borderWidth: 1, borderColor: COLORS.border, overflow: 'hidden', width: '100%' }}>
 
             {/* Card Header */}
-            <View style={{ paddingHorizontal: 24, paddingVertical: 16, borderBottomWidth: 1, borderBottomColor: COLORS.border, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12 }}>
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-                <Ionicons name="time-outline" size={18} color={COLORS.green} />
-                <Text style={{ fontSize: 15, fontWeight: '700', color: COLORS.textPrimary }}>Recent Activity</Text>
-                <View style={{ paddingHorizontal: 8, paddingVertical: 2, borderRadius: 999, backgroundColor: COLORS.greenPale, borderWidth: 1, borderColor: COLORS.borderLight }}>
-                  <Text style={{ fontSize: 11, fontWeight: '600', color: COLORS.green }}>{filtered.length}</Text>
+            <View style={{ paddingHorizontal: isWebView ? 24 : 16, paddingVertical: isWebView ? 16 : 14, borderBottomWidth: 1, borderBottomColor: COLORS.border }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: isWebView ? 0 : 12 }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: isWebView ? 10 : 8 }}>
+                  <Ionicons name="time-outline" size={isWebView ? 18 : 16} color={COLORS.green} />
+                  <Text style={{ fontSize: isWebView ? 15 : 14, fontWeight: '700', color: COLORS.textPrimary }}>Recent Activity</Text>
+                  <View style={{ paddingHorizontal: 8, paddingVertical: 2, borderRadius: 999, backgroundColor: COLORS.greenPale, borderWidth: 1, borderColor: COLORS.borderLight }}>
+                    <Text style={{ fontSize: isWebView ? 11 : 10, fontWeight: '600', color: COLORS.green }}>{filtered.length}</Text>
+                  </View>
                 </View>
+                {isWebView && (
+                  <TouchableOpacity style={{ flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 14, height: 34, backgroundColor: COLORS.green, borderRadius: 8 }}>
+                    <Ionicons name="download-outline" size={14} color={COLORS.white} />
+                    <Text style={{ fontSize: 14, fontWeight: '600', color: COLORS.white }}>Export</Text>
+                  </TouchableOpacity>
+                )}
               </View>
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-                <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: COLORS.cloudMist, borderWidth: 1, borderColor: COLORS.border, borderRadius: 8, paddingHorizontal: 10, height: 34, gap: 6, minWidth: 200 }}>
+              
+              {/* Search Bar - Full width on mobile, inline on desktop */}
+              <View style={{ flexDirection: isWebView ? 'row' : 'column', alignItems: isWebView ? 'center' : 'stretch', gap: 10, marginTop: isWebView ? 12 : 0 }}>
+                <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', backgroundColor: COLORS.cloudMist, borderWidth: 1, borderColor: COLORS.border, borderRadius: 8, paddingHorizontal: 10, height: isWebView ? 34 : 38, gap: 6 }}>
                   <Ionicons name="search-outline" size={14} color={COLORS.textMuted} />
                   <TextInput value={searchQuery} onChangeText={setSearchQuery} placeholder="Search logs…" placeholderTextColor={COLORS.textMuted} style={{ flex: 1, fontSize: 13, color: COLORS.textPrimary }} />
                   {searchQuery.length > 0 && (
@@ -202,10 +278,12 @@ export default function ActivityLogs({ onNavigate }: ActivityLogsProps) {
                     </TouchableOpacity>
                   )}
                 </View>
-                <TouchableOpacity style={{ flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 14, height: 34, backgroundColor: COLORS.green, borderRadius: 8 }}>
-                  <Ionicons name="download-outline" size={14} color={COLORS.white} />
-                  <Text style={{ fontSize: 12, fontWeight: '600', color: COLORS.white }}>Export</Text>
-                </TouchableOpacity>
+                {!isWebView && (
+                  <TouchableOpacity style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 10, backgroundColor: COLORS.green, borderRadius: 8 }}>
+                    <Ionicons name="download-outline" size={14} color={COLORS.white} />
+                    <Text style={{ fontSize: 14, fontWeight: '600', color: COLORS.white }}>Export Logs</Text>
+                  </TouchableOpacity>
+                )}
               </View>
             </View>
 
@@ -239,7 +317,7 @@ export default function ActivityLogs({ onNavigate }: ActivityLogsProps) {
               </View>
             ) : (
               filtered.map((item, index) => (
-                <ActivityRow key={item.id} item={item} isLast={index === filtered.length - 1} />
+                <ActivityRow key={item.id} item={item} isLast={index === filtered.length - 1} isMobile={false} />
               ))
             )}
 

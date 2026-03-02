@@ -166,15 +166,15 @@ export default function SignIn({ onNavigateToSignUp, onSignInSuccess }: SignInPr
   };
 
   return (
-    <View className="flex-1 overflow-hidden bg-white md:bg-gray-50">
+    <View className="flex-1 overflow-hidden bg-[#f8fafb] md:bg-gray-50">
       {/* Background decorative elements */}
-      <View className="absolute top-20 -left-20 w-48 h-48 rounded-full bg-[#34d399] opacity-10 md:w-64 md:h-64 md:top-10 md:-left-10" />
-      <View className="absolute -bottom-32 -left-32 w-80 h-80 rounded-full bg-[#10b981] opacity-10 md:w-96 md:h-96" />
-      <View className="absolute bottom-40 -right-16 w-48 h-48 rounded-full bg-[#059669] opacity-10 md:w-72 md:h-72 md:bottom-20 md:-right-20" />
+      <View className="absolute top-20 -left-20 w-48 h-48 rounded-full bg-[#237227] opacity-10 md:w-64 md:h-64 md:top-10 md:-left-10" />
+      <View className="absolute -bottom-32 -left-32 w-80 h-80 rounded-full bg-[#1e5c22] opacity-10 md:w-96 md:h-96" />
+      <View className="absolute bottom-40 -right-16 w-48 h-48 rounded-full bg-[#164418] opacity-10 md:w-72 md:h-72 md:bottom-20 md:-right-20" />
 
       {/* Decorative rings */}
-      <View className="absolute -bottom-20 -left-20 w-56 h-56 rounded-full border-2 border-[#10b981]/15 md:w-72 md:h-72" />
-      <View className="absolute bottom-48 -right-12 w-32 h-32 rounded-full border border-[#34d399]/20 md:w-48 md:h-48" />
+      <View className="absolute -bottom-20 -left-20 w-56 h-56 rounded-full border-2 border-[#164418]/15 md:w-72 md:h-72" />
+      <View className="absolute bottom-48 -right-12 w-32 h-32 rounded-full border border-[#1e5c22]/20 md:w-48 md:h-48" />
 
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
@@ -183,11 +183,11 @@ export default function SignIn({ onNavigateToSignUp, onSignInSuccess }: SignInPr
         {/* Desktop: Center the form card */}
         <View className="justify-center flex-1 px-8 overflow-hidden md:items-center md:px-4">
           {/* Form Card - On desktop it becomes a centered card with shadow */}
-          <View className="w-full md:max-w-md md:bg-white md:rounded-3xl md:shadow-xl md:p-10 md:border md:border-gray-100 lg:max-w-lg">
+          <View className="w-full md:max-w-md md:bg-[#f8fafb] md:rounded-3xl md:shadow-xl md:p-10 md:border md:border-gray-100 lg:max-w-lg">
             {/* Logo */}
             <View className="items-center mb-10 md:mb-8">
-              <View className="w-20 h-20 bg-[#10b981] rounded-3xl items-center justify-center mb-6 shadow-lg shadow-[#10b981]/30 md:w-24 md:h-24">
-                <Ionicons name="radio" size={38} color="#ffffff" />
+              <View className="w-20 h-20 bg-[#237227] rounded-3xl items-center justify-center mb-6 shadow-lg shadow-[#10b981]/30 md:w-24 md:h-24">
+                <Ionicons name="radio" size={38} color="#f8fafb" />
               </View>
               <Text className="text-[#111827] text-3xl font-bold italic tracking-wide md:text-4xl">SyncSpeak</Text>
               <Text className="text-[#6b7280] text-base mt-2 tracking-wide md:text-lg">Connect instantly. Talk freely.</Text>
@@ -196,8 +196,8 @@ export default function SignIn({ onNavigateToSignUp, onSignInSuccess }: SignInPr
             {/* Form */}
             <View className="mt-2">
               {/* Email Input */}
-              <View className="flex-row items-center px-3 py-3 mb-4 bg-white border border-green-300 rounded-xl md:px-4 md:py-4 md:rounded-2xl md:border-green-400/50 md:hover:border-green-500 md:transition-colors">
-                <Ionicons name="mail-outline" size={20} color="#4ade80" />
+              <View style={{ borderColor: '#237227' }} className="flex-row items-center px-3 py-3 mb-4 bg-white border rounded-xl md:px-4 md:py-4 md:rounded-2xl md:transition-colors md:hover:border-[#1a5a1e]">
+                <Ionicons name="mail-outline" size={20} color="#237227" />
                 <TextInput
                   className="flex-1 ml-2 text-base outline-none md:text-lg md:ml-3"
                   placeholder="Email address"
@@ -210,8 +210,8 @@ export default function SignIn({ onNavigateToSignUp, onSignInSuccess }: SignInPr
               </View>
 
               {/* Password Input */}
-              <View className="flex-row items-center px-3 py-3 mb-3 bg-white border border-green-300 rounded-xl md:px-4 md:py-4 md:rounded-2xl md:border-green-400/50 md:hover:border-green-500 md:transition-colors">
-                <Ionicons name="lock-closed-outline" size={20} color="#4ade80" />
+              <View style={{ borderColor: '#237227' }} className="flex-row items-center px-3 py-3 mb-3 bg-white border rounded-xl md:px-4 md:py-4 md:rounded-2xl md:transition-colors md:hover:border-[#1a5a1e]">
+                <Ionicons name="lock-closed-outline" size={20} color="#237227" />
                 <TextInput
                   className="flex-1 ml-2 text-base outline-none md:text-lg md:ml-3"
                   placeholder="Password"
@@ -238,12 +238,12 @@ export default function SignIn({ onNavigateToSignUp, onSignInSuccess }: SignInPr
 
               {/* Forgot Password */}
               <TouchableOpacity className="self-end mt-2 mb-8 md:mb-6">
-                <Text className="text-[#10b981] text-sm font-semibold md:text-base md:hover:underline">Forgot password?</Text>
+                <Text className="text-[#237227] text-sm font-semibold md:text-base md:hover:underline">Forgot password?</Text>
               </TouchableOpacity>
 
               {/* Sign In Button */}
               <TouchableOpacity
-                className="bg-[#10b981] rounded-2xl h-14 items-center justify-center mb-6 shadow-lg shadow-[#10b981]/30 active:opacity-90 disabled:opacity-50 md:h-16 md:rounded-2xl md:hover:bg-[#059669] md:transition-colors"
+                className="bg-[#237227] rounded-2xl h-14 items-center justify-center mb-6 shadow-lg shadow-[#10b981]/30 active:opacity-90 disabled:opacity-50 md:h-16 md:rounded-2xl md:transition-colors md:hover:bg-[#1a5a1e]"
                 onPress={handleSignIn}
                 disabled={loading}
               >
@@ -260,7 +260,7 @@ export default function SignIn({ onNavigateToSignUp, onSignInSuccess }: SignInPr
               <View className="flex-row items-center justify-center mt-2">
                 <Text className="text-[#6b7280] text-base md:text-lg">{"Don't have an account?"} </Text>
                 <TouchableOpacity onPress={onNavigateToSignUp}>
-                  <Text className="text-[#10b981] text-base font-bold md:text-lg md:hover:underline">Sign Up</Text>
+                  <Text className="text-[#237227] text-base font-bold md:text-lg md:hover:underline">Sign Up</Text>
                 </TouchableOpacity>
               </View>
             </View>

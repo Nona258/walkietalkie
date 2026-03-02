@@ -7,6 +7,7 @@ import {
   Modal,
   Pressable,
   TextInput,
+  Dimensions,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 
@@ -60,6 +61,8 @@ interface EmployeesProps {
       | 'employee'
       | 'settings'
   ) => void;
+  isMobileMenuOpen?: boolean;
+  setIsMobileMenuOpen?: (open: boolean) => void;
 }
 
 // ─── Sub-components ─────────────────────────────────────────────────────────────
@@ -110,7 +113,7 @@ function ActionBtn({ icon, onPress, danger }: { icon: string; onPress: () => voi
 function LabeledInput({ label, placeholder, value, onChangeText, icon }: { label: string; placeholder: string; value: string; onChangeText: (t: string) => void; icon: string }) {
   return (
     <View style={{ gap: 5 }}>
-      <Text style={{ fontSize: 12, fontWeight: '600', color: COLORS.textSecondary }}>{label}</Text>
+      <Text style={{ fontSize: 12, fontWeight: '600', color: '#1c1917' }}>{label}</Text>
       <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: COLORS.cloudMist, borderWidth: 1, borderColor: COLORS.border, borderRadius: 9, paddingHorizontal: 12, height: 40, gap: 8 }}>
         <Ionicons name={icon as any} size={14} color={COLORS.textMuted} />
         <TextInput value={value} onChangeText={onChangeText} placeholder={placeholder} placeholderTextColor={COLORS.textMuted} style={{ flex: 1, fontSize: 13, color: COLORS.textPrimary }} />
@@ -120,7 +123,10 @@ function LabeledInput({ label, placeholder, value, onChangeText, icon }: { label
 }
 
 // ─── Main Component ───────────────────────────────────────────────────────────
-export default function Employees({ onNavigate }: EmployeesProps) {
+export default function Employees({ onNavigate, isMobileMenuOpen, setIsMobileMenuOpen }: EmployeesProps) {
+  const windowWidth = Dimensions.get('window').width;
+  const isWebView = windowWidth > 900;
+  
   const [employees, setEmployees] = useState<Employee[]>(MOCK_EMPLOYEES);
   const [searchQuery, setSearchQuery] = useState('');
   const [isNotificationOpen, setIsNotificationOpen] = useState(false);
@@ -177,10 +183,26 @@ export default function Employees({ onNavigate }: EmployeesProps) {
       <ScrollView style={{ flex: 1 }} showsVerticalScrollIndicator={false}>
 
         {/* ── Top Header ─────────────────────────────────────────────────────── */}
-        <View style={{ backgroundColor: COLORS.white, paddingHorizontal: 24, paddingTop: 18, paddingBottom: 16, borderBottomWidth: 1, borderBottomColor: COLORS.border, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-          <View>
-            <Text style={{ fontSize: 20, fontWeight: '700', color: COLORS.textPrimary, lineHeight: 26 }}>Employee Management</Text>
-            <Text style={{ fontSize: 12, color: COLORS.textMuted, marginTop: 1 }}>Welcome back, Administrator</Text>
+        <View style={{ backgroundColor: COLORS.white, paddingHorizontal: isWebView ? 24 : 16, paddingTop: 18, paddingBottom: 16, borderBottomWidth: 1, borderBottomColor: COLORS.border, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}>
+            {!isWebView && setIsMobileMenuOpen && (
+              <TouchableOpacity 
+                onPress={() => setIsMobileMenuOpen(true)}
+                style={{ 
+                  marginRight: 12,
+                  width: 40,
+                  height: 40,
+                  alignItems: 'center',
+                  justifyContent: 'center'
+                }}
+              >
+                <Ionicons name="menu" size={28} color={COLORS.green} />
+              </TouchableOpacity>
+            )}
+            <View style={{ flex: 1 }}>
+              <Text style={{ fontSize: 20, fontWeight: '700', color: COLORS.textPrimary, lineHeight: 26 }}>Employee Management</Text>
+              <Text style={{ fontSize: 12, color: COLORS.textMuted, marginTop: 1 }}>Welcome back, Administrator</Text>
+            </View>
           </View>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
             <TouchableOpacity onPress={() => setIsNotificationOpen(true)} style={{ width: 36, height: 36, borderRadius: 8, backgroundColor: COLORS.cloudMist, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: COLORS.border }}>
@@ -188,29 +210,29 @@ export default function Employees({ onNavigate }: EmployeesProps) {
               <Ionicons name="notifications-outline" size={18} color={COLORS.textSecondary} />
             </TouchableOpacity>
             <View style={{ width: 36, height: 36, borderRadius: 8, backgroundColor: COLORS.greenPale, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: COLORS.border }}>
-              <Text style={{ fontSize: 11, fontWeight: '700', color: COLORS.green }}>AD</Text>
+              <Text style={{ fontSize: 14, fontWeight: '700', color: COLORS.green }}>AD</Text>
             </View>
           </View>
         </View>
 
         {/* ── Page Body — full width, no maxWidth cap ───────────────────────── */}
-        <View style={{ paddingHorizontal: 24, paddingTop: 24, paddingBottom: 48, width: '100%' }}>
+        <View style={{ paddingHorizontal: isWebView ? 24 : 16, paddingTop: isWebView ? 24 : 16, paddingBottom: 48, width: '100%' }}>
 
           {/* Stats strip */}
-          <View style={{ flexDirection: 'row', gap: 12, marginBottom: 24, flexWrap: 'wrap' }}>
+          <View style={{ flexDirection: 'row', gap: isWebView ? 12 : 8, marginBottom: isWebView ? 24 : 16, flexWrap: 'wrap' }}>
             {[
               { label: 'Total Employees', value: `${employees.length}`,                              icon: 'people-outline'           },
               { label: 'Online Now',      value: `${onlineCount}`,                                   icon: 'radio-button-on-outline'  },
               { label: 'Offline',         value: `${employees.length - onlineCount}`,                icon: 'radio-button-off-outline' },
               { label: 'Roles',           value: `${new Set(employees.map((e) => e.role)).size}`,    icon: 'briefcase-outline'        },
             ].map((stat) => (
-              <View key={stat.label} style={{ flex: 1, minWidth: 140, backgroundColor: COLORS.white, borderRadius: 12, borderWidth: 1, borderColor: COLORS.border, padding: 16, flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-                <View style={{ width: 38, height: 38, borderRadius: 10, backgroundColor: COLORS.greenPale, alignItems: 'center', justifyContent: 'center' }}>
-                  <Ionicons name={stat.icon as any} size={18} color={COLORS.green} />
+              <View key={stat.label} style={{ flex: isWebView ? 1 : undefined, width: isWebView ? undefined : '48%', minWidth: isWebView ? 140 : undefined, backgroundColor: COLORS.greenPale, borderRadius: 12, borderWidth: 1, borderColor: COLORS.border, padding: isWebView ? 16 : 12, flexDirection: 'row', alignItems: 'center', gap: isWebView ? 12 : 10 }}>
+                <View style={{ width: isWebView ? 38 : 34, height: isWebView ? 38 : 34, borderRadius: 10, backgroundColor: COLORS.white, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: COLORS.borderLight }}>
+                  <Ionicons name={stat.icon as any} size={isWebView ? 18 : 16} color={COLORS.green} />
                 </View>
-                <View>
-                  <Text style={{ fontSize: 20, fontWeight: '700', color: COLORS.textPrimary }}>{stat.value}</Text>
-                  <Text style={{ fontSize: 11, color: COLORS.textMuted, marginTop: 1 }}>{stat.label}</Text>
+                <View style={{ flex: 1 }}>
+                  <Text style={{ fontSize: isWebView ? 20 : 18, fontWeight: '700', color: COLORS.textPrimary }}>{stat.value}</Text>
+                  <Text style={{ fontSize: isWebView ? 11 : 10, color: COLORS.textMuted, marginTop: 1 }}>{stat.label}</Text>
                 </View>
               </View>
             ))}
@@ -220,42 +242,53 @@ export default function Employees({ onNavigate }: EmployeesProps) {
           <View style={{ backgroundColor: COLORS.white, borderRadius: 14, borderWidth: 1, borderColor: COLORS.border, overflow: 'hidden', width: '100%' }}>
 
             {/* Toolbar */}
-            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 20, paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: COLORS.border, flexWrap: 'wrap', gap: 10 }}>
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-                <Ionicons name="people-outline" size={16} color={COLORS.green} />
-                <Text style={{ fontSize: 14, fontWeight: '700', color: COLORS.textPrimary }}>All Employees</Text>
-                <View style={{ paddingHorizontal: 8, paddingVertical: 2, borderRadius: 999, backgroundColor: COLORS.greenPale, borderWidth: 1, borderColor: COLORS.borderLight }}>
-                  <Text style={{ fontSize: 11, fontWeight: '600', color: COLORS.green }}>{filtered.length}</Text>
+            <View style={{ paddingHorizontal: isWebView ? 20 : 16, paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: COLORS.border, gap: 12 }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                  <Ionicons name="people-outline" size={16} color={COLORS.green} />
+                  <Text style={{ fontSize: 14, fontWeight: '700', color: COLORS.textPrimary }}>All Employees</Text>
+                  <View style={{ paddingHorizontal: 8, paddingVertical: 2, borderRadius: 999, backgroundColor: COLORS.greenPale, borderWidth: 1, borderColor: COLORS.borderLight }}>
+                    <Text style={{ fontSize: 11, fontWeight: '600', color: COLORS.green }}>{filtered.length}</Text>
+                  </View>
                 </View>
+                {isWebView && (
+                  <TouchableOpacity onPress={() => { resetForm(); setIsAddModalOpen(true); }} style={{ flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 14, height: 34, backgroundColor: COLORS.green, borderRadius: 8 }}>
+                    <Ionicons name="person-add-outline" size={14} color={COLORS.white} />
+                    <Text style={{ fontSize: 12, fontWeight: '600', color: COLORS.white }}>Add Employee</Text>
+                  </TouchableOpacity>
+                )}
               </View>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-                <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: COLORS.cloudMist, borderWidth: 1, borderColor: COLORS.border, borderRadius: 8, paddingHorizontal: 10, height: 34, gap: 6, minWidth: 220 }}>
+                <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', backgroundColor: COLORS.cloudMist, borderWidth: 1, borderColor: COLORS.border, borderRadius: 8, paddingHorizontal: 10, height: 36, gap: 6 }}>
                   <Ionicons name="search-outline" size={13} color={COLORS.textMuted} />
-                  <TextInput value={searchQuery} onChangeText={setSearchQuery} placeholder="Search by name, role, email…" placeholderTextColor={COLORS.textMuted} style={{ flex: 1, fontSize: 13, color: COLORS.textPrimary }} />
+                  <TextInput value={searchQuery} onChangeText={setSearchQuery} placeholder="Search employees…" placeholderTextColor={COLORS.textMuted} style={{ flex: 1, fontSize: 13, color: COLORS.textPrimary }} />
                   {searchQuery.length > 0 && (
                     <TouchableOpacity onPress={() => setSearchQuery('')}>
                       <Ionicons name="close-circle" size={13} color={COLORS.textMuted} />
                     </TouchableOpacity>
                   )}
                 </View>
-                <TouchableOpacity onPress={() => { resetForm(); setIsAddModalOpen(true); }} style={{ flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 14, height: 34, backgroundColor: COLORS.green, borderRadius: 8 }}>
-                  <Ionicons name="person-add-outline" size={14} color={COLORS.white} />
-                  <Text style={{ fontSize: 12, fontWeight: '600', color: COLORS.white }}>Add Employee</Text>
-                </TouchableOpacity>
+                {!isWebView && (
+                  <TouchableOpacity onPress={() => { resetForm(); setIsAddModalOpen(true); }} style={{ width: 36, height: 36, backgroundColor: COLORS.green, borderRadius: 8, alignItems: 'center', justifyContent: 'center' }}>
+                    <Ionicons name="person-add-outline" size={18} color={COLORS.white} />
+                  </TouchableOpacity>
+                )}
               </View>
             </View>
 
             {/* Column Headers */}
-            <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 20, paddingVertical: 10, backgroundColor: COLORS.cloudMist, borderBottomWidth: 1, borderBottomColor: COLORS.border }}>
-              <ColHeader label="Employee"  flex={3} />
-              <ColHeader label="Role"      flex={2} />
-              <ColHeader label="Email"     flex={3} />
-              <ColHeader label="Phone"     flex={2} />
-              <ColHeader label="Status"    flex={1} />
-              <View style={{ width: 96 }}>
-                <Text style={{ fontSize: 11, fontWeight: '600', color: COLORS.textMuted, textTransform: 'uppercase', letterSpacing: 0.5 }}>Actions</Text>
+            {isWebView && (
+              <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 20, paddingVertical: 10, backgroundColor: COLORS.cloudMist, borderBottomWidth: 1, borderBottomColor: COLORS.border }}>
+                <ColHeader label="Employee"  flex={3} />
+                <ColHeader label="Role"      flex={2} />
+                <ColHeader label="Email"     flex={3} />
+                <ColHeader label="Phone"     flex={2} />
+                <ColHeader label="Status"    flex={1} />
+                <View style={{ width: 96 }}>
+                  <Text style={{ fontSize: 11, fontWeight: '600', color: COLORS.textMuted, textTransform: 'uppercase', letterSpacing: 0.5 }}>Actions</Text>
+                </View>
               </View>
-            </View>
+            )}
 
             {/* Rows */}
             {filtered.length === 0 ? (
@@ -268,7 +301,7 @@ export default function Employees({ onNavigate }: EmployeesProps) {
                   {searchQuery ? 'Try a different search term.' : 'Add your first employee to get started.'}
                 </Text>
               </View>
-            ) : (
+            ) : isWebView ? (
               filtered.map((emp, index) => (
                 <View
                   key={emp.id}
@@ -297,11 +330,63 @@ export default function Employees({ onNavigate }: EmployeesProps) {
                   </View>
                 </View>
               ))
+            ) : (
+              filtered.map((emp, index) => (
+                <TouchableOpacity
+                  key={emp.id}
+                  onPress={() => openView(emp)}
+                  activeOpacity={0.7}
+                  style={{ padding: 16, borderBottomWidth: index === filtered.length - 1 ? 0 : 1, borderBottomColor: COLORS.borderLight, backgroundColor: COLORS.white }}
+                >
+                  <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 12 }}>
+                    <EmployeeAvatar name={emp.full_name} />
+                    <View style={{ flex: 1, gap: 8 }}>
+                      <View style={{ flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between' }}>
+                        <View style={{ flex: 1 }}>
+                          <Text style={{ fontSize: 14, fontWeight: '600', color: COLORS.textPrimary }}>{emp.full_name}</Text>
+                          <Text style={{ fontSize: 14, color: COLORS.textMuted, marginTop: 2 }}>{emp.role}</Text>
+                        </View>
+                        <StatusPill status={emp.status} />
+                      </View>
+                      <View style={{ gap: 6 }}>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                          <Ionicons name="mail-outline" size={13} color={COLORS.textMuted} />
+                          <Text style={{ fontSize: 14, color: COLORS.textSecondary, flex: 1 }}>{emp.email}</Text>
+                        </View>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                          <Ionicons name="call-outline" size={13} color={COLORS.textMuted} />
+                          <Text style={{ fontSize: 14, color: COLORS.textSecondary }}>{emp.phone_number}</Text>
+                        </View>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                          <Ionicons name="business-outline" size={13} color={COLORS.textMuted} />
+                          <Text style={{ fontSize: 14, color: COLORS.textSecondary }}>{emp.company}</Text>
+                        </View>
+                      </View>
+                      <View style={{ flexDirection: 'row', gap: 8, marginTop: 4 }}>
+                        <TouchableOpacity
+                          onPress={(e) => { e.stopPropagation?.(); openEdit(emp); }}
+                          style={{ flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5, paddingVertical: 8, borderRadius: 7, backgroundColor: '#237227', borderWidth: 1, borderColor: '#237227' }}
+                        >
+                          <Ionicons name="create-outline" size={14} color={COLORS.white} />
+                          <Text style={{ fontSize: 14, fontWeight: '600', color: COLORS.white }}>Edit</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                          onPress={(e) => { e.stopPropagation?.(); openDelete(emp); }}
+                          style={{ flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5, paddingVertical: 8, borderRadius: 7, backgroundColor: '#fef2f2', borderWidth: 1, borderColor: '#fecaca' }}
+                        >
+                          <Ionicons name="trash-outline" size={14} color="#ef4444" />
+                          <Text style={{ fontSize: 14, fontWeight: '600', color: '#ef4444' }}>Delete</Text>
+                        </TouchableOpacity>
+                      </View>
+                    </View>
+                  </View>
+                </TouchableOpacity>
+              ))
             )}
 
             {/* Table Footer */}
-            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 20, paddingVertical: 12, borderTopWidth: 1, borderTopColor: COLORS.borderLight, backgroundColor: COLORS.cloudMist }}>
-              <Text style={{ fontSize: 12, color: COLORS.textMuted }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: isWebView ? 20 : 16, paddingVertical: 12, borderTopWidth: 1, borderTopColor: COLORS.borderLight, backgroundColor: COLORS.cloudMist }}>
+              <Text style={{ fontSize: isWebView ? 12 : 14, color: COLORS.textMuted }}>
                 Showing {filtered.length} of {employees.length} employees
               </Text>
               <View style={{ flexDirection: 'row', gap: 6 }}>
@@ -333,7 +418,7 @@ export default function Employees({ onNavigate }: EmployeesProps) {
                 <Ionicons name="close-outline" size={20} color={COLORS.textMuted} />
               </TouchableOpacity>
             </View>
-            <View style={{ padding: 24, gap: 13 }}>
+            <View style={{ padding: 24, gap: 13, }}>
               <LabeledInput label="Full Name" placeholder="e.g. Jane Smith"       value={formName}    onChangeText={setFormName}    icon="person-outline"    />
               <LabeledInput label="Role"      placeholder="e.g. Supervisor"       value={formRole}    onChangeText={setFormRole}    icon="briefcase-outline" />
               <LabeledInput label="Email"     placeholder="e.g. jane@company.com" value={formEmail}   onChangeText={setFormEmail}   icon="mail-outline"      />
@@ -341,12 +426,12 @@ export default function Employees({ onNavigate }: EmployeesProps) {
               <LabeledInput label="Company"   placeholder="e.g. Example Corp"     value={formCompany} onChangeText={setFormCompany} icon="business-outline"  />
             </View>
             <View style={{ flexDirection: 'row', gap: 10, paddingHorizontal: 24, paddingBottom: 24 }}>
-              <TouchableOpacity onPress={() => { setIsAddModalOpen(false); setIsEditModalOpen(false); }} style={{ flex: 1, height: 40, borderRadius: 9, borderWidth: 1, borderColor: COLORS.border, alignItems: 'center', justifyContent: 'center', backgroundColor: COLORS.cloudMist }}>
-                <Text style={{ fontSize: 13, fontWeight: '600', color: COLORS.textSecondary }}>Cancel</Text>
+              <TouchableOpacity onPress={() => { setIsAddModalOpen(false); setIsEditModalOpen(false); }} style={{ flex: 1, height: 40, borderRadius: 9, alignItems: 'center', justifyContent: 'center', backgroundColor: COLORS.green }}>
+                <Text style={{ fontSize: 14, fontWeight: '600', color: COLORS.cloudMist }}>Cancel</Text>
               </TouchableOpacity>
               <TouchableOpacity onPress={isAddModalOpen ? handleAdd : handleEdit} style={{ flex: 1, height: 40, borderRadius: 9, backgroundColor: COLORS.green, alignItems: 'center', justifyContent: 'center', flexDirection: 'row', gap: 5 }}>
                 <Ionicons name="checkmark-outline" size={15} color={COLORS.white} />
-                <Text style={{ fontSize: 13, fontWeight: '600', color: COLORS.white }}>
+                <Text style={{ fontSize: 14, fontWeight: '600', color: COLORS.white }}>
                   {isAddModalOpen ? 'Add Employee' : 'Save Changes'}
                 </Text>
               </TouchableOpacity>
@@ -409,11 +494,11 @@ export default function Employees({ onNavigate }: EmployeesProps) {
               {' '}will be permanently removed from the system.
             </Text>
             <View style={{ flexDirection: 'row', gap: 10, width: '100%', marginTop: 4 }}>
-              <TouchableOpacity onPress={() => setIsDeleteModalOpen(false)} style={{ flex: 1, height: 40, borderRadius: 9, borderWidth: 1, borderColor: COLORS.border, alignItems: 'center', justifyContent: 'center', backgroundColor: COLORS.cloudMist }}>
-                <Text style={{ fontSize: 13, fontWeight: '600', color: COLORS.textSecondary }}>Cancel</Text>
+              <TouchableOpacity onPress={() => setIsDeleteModalOpen(false)} style={{ flex: 1, height: 40, borderRadius: 9, alignItems: 'center', justifyContent: 'center', backgroundColor: COLORS.green }}>
+                <Text style={{ fontSize: 14, fontWeight: '600', color: COLORS.cloudMist }}>Cancel</Text>
               </TouchableOpacity>
               <TouchableOpacity onPress={handleDelete} style={{ flex: 1, height: 40, borderRadius: 9, backgroundColor: '#ef4444', alignItems: 'center', justifyContent: 'center' }}>
-                <Text style={{ fontSize: 13, fontWeight: '600', color: COLORS.white }}>Remove</Text>
+                <Text style={{ fontSize: 14, fontWeight: '600', color: COLORS.white }}>Remove</Text>
               </TouchableOpacity>
             </View>
           </Pressable>
