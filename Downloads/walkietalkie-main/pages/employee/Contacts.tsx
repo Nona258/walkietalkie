@@ -62,34 +62,49 @@ export default function Contacts({ onContactSelected, currentUserId }: ContactsP
   const fetchContacts = async () => {
     try {
       setLoading(true);
-      
-      // Query users table, exclude current user if provided
-      // If caller didn't provide `currentUserId`, resolve it from auth/profile
-      let excludeId = currentUserId;
-      if (!excludeId) {
+      // Determine current user id (owner of the contacts list)
+      let ownerId = currentUserId;
+      if (!ownerId) {
         const profile = await getCurrentUserProfile();
-        excludeId = profile?.id || undefined;
+        ownerId = profile?.id || undefined;
       }
 
-      let query = supabase
+      if (!ownerId) {
+        throw new Error('Unable to determine current user');
+      }
+
+      // Load only contacts from the `contacts` table for this user,
+      // then join to `users` to get full profile info.
+      const { data: contactRows, error: contactsError } = await supabase
+        .from('contacts')
+        .select('id, contact_id, created_at')
+        .eq('user_id', ownerId)
+        .order('created_at', { ascending: false });
+
+      if (contactsError) throw contactsError;
+
+      const contactIds: string[] = Array.from(
+        new Set(
+          (contactRows || [])
+            .map((row: any) => row.contact_id)
+            .filter((id: string | null) => !!id)
+        )
+      ) as string[];
+
+      if (contactIds.length === 0) {
+        setContacts([]);
+        return;
+      }
+
+      const { data: usersData, error: usersError } = await supabase
         .from('users')
         .select('id, email, full_name, phone_number, role, profile_picture_url, status')
+        .in('id', contactIds)
         .order('full_name');
 
-      if (excludeId) {
-        query = query.neq('id', excludeId);
-      }
+      if (usersError) throw usersError;
 
-      const { data, error } = await query;
-
-      if (error) throw error;
-
-      // Transform to Contact interface
-      const now = new Date();
-      const onlineThreshold = 5 * 60 * 1000; // 5 minutes in ms
-
-      const formattedContacts: Contact[] = (data || []).map(user => {
-        // Determine online status: prefer explicit `status` column if present
+      const formattedContacts: Contact[] = (usersData || []).map(user => {
         let status: 'online' | 'offline' | 'busy' = 'offline';
         if (user.status === 'online') {
           status = 'online';
@@ -106,7 +121,6 @@ export default function Contacts({ onContactSelected, currentUserId }: ContactsP
           avatar_color: getAvatarColor(user.id),
           email: user.email,
           phone_number: user.phone_number,
-          // Placeholder for message data (to be replaced with real messages later)
           lastMessage: undefined,
           lastMessageTime: undefined,
           unreadCount: 0,
@@ -130,7 +144,6 @@ export default function Contacts({ onContactSelected, currentUserId }: ContactsP
     const subscription = supabase
       .channel('public:users')
       .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'users' }, payload => {
-        // When a user updates their last_seen, refresh contacts
         if (payload.new.id !== currentUserId) {
           fetchContacts();
         }
@@ -339,7 +352,7 @@ export default function Contacts({ onContactSelected, currentUserId }: ContactsP
                 </View>
               ) : (
                 <FlatList
-                  data={searchResults}
+                  data={searchResults.filter(item => !contacts.some(c => c.id === item.id))}
                   keyExtractor={(item) => item.id}
                   renderItem={({ item }) => {
                     const now = new Date();
