@@ -260,7 +260,7 @@ export default function Map({ onBack, selectedSite }: { onBack?: () => void; sel
       
       {Platform.OS === 'web' ? (
         <View style={{ flex: 1, width: '100%', height: '100%', position: 'relative' } as any}>
-          {React.createElement('iframe', {
+          {React.useMemo(() => React.createElement('iframe', {
             ref: iframeRef,
             srcDoc: googleMapHtml,
             style: {
@@ -271,7 +271,7 @@ export default function Map({ onBack, selectedSite }: { onBack?: () => void; sel
             },
             sandbox: 'allow-same-origin allow-scripts allow-popups allow-presentation',
             onLoad: handleIframeLoad,
-          } as any)}
+          } as any), [])}
           {!isStreetViewActive && (
             <View className="absolute top-4 left-0 right-0 px-4 py-4 pt-4 z-50">
               <View className="flex-1 flex-row items-center rounded-2xl bg-white bg-opacity-95 px-4 py-3 border border-gray-300 shadow-lg">
