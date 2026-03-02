@@ -108,6 +108,62 @@ export default function CompanyList({ onNavigate }: CompanyListProps) {
     setSweetVisible(true);
   };
 
+  const getInitialsFromText = (text: string): string => {
+    const cleaned = (text || '').trim();
+    if (!cleaned) return '??';
+    const parts = cleaned.split(/\s+/).filter(Boolean);
+    if (parts.length >= 2) return (parts[0][0] + parts[1][0]).toUpperCase();
+    return cleaned.slice(0, 2).toUpperCase();
+  };
+
+  const resolveActivityActor = async (): Promise<{ user_name: string; initials: string }> => {
+    try {
+      const { data: authData, error: authError } = await supabase.auth.getUser();
+      if (!authError && authData?.user?.id) {
+        const { data: meRow, error: meError } = await supabase
+          .from('users')
+          .select('full_name, email')
+          .eq('id', authData.user.id)
+          .single();
+
+        if (!meError && meRow) {
+          const name = (meRow as any).full_name || (meRow as any).email || 'Admin User';
+          return { user_name: name, initials: getInitialsFromText(name) };
+        }
+      }
+    } catch (e) {
+      console.error('resolveActivityActor error:', e);
+    }
+    return { user_name: 'Admin User', initials: 'AD' };
+  };
+
+  const logActivity = async (opts: {
+    action: string;
+    description?: string | null;
+    location?: string | null;
+    type?: string | null;
+    color?: string | null;
+    icon?: string | null;
+  }) => {
+    try {
+      const actor = await resolveActivityActor();
+      const payload = {
+        user_name: actor.user_name,
+        initials: actor.initials,
+        action: opts.action,
+        description: opts.description || null,
+        location: opts.location ?? 'Company List',
+        type: opts.type || 'company',
+        color: opts.color || '#d1fae5',
+        icon: opts.icon || 'business-outline',
+      };
+      const { error } = await supabase.from('activity_logs').insert([payload]);
+      if (error) console.error('activity_logs insert error:', error);
+    } catch (e) {
+      console.error('logActivity error:', e);
+    }
+  };
+
   // ---------- Load Companies ----------
   useEffect(() => {
     loadCompaniesFromSupabase();
@@ -327,6 +383,16 @@ export default function CompanyList({ onNavigate }: CompanyListProps) {
 
       const updatedCompanies = [...companies, newCompany];
       await saveCompaniesToCache(updatedCompanies);
+
+      // Activity log
+      await logActivity({
+        action: `Added New Company: ${companyName.trim()}`,
+        description: `Industry: ${industry.trim()} • Branches: ${branchCount}`,
+        location: 'Company List',
+        type: 'company',
+        color: '#d1fae5',
+        icon: 'add-circle-outline',
+      });
 
       resetForm();
       setIsAddModalOpen(false);
@@ -573,7 +639,7 @@ export default function CompanyList({ onNavigate }: CompanyListProps) {
                 <Ionicons name="menu" size={24} color="#44403c" />
               </TouchableOpacity>
               <View className="flex-1">
-                <Text className="text-lg lg:text-2xl font-bold text-stone-900">Site Management</Text>
+                <Text className="text-lg lg:text-2xl font-bold text-stone-900">Company List</Text>
                 <Text className="text-stone-500 text-xs lg:text-sm mt-0.5">Welcome back, Administrator</Text>
               </View>
             </View>
@@ -650,171 +716,83 @@ export default function CompanyList({ onNavigate }: CompanyListProps) {
           </View>
         </View>
 
-        {/* ---------- Desktop Table View (desktop only) ---------- */}
-        <View className="hidden lg:flex px-8 pb-6">
-          <View className="bg-white rounded-2xl border border-stone-200 overflow-hidden">
-            {/* Table Header (match SiteManagement layout) */}
-            <View className="flex-row items-center px-6 py-4 bg-stone-50 border-b border-stone-200">
-              <Text className="flex-1 text-xs font-semibold text-stone-600 uppercase tracking-wide">Company</Text>
-              <Text className="flex-1 text-xs font-semibold text-stone-600 uppercase tracking-wide">Industry</Text>
-              <Text className="w-28 text-xs font-semibold text-stone-600 uppercase tracking-wide">Branches</Text>
-              <Text className="w-32 text-xs font-semibold text-stone-600 uppercase tracking-wide text-center">Actions</Text>
+        {/* ---------- Company Cards Grid ---------- */}
+        <View className="px-5 lg:px-8 pb-6">
+          {companies.length === 0 ? (
+            <View className="bg-white rounded-2xl border border-stone-200 px-6 py-12 items-center">
+              <Ionicons name="business-outline" size={48} color="#d6d3d1" />
+              <Text className="text-stone-500 text-sm mt-4">No companies found</Text>
+              <Text className="text-stone-400 text-xs mt-1">Click &quot;Add Company&quot; to create your first company</Text>
             </View>
-
-            {/* Table Rows */}
-            {companies.length === 0 ? (
-              <View className="px-6 py-12 items-center">
-                <Ionicons name="business-outline" size={48} color="#d6d3d1" />
-                <Text className="text-stone-500 text-sm mt-4">No companies found</Text>
-                <Text className="text-stone-400 text-xs mt-1">Click &quot;Add Company&quot; to create your first company</Text>
-              </View>
-            ) : (
-              companies.map((company, index) => (
+          ) : (
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 12 }}>
+              {companies.map((company) => (
                 <View
                   key={company.id}
-                  className={`flex-row items-center px-6 py-4 ${index !== companies.length - 1 ? 'border-b border-stone-100' : ''}`}
+                  style={{ flex: 1, minWidth: 260 }}
+                  className="bg-white rounded-2xl border border-stone-200"
                 >
-                  {/* Company */}
-                  <View className="flex-1 flex-row items-center">
-                    <View className="w-10 h-10 bg-emerald-100 rounded-xl items-center justify-center mr-3">
-                      <Text className="text-emerald-700 font-bold">{company.initials}</Text>
+                  {/* Card Header */}
+                  <View className="px-5 pt-5 pb-4 flex-row items-center" style={{ gap: 12 }}>
+                    <View className="w-12 h-12 bg-emerald-100 rounded-xl items-center justify-center">
+                      <Text className="text-emerald-700 font-bold text-base">{company.initials}</Text>
                     </View>
-                    <Text className="text-sm font-semibold text-stone-900">{company.name}</Text>
+                    <View className="flex-1">
+                      <Text className="text-sm font-bold text-stone-900" numberOfLines={1}>{company.name}</Text>
+                      <Text className="text-xs text-stone-500 mt-0.5" numberOfLines={1}>{company.industry}</Text>
+                    </View>
                   </View>
 
-                  {/* Industry */}
-                  <Text className="flex-1 text-sm text-stone-600">{company.industry}</Text>
+                  {/* Divider */}
+                  <View className="border-t border-stone-100 mx-5" />
 
-                  {/* Branches */}
-                  <View className="w-28">
-                    <Text className="text-sm text-stone-600">{company.branches}</Text>
+                  {/* Card Body */}
+                  <View className="px-5 py-3 flex-row items-center justify-between">
+                    <View className="flex-row items-center" style={{ gap: 6 }}>
+                      <Ionicons name="git-branch-outline" size={14} color="#78716c" />
+                      <Text className="text-xs text-stone-600">
+                        {company.branches} {company.branches === 1 ? 'branch' : 'branches'}
+                      </Text>
+                    </View>
+                    <View className="bg-emerald-50 px-2.5 py-1 rounded-full">
+                      <Text className="text-xs text-emerald-700 font-medium">{company.industry}</Text>
+                    </View>
                   </View>
 
-                  {/* Actions */}
-                  <View className="w-32 flex-row items-center justify-center gap-2">
+                  {/* Divider */}
+                  <View className="border-t border-stone-100 mx-5" />
+
+                  {/* Card Footer / Actions */}
+                  <View className="px-5 py-3 flex-row items-center justify-end" style={{ gap: 6 }}>
                     <TouchableOpacity
-                      className="w-8 h-8 items-center justify-center hover:bg-stone-100 rounded-lg"
+                      className="flex-row items-center bg-stone-50 px-3 py-1.5 rounded-lg"
+                      style={{ gap: 5 }}
                       onPress={() => handleCompanyPress(company)}
                     >
-                      <Ionicons name="create-outline" size={18} color="#78716c" />
+                      <Ionicons name="create-outline" size={15} color="#78716c" />
+                      <Text className="text-xs text-stone-600 font-medium">Edit</Text>
                     </TouchableOpacity>
                     <TouchableOpacity
-                      className="w-8 h-8 items-center justify-center hover:bg-stone-100 rounded-lg"
+                      className="flex-row items-center bg-stone-50 px-3 py-1.5 rounded-lg"
+                      style={{ gap: 5 }}
                       onPress={() => handleViewCompany(company)}
                     >
-                      <Ionicons name="eye-outline" size={18} color="#78716c" />
+                      <Ionicons name="eye-outline" size={15} color="#78716c" />
+                      <Text className="text-xs text-stone-600 font-medium">View</Text>
                     </TouchableOpacity>
                     <TouchableOpacity
-                      className="w-8 h-8 items-center justify-center hover:bg-red-50 rounded-lg"
+                      className="flex-row items-center bg-red-50 px-3 py-1.5 rounded-lg"
+                      style={{ gap: 5 }}
                       onPress={() => openSweet('warning', 'Delete company', 'Are you sure you want to delete this company?', true, () => handleDeleteCompany(company.id))}
                     >
-                      <Ionicons name="trash-outline" size={18} color="#dc2626" />
+                      <Ionicons name="trash-outline" size={15} color="#dc2626" />
+                      <Text className="text-xs text-red-600 font-medium">Delete</Text>
                     </TouchableOpacity>
                   </View>
                 </View>
-              ))
-            )}
-          </View>
-        </View>
-
-        {/* ---------- Mobile List View ---------- */}
-        <View className="lg:hidden px-5 pb-6">
-          {companies.map((company, index) => (
-            <TouchableOpacity
-              key={company.id}
-              style={{
-                borderRadius: 16,
-                padding: 16,
-                marginBottom: 12,
-                overflow: 'hidden',
-                backgroundColor: '#059669',
-                position: 'relative',
-              }}
-              onPress={() => {
-                if (menuOpenFor === company.id) return;
-                handleCompanyPress(company);
-              }}
-              activeOpacity={0.8}
-            >
-              {/* Decorative circle */}
-              <View
-                style={{
-                  position: 'absolute',
-                  top: -18,
-                  right: -18,
-                  width: 96,
-                  height: 96,
-                  borderRadius: 48,
-                  backgroundColor: 'rgba(255,255,255,0.08)',
-                }}
-              />
-
-              {/* 3-dot menu */}
-              <TouchableOpacity
-                style={{ position: 'absolute', top: 10, right: 10 }}
-                onPress={(e) => {
-                  e.stopPropagation && e.stopPropagation();
-                  setMenuOpenFor(menuOpenFor === company.id ? null : company.id);
-                }}
-                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-              >
-                <Ionicons name="ellipsis-vertical" size={20} color="rgba(255,255,255,0.95)" />
-              </TouchableOpacity>
-
-              {/* Dropdown menu */}
-              {menuOpenFor === company.id && (
-                <View
-                  style={{
-                    position: 'absolute',
-                    right: 12,
-                    top: 36,
-                    backgroundColor: 'white',
-                    borderRadius: 8,
-                    paddingVertical: 6,
-                    paddingHorizontal: 12,
-                    minWidth: 120,
-                    shadowColor: '#000',
-                    shadowOffset: { width: 0, height: 2 },
-                    shadowOpacity: 0.12,
-                    shadowRadius: 6,
-                    elevation: 6,
-                    zIndex: 99,
-                  }}
-                >
-                  <TouchableOpacity
-                    onPress={(e) => {
-                      e.stopPropagation && e.stopPropagation();
-                      setMenuOpenFor(null);
-                      openSweet('warning', 'Delete company', 'Are you sure you want to delete this company?', true, () => handleDeleteCompany(company.id));
-                    }}
-                    style={{ paddingVertical: 6 }}
-                  >
-                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                      <Ionicons name="trash-outline" size={15} color="#dc2626" />
-                      <Text style={{ color: '#dc2626', fontWeight: '600', fontSize: 14 }}>Delete</Text>
-                    </View>
-                  </TouchableOpacity>
-                </View>
-              )}
-
-              {/* Company name */}
-              <Text
-                style={{ color: 'white', fontSize: 15, fontWeight: '600', marginTop: 4 }}
-                numberOfLines={2}
-                ellipsizeMode="tail"
-              >
-                {company.name}
-              </Text>
-              {/* Industry */}
-              <Text style={{ color: 'white', fontSize: 12, opacity: 0.9, marginTop: 4 }}>
-                {company.industry}
-              </Text>
-              {/* Branches (plain text) */}
-              <Text style={{ color: 'white', fontSize: 12, opacity: 0.95, marginTop: 10 }}>
-                {company.branches} {company.branches === 1 ? 'branch' : 'branches'}
-              </Text>
-            </TouchableOpacity>
-          ))}
+              ))}
+            </View>
+          )}
         </View>
       </ScrollView>
 
