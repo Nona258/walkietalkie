@@ -1,7 +1,8 @@
-import React, { useState, useEffect } from 'react';
-import { View, Text, TouchableOpacity, ScrollView, TextInput, Alert, Platform, Animated } from 'react-native';
+import React, { useState, useEffect, useRef } from 'react';
+import { View, Text, TouchableOpacity, ScrollView, TextInput, Alert, Platform, Animated, ActivityIndicator } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { ExpoSpeechRecognitionModule, useSpeechRecognitionEvent } from 'expo-speech-recognition';
+import supabase from '../../utils/supabase';
 
 interface Contact {
   id: string;
@@ -20,54 +21,19 @@ interface Message {
   isOwn: boolean;
   status?: 'sending' | 'sent' | 'delivered' | 'read';
   type?: 'text' | 'image' | 'media';
+  isRead?: boolean;
 }
 
-const MOCK_MESSAGES: Message[] = [
-  {
-    id: '1',
-    sender: 'MK',
-    content: 'Team, please confirm positions for the shift change.',
-    timestamp: '10:30 AM',
-    isOwn: false,
-    status: 'read',
-    type: 'text',
-  },
-  {
-    id: '2',
-    sender: 'You',
-    content: 'Position A confirmed. All clear.',
-    timestamp: '10:32 AM',
-    isOwn: true,
-    status: 'read',
-    type: 'text',
-  },
-  {
-    id: '3',
-    sender: 'MK',
-    content: 'Thanks for the quick response. Stay alert!',
-    timestamp: '10:35 AM',
-    isOwn: false,
-    status: 'read',
-    type: 'text',
-  },
-  {
-    id: '4',
-    sender: 'You',
-    content: 'Will do. Everything looks good on my end.',
-    timestamp: '10:40 AM',
-    isOwn: true,
-    status: 'delivered',
-    type: 'text',
-  },
-];
+
 
 interface ChatProps {
   selectedContact: Contact;
   onBackPress: () => void;
+  currentUserId?: string;
 }
 
-export default function Chat({ selectedContact, onBackPress }: ChatProps) {
-  const [messages, setMessages] = useState<Message[]>(MOCK_MESSAGES);
+export default function Chat({ selectedContact, onBackPress, currentUserId }: ChatProps) {
+  const [messages, setMessages] = useState<Message[]>([]);
   const [messageText, setMessageText] = useState('');
   const [showMediaMenu, setShowMediaMenu] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
@@ -75,6 +41,183 @@ export default function Chat({ selectedContact, onBackPress }: ChatProps) {
   const [recognizedTranscript, setRecognizedTranscript] = useState('');
   const [isTyping, setIsTyping] = useState(false);
   const [typingAnimation] = useState(new Animated.Value(0));
+  const [loadingMessages, setLoadingMessages] = useState(true);
+  const [activeChatUserId, setActiveChatUserId] = useState<string | null>(currentUserId || null);
+  const [conversationId, setConversationId] = useState<string | null>(null);
+
+  const messagesSubscriptionRef = useRef<any>(null);
+
+  // Fetch current user if not provided
+  useEffect(() => {
+    if (!activeChatUserId) {
+      const fetchCurrentUser = async () => {
+        try {
+          const { data, error } = await supabase.auth.getUser();
+          if (!error && data?.user?.id) {
+            setActiveChatUserId(data.user.id);
+          }
+        } catch (e) {
+          console.error('Failed to get current user:', e);
+        }
+      };
+      fetchCurrentUser();
+    }
+  }, []);
+
+  // Fetch messages for conversation with selected contact
+  useEffect(() => {
+    if (!activeChatUserId || !selectedContact?.id) {
+      setMessages([]);
+      setLoadingMessages(false);
+      if (messagesSubscriptionRef.current) {
+        messagesSubscriptionRef.current.unsubscribe();
+        messagesSubscriptionRef.current = null;
+      }
+      return;
+    }
+    
+    fetchConversationMessages();
+    setupRealtimeSubscription();
+
+    return () => {
+      if (messagesSubscriptionRef.current) {
+        messagesSubscriptionRef.current.unsubscribe();
+        messagesSubscriptionRef.current = null;
+      }
+    };
+  }, [selectedContact?.id, activeChatUserId]);
+
+  const fetchConversationMessages = async () => {
+    try {
+      setLoadingMessages(true);
+      
+      // First fetch all conversations (without .or() filter to avoid 406 errors)
+      const { data: allConversations } = await supabase
+        .from('conversations')
+        .select('id,user_one,user_two');
+      
+      // Filter for conversation between these two users
+      let conversationData = null;
+      if (allConversations && allConversations.length > 0) {
+        conversationData = allConversations.find((conv: any) => 
+          (conv.user_one === activeChatUserId && conv.user_two === selectedContact.id) ||
+          (conv.user_one === selectedContact.id && conv.user_two === activeChatUserId)
+        );
+      }
+
+      if (!conversationData?.id) {
+        // No conversation found, return empty messages
+        setMessages([]);
+        setConversationId(null);
+        
+        // Try to create a new conversation
+        try {
+          const { data: newConv } = await supabase
+            .from('conversations')
+            .insert([{
+              user_one: activeChatUserId,
+              user_two: selectedContact.id
+            }])
+            .select('id')
+            .single();
+          
+          if (newConv?.id) {
+            setConversationId(newConv.id);
+          }
+        } catch (e) {
+          console.error('Error creating conversation:', e);
+        }
+        
+        setLoadingMessages(false);
+        return;
+      }
+
+      setConversationId(conversationData.id);
+
+      // Now fetch messages for this conversation
+      const { data: messagesData, error } = await supabase
+        .from('messages')
+        .select('*')
+        .eq('conversation_id', conversationData.id)
+        .order('created_at', { ascending: true });
+
+      if (error) {
+        console.error('Error fetching messages:', error);
+        setMessages([]);
+        setLoadingMessages(false);
+        return;
+      }
+
+      const formattedMessages: Message[] = (messagesData || []).map((msg: any) => {
+        const isOwn = msg.sender_id === activeChatUserId;
+        const created = msg.created_at ? new Date(msg.created_at) : new Date();
+        return {
+          id: String(msg.id),
+          sender: isOwn ? 'You' : selectedContact.initials,
+          content: msg.transcription || '',
+          timestamp: created.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+          isOwn,
+          status: 'read',
+          type: 'text',
+          isRead: isOwn ? true : false,
+        };
+      });
+      
+      setMessages(formattedMessages);
+    } catch (e) {
+      console.error('Error fetching conversation messages:', e);
+      setMessages([]);
+    } finally {
+      setLoadingMessages(false);
+    }
+  };
+
+  const setupRealtimeSubscription = () => {
+    if (!conversationId) return;
+
+    try {
+      // Subscribe to new messages for this specific conversation
+      messagesSubscriptionRef.current = supabase
+        .channel(`messages:conversation:${conversationId}`)
+        .on(
+          'postgres_changes',
+          {
+            event: 'INSERT',
+            schema: 'public',
+            table: 'messages',
+            filter: `conversation_id=eq.${conversationId}`,
+          },
+          (payload) => {
+            const newMsg = payload.new as any;
+            const isOwn = newMsg.sender_id === activeChatUserId;
+            const created = newMsg.created_at ? new Date(newMsg.created_at) : new Date();
+            
+            const formattedMsg: Message = {
+              id: String(newMsg.id),
+              sender: isOwn ? 'You' : selectedContact.initials,
+              content: newMsg.transcription || '',
+              timestamp: created.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+              isOwn,
+              status: 'read',
+              type: 'text',
+              isRead: isOwn ? true : false,
+            };
+
+            // Add message if it doesn't already exist
+            setMessages((prevMessages) => {
+              const msgExists = prevMessages.some((m) => m.id === formattedMsg.id);
+              if (!msgExists) {
+                return [...prevMessages, formattedMsg];
+              }
+              return prevMessages;
+            });
+          }
+        )
+        .subscribe();
+    } catch (error) {
+      console.error('Error setting up realtime subscription:', error);
+    }
+  };
 
   useEffect(() => {
     // Simulate contact typing occasionally
@@ -85,6 +228,25 @@ export default function Chat({ selectedContact, onBackPress }: ChatProps) {
       return () => clearTimeout(timer);
     }
   }, [messages.length]);
+
+  // Mark unread messages as read when viewed
+  useEffect(() => {
+    // Only mark as read if there are unread messages from the contact
+    const hasUnread = messages.some(msg => !msg.isOwn && msg.isRead === false);
+    if (hasUnread) {
+      // Mark all unread messages as read after a short delay (to simulate reading)
+      const timer = setTimeout(() => {
+        setMessages(msgs =>
+          msgs.map(msg =>
+            !msg.isOwn && msg.isRead === false
+              ? { ...msg, isRead: true }
+              : msg
+          )
+        );
+      }, 500);
+      return () => clearTimeout(timer);
+    }
+  }, [messages]);
 
   // Listen for speech recognition results
   useSpeechRecognitionEvent('result', (event: any) => {
@@ -104,12 +266,13 @@ export default function Chat({ selectedContact, onBackPress }: ChatProps) {
   });
 
   // Listen for when recognition ends - send message only once here
-  useSpeechRecognitionEvent('end', () => {
-    if (recognizedTranscript.trim()) {
+  useSpeechRecognitionEvent('end', async () => {
+    if (recognizedTranscript.trim() && activeChatUserId) {
       const capitalizedText = recognizedTranscript.charAt(0).toUpperCase() + recognizedTranscript.slice(1);
+      const tempId = Date.now().toString();
       
       const newMessage: Message = {
-        id: (messages.length + 1).toString(),
+        id: tempId,
         sender: 'You',
         content: capitalizedText,
         timestamp: new Date().toLocaleTimeString([], {
@@ -124,22 +287,54 @@ export default function Chat({ selectedContact, onBackPress }: ChatProps) {
       setRecognizedTranscript('');
       setMessageText('');
 
-      // Simulate message status changes
-      setTimeout(() => {
-        setMessages(msgs =>
-          msgs.map(m =>
-            m.id === newMessage.id ? { ...m, status: 'sent' as const } : m
-          )
-        );
-      }, 500);
+      try {
+        // Ensure conversation exists
+        if (!conversationId) {
+          console.error('No conversation ID available');
+          setMessages(msgs => msgs.filter(m => m.id !== tempId));
+          return;
+        }
+        
+        // Save to Supabase
+        const { data, error } = await supabase
+          .from('messages')
+          .insert([
+            {
+              conversation_id: conversationId,
+              sender_id: activeChatUserId,
+              receiver_id: selectedContact.id,
+              content: capitalizedText,
+              transcription: capitalizedText,
+              created_at: new Date().toISOString(),
+            }
+          ])
+          .select()
+          .single();
 
-      setTimeout(() => {
+        if (error) throw error;
+
+        // Update message with real id and mark as sent
         setMessages(msgs =>
           msgs.map(m =>
-            m.id === newMessage.id ? { ...m, status: 'delivered' as const } : m
+            m.id === tempId 
+              ? { ...m, id: String(data.id), status: 'sent' as const } 
+              : m
           )
         );
-      }, 1200);
+
+        // Mark as delivered
+        setTimeout(() => {
+          setMessages(msgs =>
+            msgs.map(m =>
+              m.id === String(data.id) ? { ...m, status: 'delivered' as const } : m
+            )
+          );
+        }, 500);
+      } catch (err) {
+        console.error('Error saving voice message:', err);
+        // Remove failed message
+        setMessages(msgs => msgs.filter(m => m.id !== tempId));
+      }
     }
     setIsRecording(false);
     setIsListening(false);
@@ -157,39 +352,76 @@ export default function Chat({ selectedContact, onBackPress }: ChatProps) {
     }
   });
 
-  const handleSendMessage = () => {
-    if (messageText.trim()) {
-      const newMessage: Message = {
-        id: (messages.length + 1).toString(),
-        sender: 'You',
-        content: messageText,
-        timestamp: new Date().toLocaleTimeString([], {
-          hour: '2-digit',
-          minute: '2-digit',
-        }),
-        isOwn: true,
-        status: 'sending',
-        type: 'text',
-      };
-      setMessages([...messages, newMessage]);
-      setMessageText('');
+  const handleSendMessage = async () => {
+    if (!messageText.trim() || !activeChatUserId) return;
+    
+    const messageContent = messageText.trim();
+    const tempId = Date.now().toString();
+    
+    // Add to UI optimistically
+    const newMessage: Message = {
+      id: tempId,
+      sender: 'You',
+      content: messageContent,
+      timestamp: new Date().toLocaleTimeString([], {
+        hour: '2-digit',
+        minute: '2-digit',
+      }),
+      isOwn: true,
+      status: 'sending',
+      type: 'text',
+    };
+    setMessages([...messages, newMessage]);
+    setMessageText('');
 
-      // Simulate message status changes
+    try {
+      // Ensure conversation exists
+      if (!conversationId) {
+        console.error('No conversation ID available');
+        setMessages(msgs => msgs.filter(m => m.id !== tempId));
+        return;
+      }
+      
+      // Save to Supabase
+      const { data, error } = await supabase
+        .from('messages')
+        .insert([
+          {
+            conversation_id: conversationId,
+            sender_id: activeChatUserId,
+            receiver_id: selectedContact.id,
+            content: messageContent,
+            transcription: messageContent,
+            created_at: new Date().toISOString(),
+          }
+        ])
+        .select()
+        .single();
+
+      if (error) throw error;
+
+      // Update message with real id and mark as sent
+      setMessages(msgs =>
+        msgs.map(m =>
+          m.id === tempId 
+            ? { ...m, id: String(data.id), status: 'sent' as const } 
+            : m
+        )
+      );
+
+      // Mark as delivered after a short delay
       setTimeout(() => {
         setMessages(msgs =>
           msgs.map(m =>
-            m.id === newMessage.id ? { ...m, status: 'sent' as const } : m
+            m.id === String(data.id) ? { ...m, status: 'delivered' as const } : m
           )
         );
       }, 500);
-
-      setTimeout(() => {
-        setMessages(msgs =>
-          msgs.map(m =>
-            m.id === newMessage.id ? { ...m, status: 'delivered' as const } : m
-          )
-        );
-      }, 1200);
+    } catch (error) {
+      console.error('Error sending message:', error);
+      Alert.alert('Error', 'Failed to send message');
+      // Remove the failed message
+      setMessages(msgs => msgs.filter(m => m.id !== tempId));
     }
   };
 
@@ -294,105 +526,124 @@ export default function Chat({ selectedContact, onBackPress }: ChatProps) {
         showsVerticalScrollIndicator={false}
         contentContainerStyle={{ paddingVertical: 20, paddingHorizontal: 16 }}
       >
-        {/* Chat Date Header */}
-        <View className="items-center mb-6">
-          <View className="bg-green-100 px-4 py-2 rounded-full">
-            <Text className="text-green-700 text-xs font-bold">Today</Text>
+        {loadingMessages ? (
+          <View className="items-center justify-center py-12">
+            <ActivityIndicator size="large" color="#10b981" />
+            <Text className="text-gray-500 mt-4 text-sm">Loading messages...</Text>
           </View>
-        </View>
+        ) : messages.length === 0 ? (
+          <View className="items-center justify-center py-12">
+            <View className="bg-green-50 p-4 rounded-full mb-4">
+              <Ionicons name="chatbubbles-outline" size={48} color="#d1d5db" />
+            </View>
+            <Text className="text-gray-500 font-semibold">No messages yet</Text>
+            <Text className="text-gray-400 text-sm mt-2">Start the conversation!</Text>
+          </View>
+        ) : (
+          <>
+            {/* Chat Date Header */}
+            <View className="items-center mb-6">
+              <View className="bg-green-100 px-4 py-2 rounded-full">
+                <Text className="text-green-700 text-xs font-bold">Today</Text>
+              </View>
+            </View>
 
-        {messages.map((message, index) => {
-          const shouldShowAvatar = !message.isOwn && (index === messages.length - 1 || messages[index + 1].isOwn);
+            {messages.map((message, index) => {
+              const shouldShowAvatar = !message.isOwn && (index === messages.length - 1 || messages[index + 1].isOwn);
 
-          return (
-            <View key={message.id}>
-              <View
-                className={`mb-3 flex-row ${
-                  message.isOwn ? 'justify-end' : 'justify-start'
-                }`}
-              >
-                {!message.isOwn && shouldShowAvatar && (
+              return (
+                <View key={message.id}>
                   <View
-                    className="h-8 w-8 items-center justify-center rounded-full mr-2 shadow-sm"
-                    style={{ backgroundColor: selectedContact.avatar_color }}
-                  >
-                    <Text className="font-bold text-white text-xs">
-                      {selectedContact.initials}
-                    </Text>
-                  </View>
-                )}
-                {!message.isOwn && !shouldShowAvatar && <View className="w-10 mr-2" />}
-
-                <View className={`max-w-[75%] ${message.isOwn ? 'items-end' : ''}`}>
-                  <View
-                    className={`rounded-3xl px-5 py-3 shadow-sm ${
-                      message.isOwn
-                        ? 'bg-green-500 shadow-green-200'
-                        : 'bg-green-50 border-2 border-green-100 shadow-green-100'
+                    className={`mb-3 flex-row ${
+                      message.isOwn ? 'justify-end' : 'justify-start'
                     }`}
                   >
-                    <Text
-                      className={`text-base ${
-                        message.isOwn
-                          ? 'text-white font-semibold'
-                          : 'text-gray-900 font-medium'
-                      }`}
-                    >
-                      {message.content}
-                    </Text>
-                  </View>
-                  <View className={`flex-row items-center gap-1 mt-1 ${message.isOwn ? 'flex-row-reverse' : ''}`}>
-                    <Text
-                      className={`text-xs font-semibold ${
-                        message.isOwn ? 'text-green-700' : 'text-green-600'
-                      }`}
-                    >
-                      {message.timestamp}
-                    </Text>
-                    {message.isOwn && message.status && (
-                      <Ionicons
-                        name={
-                          message.status === 'sending'
-                            ? 'time-outline'
-                            : message.status === 'sent'
-                              ? 'checkmark'
-                              : message.status === 'delivered'
-                                ? 'checkmark-done'
-                                : 'checkmark-done'
-                        }
-                        size={14}
-                        color={
-                          message.status === 'read'
-                            ? '#10b981'
-                            : '#9ca3af'
-                        }
-                      />
+                    {!message.isOwn && shouldShowAvatar && (
+                      <View
+                        className="h-8 w-8 items-center justify-center rounded-full mr-2 shadow-sm"
+                        style={{ backgroundColor: selectedContact.avatar_color }}
+                      >
+                        <Text className="font-bold text-white text-xs">
+                          {selectedContact.initials}
+                        </Text>
+                      </View>
                     )}
+                    {!message.isOwn && !shouldShowAvatar && <View className="w-10 mr-2" />}
+
+                    <View className={`max-w-[75%] ${message.isOwn ? 'items-end' : ''}`}>
+                      <View
+                        className={`rounded-3xl px-5 py-3 shadow-sm ${
+                          message.isOwn
+                            ? 'bg-green-500 shadow-green-200'
+                            : 'bg-green-50 border-2 border-green-100 shadow-green-100'
+                        }`}
+                      >
+                        <Text
+                          className={`text-base ${
+                            message.isOwn
+                              ? 'text-white font-semibold'
+                              : message.isRead === false
+                                ? 'text-gray-900 font-bold'
+                                : 'text-gray-900 font-medium'
+                          }`}
+                        >
+                          {message.content}
+                        </Text>
+                      </View>
+                      <View className={`flex-row items-center gap-1 mt-1 ${message.isOwn ? 'flex-row-reverse' : ''}`}>
+                        <Text
+                          className={`text-xs font-semibold ${
+                            message.isOwn ? 'text-green-700' : 'text-green-600'
+                          }`}
+                        >
+                          {message.timestamp}
+                        </Text>
+                        {message.isOwn && message.status && (
+                          <Ionicons
+                            name={
+                              message.status === 'sending'
+                                ? 'time-outline'
+                                : message.status === 'sent'
+                                  ? 'checkmark'
+                                  : message.status === 'delivered'
+                                    ? 'checkmark-done'
+                                    : 'checkmark-done'
+                            }
+                            size={14}
+                            color={
+                              message.status === 'read'
+                                ? '#10b981'
+                                : '#9ca3af'
+                            }
+                          />
+                        )}
+                      </View>
+                    </View>
+                  </View>
+                </View>
+              );
+            })}
+
+            {isTyping && (
+              <View className="mt-4 flex-row items-center gap-2">
+                <View
+                  className="h-8 w-8 items-center justify-center rounded-full shadow-sm"
+                  style={{ backgroundColor: selectedContact.avatar_color }}
+                >
+                  <Text className="font-bold text-white text-xs">
+                    {selectedContact.initials}
+                  </Text>
+                </View>
+                <View className="bg-green-50 border-2 border-green-100 rounded-3xl px-5 py-3 shadow-sm">
+                  <View className="flex-row items-center gap-1.5">
+                    <View className="h-2 w-2 bg-green-500 rounded-full animate-bounce" />
+                    <View className="h-2 w-2 bg-green-500 rounded-full animate-bounce" />
+                    <View className="h-2 w-2 bg-green-500 rounded-full animate-bounce" />
                   </View>
                 </View>
               </View>
-            </View>
-          );
-        })}
-
-        {isTyping && (
-          <View className="mt-4 flex-row items-center gap-2">
-            <View
-              className="h-8 w-8 items-center justify-center rounded-full shadow-sm"
-              style={{ backgroundColor: selectedContact.avatar_color }}
-            >
-              <Text className="font-bold text-white text-xs">
-                {selectedContact.initials}
-              </Text>
-            </View>
-            <View className="bg-green-50 border-2 border-green-100 rounded-3xl px-5 py-3 shadow-sm">
-              <View className="flex-row items-center gap-1.5">
-                <View className="h-2 w-2 bg-green-500 rounded-full animate-bounce" />
-                <View className="h-2 w-2 bg-green-500 rounded-full animate-bounce" />
-                <View className="h-2 w-2 bg-green-500 rounded-full animate-bounce" />
-              </View>
-            </View>
-          </View>
+            )}
+          </>
         )}
       </ScrollView>
 

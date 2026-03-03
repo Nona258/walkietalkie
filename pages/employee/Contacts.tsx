@@ -1,5 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { View, Text, TouchableOpacity, ScrollView, TextInput, Alert, StatusBar, ActivityIndicator, RefreshControl, Modal, FlatList, KeyboardAvoidingView, Platform } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Ionicons } from '@expo/vector-icons';
 import  supabase, { searchUsers, addContact }  from '../../utils/supabase'; // adjust path to your supabase client
 import Chat from './Chat';
@@ -57,31 +58,93 @@ export default function Contacts({ onContactSelected, currentUserId }: ContactsP
   const [searching, setSearching] = useState(false);
   const [searchResults, setSearchResults] = useState<any[]>([]);
   const [addingId, setAddingId] = useState<string | null>(null);
+  const [activeChatUserId, setActiveChatUserId] = useState<string | null>(currentUserId || null);
+  // Track when each contact's chat was last opened (contactId -> ISO timestamp)
+  const [lastReadMap, setLastReadMap] = useState<Record<string, string>>({});
+  const LAST_READ_STORAGE_KEY = 'contacts_last_read_map';
+
+  const messagesSubscriptionRef = useRef<any>(null);
+
+  // Load persisted lastReadMap from AsyncStorage on mount
+  useEffect(() => {
+    AsyncStorage.getItem(LAST_READ_STORAGE_KEY)
+      .then((stored) => {
+        if (stored) {
+          try {
+            setLastReadMap(JSON.parse(stored));
+          } catch (_) {}
+        }
+      })
+      .catch(() => {});
+  }, []);
 
   // Fetch contacts from Supabase
   const fetchContacts = async () => {
     try {
       setLoading(true);
       
-      // Query users table, exclude current user if provided
-      let query = supabase
-        .from('users')
-        .select('id, email, full_name, phone_number, role, profile_picture_url, status')
-        .order('full_name');
-
-      if (currentUserId) {
-        query = query.neq('id', currentUserId);
+      if (!activeChatUserId) {
+        console.log('No active chat user ID');
+        setContacts([]);
+        setLoading(false);
+        setRefreshing(false);
+        return;
       }
 
-      const { data, error } = await query;
+      console.log('Fetching contacts for user:', activeChatUserId);
 
-      if (error) throw error;
+      // First, fetch all conversations involving the current user
+      const { data: conversations, error: conversationError } = await supabase
+        .from('conversations')
+        .select('id,user_one,user_two');
+
+      if (conversationError) throw conversationError;
+
+      console.log('All conversations fetched:', conversations);
+
+      // Filter conversations where current user is involved
+      const myConversations = (conversations || []).filter((conv: any) => 
+        conv.user_one === activeChatUserId || conv.user_two === activeChatUserId
+      );
+
+      console.log('My conversations (filtered):', myConversations);
+
+      // Extract unique user IDs from conversations (get the other user in each conversation)
+      const contactUserIds = new Set<string>();
+      (myConversations || []).forEach((conv: any) => {
+        const otherUserId = conv.user_one === activeChatUserId ? conv.user_two : conv.user_one;
+        if (otherUserId) {
+          contactUserIds.add(otherUserId);
+        }
+      });
+
+      console.log('Contact user IDs:', Array.from(contactUserIds));
+
+      // If no conversations, show empty contacts
+      if (contactUserIds.size === 0) {
+        console.log('No conversations found');
+        setContacts([]);
+        setLoading(false);
+        setRefreshing(false);
+        return;
+      }
+
+      // Fetch details for users in conversations
+      const { data: usersData, error: usersError } = await supabase
+        .from('users')
+        .select('id, email, full_name, phone_number, role, profile_picture_url, status')
+        .in('id', Array.from(contactUserIds))
+        .order('full_name');
+
+      if (usersError) throw usersError;
+
+      console.log('Users data fetched:', usersData);
 
       // Transform to Contact interface
       const now = new Date();
       const onlineThreshold = 5 * 60 * 1000; // 5 minutes in ms
 
-      const formattedContacts: Contact[] = (data || []).map(user => {
+      const formattedContacts: Contact[] = (usersData || []).map(user => {
         // Determine online status: prefer explicit `status` column if present
         let status: 'online' | 'offline' | 'busy' = 'offline';
         if (user.status === 'online') {
@@ -106,7 +169,101 @@ export default function Contacts({ onContactSelected, currentUserId }: ContactsP
         };
       });
 
-      setContacts(formattedContacts);
+      // Fetch last messages for each contact
+      if (activeChatUserId) {
+        // Store ALL conversation IDs per contact (handles duplicate conversations
+        // created by admin with sorted UUIDs vs employee with unsorted UUIDs)
+        const conversationMap = new Map<string, string[]>();
+        (myConversations || []).forEach((conv: any) => {
+          const otherUserId = conv.user_one === activeChatUserId ? conv.user_two : conv.user_one;
+          if (!conversationMap.has(otherUserId)) {
+            conversationMap.set(otherUserId, []);
+          }
+          conversationMap.get(otherUserId)!.push(conv.id);
+        });
+
+        const contactsWithMessages = await Promise.all(
+          formattedContacts.map(async (contact) => {
+            try {
+              const conversationIds = conversationMap.get(contact.id);
+              if (!conversationIds || conversationIds.length === 0) {
+                console.log(`No conversation for contact ${contact.name} (ID: ${contact.id})`);
+                return contact;
+              }
+
+              console.log(`Fetching messages for contact ${contact.name}, conversationIds:`, conversationIds);
+
+              // Fetch latest message across ALL conversations for this contact
+              // (handles the case where admin and employee created different conversation records)
+              const allMessageResults = await Promise.all(
+                conversationIds.map(cid =>
+                  supabase
+                    .from('messages')
+                    .select('*')
+                    .eq('conversation_id', cid)
+                    .order('created_at', { ascending: false })
+                    .limit(1)
+                )
+              );
+
+              // Collect all latest messages and pick the most recent one
+              const latestMessages = allMessageResults
+                .flatMap(r => r.data || [])
+                .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+
+              console.log(`Messages for ${contact.name}:`, latestMessages);
+
+              if (latestMessages.length > 0) {
+                const lastMsg = latestMessages[0];
+                const msgText = lastMsg.transcription || lastMsg.content || 'Message';
+                const created = lastMsg.created_at ? new Date(lastMsg.created_at) : new Date();
+
+                // Count unread messages across ALL conversations for this contact.
+                // Only count if this chat was opened before (lastRead exists);
+                // this prevents historical messages appearing unread on first load.
+                let unreadCount = 0;
+                try {
+                  const lastRead = lastReadMap[contact.id] || null;
+                  if (lastRead) {
+                    const unreadResults = await Promise.all(
+                      conversationIds.map(cid =>
+                        supabase
+                          .from('messages')
+                          .select('id')
+                          .eq('conversation_id', cid)
+                          .neq('sender_id', activeChatUserId)
+                          .gt('created_at', lastRead)
+                      )
+                    );
+                    unreadCount = unreadResults.reduce((sum, r) => sum + (r.data ? r.data.length : 0), 0);
+                  }
+                  // If lastRead is null (chat never opened), unreadCount stays 0.
+                  // New unread messages accumulate via the real-time subscription.
+                } catch (unreadErr) {
+                  console.warn('Could not fetch unread count:', unreadErr);
+                }
+
+                console.log(`Showing message for ${contact.name}: ${msgText}, unread: ${unreadCount}`);
+                return {
+                  ...contact,
+                  lastMessage: msgText,
+                  lastMessageTime: created.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+                  unreadCount,
+                };
+              }
+
+              console.log(`No messages at all for contact ${contact.name}`);
+              return { ...contact, lastMessage: undefined };
+            } catch (e) {
+              console.error(`Error processing contact ${contact.name}:`, e);
+              return contact;
+            }
+          })
+        );
+        setContacts(contactsWithMessages);
+      } else {
+        setContacts(formattedContacts);
+      }
     } catch (error) {
       console.error('Error fetching contacts:', error);
       Alert.alert('Error', 'Failed to load contacts');
@@ -117,6 +274,23 @@ export default function Contacts({ onContactSelected, currentUserId }: ContactsP
   };
 
   useEffect(() => {
+    // Fetch current user if not provided
+    if (!activeChatUserId) {
+      const fetchCurrentUser = async () => {
+        try {
+          const { data, error } = await supabase.auth.getUser();
+          if (!error && data?.user?.id) {
+            setActiveChatUserId(data.user.id);
+          }
+        } catch (e) {
+          console.error('Failed to get current user:', e);
+        }
+      };
+      fetchCurrentUser();
+    }
+  }, []);
+
+  useEffect(() => {
     fetchContacts();
 
     // Optional: Subscribe to realtime updates for online status
@@ -124,16 +298,59 @@ export default function Contacts({ onContactSelected, currentUserId }: ContactsP
       .channel('public:users')
       .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'users' }, payload => {
         // When a user updates their last_seen, refresh contacts
-        if (payload.new.id !== currentUserId) {
+        if (payload.new.id !== activeChatUserId) {
           fetchContacts();
         }
       })
       .subscribe();
 
+    // Subscribe to new messages to update contact list in real-time
+    if (activeChatUserId) {
+      messagesSubscriptionRef.current = supabase
+        .channel(`user-messages:${activeChatUserId}`)
+        .on(
+          'postgres_changes',
+          {
+            event: 'INSERT',
+            schema: 'public',
+            table: 'messages',
+          },
+          (payload) => {
+            const newMsg = payload.new as any;
+            
+            // Only update for messages received by the current user (not sent)
+            if (newMsg.receiver_id === activeChatUserId) {
+              const senderUserId = newMsg.sender_id;
+              
+              // Update the contact with the new message and increment unread
+              setContacts((prevContacts) =>
+                prevContacts.map((contact) => {
+                  if (contact.id === senderUserId) {
+                    const created = newMsg.created_at ? new Date(newMsg.created_at) : new Date();
+                    return {
+                      ...contact,
+                      lastMessage: newMsg.transcription || newMsg.content || '',
+                      lastMessageTime: created.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+                      unreadCount: (contact.unreadCount || 0) + 1,
+                    };
+                  }
+                  return contact;
+                })
+              );
+            }
+          }
+        )
+        .subscribe();
+    }
+
     return () => {
       subscription.unsubscribe();
+      if (messagesSubscriptionRef.current) {
+        messagesSubscriptionRef.current.unsubscribe();
+        messagesSubscriptionRef.current = null;
+      }
     };
-  }, [currentUserId]);
+  }, [activeChatUserId]);
 
   // Apply filters and search whenever contacts, searchText, or filterType changes
   useEffect(() => {
@@ -223,6 +440,7 @@ export default function Contacts({ onContactSelected, currentUserId }: ContactsP
           setSelectedContact(null);
           onContactSelected?.(null);
         }}
+        currentUserId={activeChatUserId || undefined}
       />
     );
   }
@@ -395,9 +613,15 @@ export default function Contacts({ onContactSelected, currentUserId }: ContactsP
                 key={contact.id}
                 className="mb-4 flex-row items-center rounded-2xl bg-white px-4 py-4 shadow-sm shadow-green-100 border-2 border-green-100 active:scale-95 active:bg-green-50"
                 onPress={() => {
-                  // Mark contact as read and update state (you might want to integrate real message unread logic)
-                  const updatedContacts = contacts.map(c => 
-                    c.id === contact.id 
+                  const now = new Date().toISOString();
+                  // Record when this chat was opened (marks all current messages as read)
+                  const updatedMap = { ...lastReadMap, [contact.id]: now };
+                  setLastReadMap(updatedMap);
+                  // Persist to AsyncStorage so unread state survives app restarts
+                  AsyncStorage.setItem(LAST_READ_STORAGE_KEY, JSON.stringify(updatedMap)).catch(() => {});
+                  // Mark contact as read
+                  const updatedContacts = contacts.map(c =>
+                    c.id === contact.id
                       ? { ...c, unreadCount: 0 }
                       : c
                   );
@@ -439,18 +663,27 @@ export default function Contacts({ onContactSelected, currentUserId }: ContactsP
                   <Text className="text-gray-600 text-xs font-normal mb-2">
                     {contact.role}
                   </Text>
-                  {/* Optional: show email or phone for search context */}
-                  <Text className="text-gray-400 text-xs">
-                    {contact.email} {contact.phone_number ? ` • ${contact.phone_number}` : ''}
-                  </Text>
-                  {contact.lastMessage && (
+                  {contact.lastMessage !== undefined ? (
                     <View className="flex-row items-center gap-2 mt-1">
-                      <Text className={`text-xs flex-1 ${contact.unreadCount !== undefined && contact.unreadCount > 0 ? 'text-gray-900 font-bold' : 'text-gray-500 font-normal'}`} numberOfLines={1}>
-                        {contact.lastMessage}
+                      <Ionicons name="chatbubble-outline" size={14} color={contact.unreadCount && contact.unreadCount > 0 ? '#10b981' : '#9ca3af'} />
+                      <Text className={`text-xs flex-1 ${contact.unreadCount && contact.unreadCount > 0 ? 'text-gray-900 font-bold' : 'text-gray-500 font-normal'}`} numberOfLines={1}>
+                        {contact.lastMessage || 'Message'}
                       </Text>
-                      <Text className={`text-xs ${contact.unreadCount !== undefined && contact.unreadCount > 0 ? 'text-gray-900 font-bold' : 'text-gray-400 font-medium'}`}>
-                        {contact.lastMessageTime}
-                      </Text>
+                      <View className="flex-row items-center gap-1">
+                        <Text className={`text-xs ${contact.unreadCount && contact.unreadCount > 0 ? 'text-green-600 font-bold' : 'text-gray-400 font-normal'}`}>
+                          {contact.lastMessageTime}
+                        </Text>
+                        {contact.unreadCount !== undefined && contact.unreadCount > 0 && (
+                          <View className="bg-red-500 rounded-full h-5 w-5 items-center justify-center ml-1">
+                            <Text className="text-white text-xs font-bold">{contact.unreadCount > 9 ? '9+' : contact.unreadCount}</Text>
+                          </View>
+                        )}
+                      </View>
+                    </View>
+                  ) : (
+                    <View className="flex-row items-center gap-2">
+                      <Ionicons name="chatbubble-outline" size={14} color="#d1d5db" />
+                      <Text className="text-gray-400 text-xs">No messages yet</Text>
                     </View>
                   )}
                 </View>

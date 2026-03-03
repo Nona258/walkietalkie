@@ -684,6 +684,7 @@ export default function ContactManagement({ onNavigate }: ContactManagementProps
       alert('Please select a contact or group before sending a message.');
       return;
     }
+    console.log('Sending message to contact:', selectedContact.name, 'userId:', selectedContact.userId);
     (async () => {
       const now = new Date();
       const localMessage: Message = {
@@ -776,27 +777,49 @@ export default function ContactManagement({ onNavigate }: ContactManagementProps
         console.warn('Skipping conversation creation for self-chat.');
         return null;
       }
-      const userOne = meId < contactUserId ? meId : contactUserId;
-      const userTwo = meId < contactUserId ? contactUserId : meId;
-      const { data: existing, error: findError } = await supabase
+      
+      console.log('Looking for conversation between:', meId, 'and', contactUserId);
+      
+      // Find existing conversation - fetch all and filter client-side to avoid 406 errors
+      const { data: allConversations, error: findError } = await supabase
         .from('conversations')
-        .select('id, user_one, user_two')
-        .or(`and(user_one.eq.${userOne},user_two.eq.${userTwo}),and(user_one.eq.${userTwo},user_two.eq.${userOne})`)
-        .limit(1);
+        .select('id, user_one, user_two');
+      
       if (findError) {
         console.error('Error looking up conversation:', findError);
         return null;
       }
-      if (existing && existing.length > 0) return existing[0].id as string;
+      
+      console.log('All conversations:', allConversations);
+      
+      // Find the matching conversation
+      if (allConversations && allConversations.length > 0) {
+        const matching = allConversations.find((conv: any) => 
+          (conv.user_one === meId && conv.user_two === contactUserId) ||
+          (conv.user_one === contactUserId && conv.user_two === meId)
+        );
+        if (matching) {
+          console.log('Found existing conversation:', matching.id);
+          return matching.id as string;
+        }
+      }
+      
+      // Create new conversation if not found
+      console.log('Creating new conversation');
+      const userOne = meId < contactUserId ? meId : contactUserId;
+      const userTwo = meId < contactUserId ? contactUserId : meId;
+      
       const { data: created, error: createError } = await supabase
         .from('conversations')
         .insert([{ user_one: userOne, user_two: userTwo }])
         .select('id')
         .single();
+      
       if (createError || !created) {
         console.error('Error creating conversation:', createError);
         return null;
       }
+      console.log('Created new conversation:', created.id);
       return created.id as string;
     } catch (e) {
       console.error('Unexpected error in getOrCreateConversation:', e);
@@ -812,6 +835,7 @@ export default function ContactManagement({ onNavigate }: ContactManagementProps
         return null;
       }
       const conversationId = await getOrCreateConversation(targetUserId);
+      console.log('Saving message to conversation:', conversationId, 'for user:', targetUserId);
       if (!conversationId) {
         console.warn('No conversation id resolved; skipping save to messages');
         return null;
