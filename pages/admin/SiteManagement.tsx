@@ -628,22 +628,29 @@ export default function SiteManagement({ onNavigate }: SiteManagementProps) {
     setIsViewLocationOpen(true);
   };
 
-  const handleDeleteSite = async (site: Site) => {
-    const confirmed = window.confirm(
-      `Are you sure you want to delete "${site.name}"? This action cannot be undone.`
-    );
+  const handleDeleteSite = (site: Site) => {
+    setSelectedSite(site);
+    setAlertConfig({
+      title: 'Delete Site',
+      message: `Are you sure you want to delete "${site.name}"? This action cannot be undone.`,
+      type: 'warning'
+    });
+    setAlertVisible(true);
+  };
 
-    if (!confirmed) return;
+  const confirmDeleteSite = async () => {
+    if (!selectedSite) return;
 
     const { error } = await supabase
       .from('sites')
       .delete()
-      .eq('id', site.id);
+      .eq('id', selectedSite.id);
     
     if (error) {
       showAlert('Delete Error', error.message, 'error');
     } else {
-      showAlert('Deleted', `${site.name} has been removed successfully`, 'success');
+      showAlert('Deleted', `Site (${selectedSite.latitude?.toFixed(4)}, ${selectedSite.longitude?.toFixed(4)}) has been removed successfully`, 'success');
+      setSelectedSite(null);
       // Real-time subscription will handle the update automatically
     }
   };
@@ -1539,7 +1546,17 @@ export default function SiteManagement({ onNavigate }: SiteManagementProps) {
         message={alertConfig.message}
         type={alertConfig.type}
         confirmText="OK"
-        onConfirm={() => setAlertVisible(false)}
+        onConfirm={() => {
+          setAlertVisible(false);
+          if (alertConfig.type === 'warning' && selectedSite) {
+            confirmDeleteSite();
+          }
+        }}
+        showCancelButton={alertConfig.type === 'warning'}
+        onCancel={() => {
+          setAlertVisible(false);
+          setSelectedSite(null);
+        }}
       />
     </View>
   );

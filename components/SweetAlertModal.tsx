@@ -33,10 +33,10 @@ export default function SweetAlertModal({
   showCancelButton = false,
 }: SweetAlertModalProps) {
   const iconMap = {
-    success: { name: "checkmark-circle" as const, color: "#10b981" },
+    success: { name: "checkmark-circle" as const, color: "#237227" },
     error: { name: "close-circle" as const, color: "#ef4444" },
-    warning: { name: "warning" as const, color: "#f59e0b" },
-    info: { name: "information-circle" as const, color: "#3b82f6" },
+    warning: { name: "warning" as const, color: "#dc2626" },
+    info: { name: "information-circle" as const, color: "#237227" },
   };
 
   const icon = iconMap[type];
@@ -44,18 +44,18 @@ export default function SweetAlertModal({
   return (
     <Modal transparent visible={visible} animationType="fade">
       <Pressable
-        className="flex-1 items-center justify-center"
+        className="items-center justify-center flex-1"
         style={{ backgroundColor: "rgba(0,0,0,0.5)" }}
         onPress={onCancel}
       >
         <Pressable
-          className="bg-white rounded-3xl p-8 mx-8 items-center shadow-2xl"
+          className="items-center p-8 mx-8 bg-white shadow-2xl rounded-3xl"
           style={{ minWidth: 300, maxWidth: 380 }}
           onPress={(e) => e.stopPropagation()}
         >
           {/* Icon */}
           <View
-            className="w-20 h-20 rounded-full items-center justify-center mb-5"
+            className="items-center justify-center w-20 h-20 mb-5 rounded-full"
             style={{ backgroundColor: `${icon.color}15` }}
           >
             <Ionicons name={icon.name} size={48} color={icon.color} />
@@ -79,22 +79,23 @@ export default function SweetAlertModal({
           <View className="flex-row w-full gap-3">
             {showCancelButton && onCancel && (
               <TouchableOpacity
-                className="flex-1 py-3.5 rounded-2xl items-center border border-gray-200"
+                className="flex-1 py-3.5 rounded-2xl items-center"
+                style={{ backgroundColor: '#237227' }}
                 onPress={onCancel}
                 activeOpacity={0.8}
               >
-                <Text className="text-[#6b7280] text-base font-semibold">
+                <Text style={{ color: '#f8fafb' }} className="text-base font-semibold">
                   {cancelText}
                 </Text>
               </TouchableOpacity>
             )}
             <TouchableOpacity
               className="flex-1 py-3.5 rounded-2xl items-center"
-              style={{ backgroundColor: icon.color }}
+              style={{ backgroundColor: '#237227' }}
               onPress={onConfirm}
               activeOpacity={0.8}
             >
-              <Text className="text-white text-base font-bold">
+              <Text style={{ color: '#f8fafb' }} className="text-base font-bold">
                 {confirmText}
               </Text>
             </TouchableOpacity>
