@@ -44,12 +44,17 @@ export async function getEmployees() {
 }
 
 // Add a contact row for the given user id.
-// Note: `contacts` schema in your DB only has `user_id`; this inserts that user.
+// This creates a contact relationship between the current user and the contact user.
 export async function addContact(contactUserId: string) {
 	if (!contactUserId) throw new Error('contactUserId required');
+	
+	// Get the current authenticated user
+	const { data: { user }, error: authError } = await supabase.auth.getUser();
+	if (authError || !user) throw new Error('Unable to get current user');
+	
 	const { data, error } = await supabase
 		.from('contacts')
-		.insert([{ user_id: contactUserId }])
+		.insert([{ user_id: user.id, contact_id: contactUserId }])
 		.select()
 		.single();
 	if (error) throw error;
