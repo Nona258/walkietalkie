@@ -227,12 +227,12 @@ export default function ContactManagement({ onNavigate, isMobileMenuOpen, setIsM
                   className="items-center justify-center mr-3 w-9 h-9"
                   onPress={() => setIsMobileMenuOpen(true)}
                 >
-                  <Ionicons name="menu" size={24} color="#44403c" />
+                  <Ionicons name="menu" size={24} color="#237227" />
                 </TouchableOpacity>
               )}
               <View className="flex-1">
-                <Text className="text-lg font-bold lg:text-2xl text-stone-900">Contact Management</Text>
-                <Text className="text-stone-500 text-xs lg:text-sm mt-0.5">Welcome back, Administrator</Text>
+                <Text className="text-xl font-light lg:text-3xl text-stone-900">Contact Management</Text>
+                <Text className="text-stone-500 text-xs lg:text-base mt-0.5">Welcome back, Administrator</Text>
               </View>
             </View>
             <View className="flex-row items-center gap-2.5">
@@ -462,15 +462,15 @@ export default function ContactManagement({ onNavigate, isMobileMenuOpen, setIsM
                 />
               </View>
               <View className="flex-row justify-end gap-3">
-                <TouchableOpacity className="px-4 py-2 border rounded-lg border-stone-300" onPress={() => {
+                <TouchableOpacity style={{ backgroundColor: '#237227' }} className="px-4 py-2 rounded-lg" onPress={() => {
                   setShowCreateGroupModal(false);
                   setNewTeamName('');
                   setNewTeamCapacity('5');
                 }}>
-                  <Text className="font-semibold text-stone-700">Cancel</Text>
+                  <Text style={{ color: '#f8fafb' }} className="font-semibold">Cancel</Text>
                 </TouchableOpacity>
                 <TouchableOpacity style={{ backgroundColor: '#237227' }} className="px-4 py-2 rounded-lg" onPress={handleCreateTeam}>
-                  <Text className="font-semibold text-white">Create Team</Text>
+                  <Text style={{ color: '#f8fafb' }} className="font-semibold">Create Team</Text>
                 </TouchableOpacity>
               </View>
             </View>
@@ -518,8 +518,8 @@ export default function ContactManagement({ onNavigate, isMobileMenuOpen, setIsM
                   <Text style={{ color: '#f8fafb' }} className="font-semibold text-center">+ Create Team</Text>
                 </TouchableOpacity>
               </View>
-              <TouchableOpacity className="px-4 py-2 border rounded-lg border-stone-300" onPress={() => setShowManageTeamsModal(false)}>
-                <Text className="font-semibold text-center text-stone-700">Close</Text>
+              <TouchableOpacity style={{ backgroundColor: '#237227' }} className="px-4 py-2 rounded-lg" onPress={() => setShowManageTeamsModal(false)}>
+                <Text style={{ color: '#f8fafb' }} className="font-semibold text-center">Close</Text>
               </TouchableOpacity>
             </View>
           </Pressable>

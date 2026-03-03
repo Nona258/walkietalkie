@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, Modal, Dimensions } from 'react-native';
+import React, { useState, useEffect, useRef } from 'react';
+import { View, Text, ScrollView, TouchableOpacity, Modal, Dimensions, Animated } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 
 interface AdminNavbarProps {
@@ -14,6 +14,23 @@ interface AdminNavbarProps {
 export default function AdminNavbar({ activeTab, setActiveTab, onNavigate, onLogout, isMobileMenuOpen, setIsMobileMenuOpen }: AdminNavbarProps) {
   const windowWidth = Dimensions.get('window').width;
   const isWebView = windowWidth > 900;
+  const slideAnim = useRef(new Animated.Value(-300)).current;
+
+  useEffect(() => {
+    if (isMobileMenuOpen) {
+      Animated.timing(slideAnim, {
+        toValue: 0,
+        duration: 300,
+        useNativeDriver: true,
+      }).start();
+    } else {
+      Animated.timing(slideAnim, {
+        toValue: -300,
+        duration: 250,
+        useNativeDriver: true,
+      }).start();
+    }
+  }, [isMobileMenuOpen]);
 
   const handleTabChange = (tab: any) => {
     setActiveTab(tab);
@@ -25,11 +42,11 @@ export default function AdminNavbar({ activeTab, setActiveTab, onNavigate, onLog
   const NavContent = () => (
     <View className="flex-1 bg-[#f8fafb]">
       {/* Header */}
-      <View className="bg-[#e8f5e9] px-6 pt-8 pb-6 border-b border-emerald-100">
+      <View className="bg-[#e8f5e9] px-4 pt-6 pb-4 border-b border-emerald-100">
         <View className="flex-row items-center justify-between">
           <View className="flex-row items-center gap-3">
-            <View className="items-center justify-center w-14 h-14 bg-[#f8fafb] rounded-2xl">
-              <Ionicons name="chatbubble" size={24} color="#237227" />
+            <View className="items-center justify-center w-12 h-12 bg-[#f8fafb] rounded-2xl">
+              <Ionicons name="chatbubble" size={22} color="#237227" />
             </View>
             <View>
               <Text className="text-base font-bold text-stone-900">Admin Portal</Text>
@@ -45,10 +62,10 @@ export default function AdminNavbar({ activeTab, setActiveTab, onNavigate, onLog
       </View>
 
       {/* Navigation Items */}
-      <ScrollView className="flex-1 px-4 py-4">
+      <ScrollView className="flex-1 px-3 py-3">
         <TouchableOpacity 
           onPress={() => handleTabChange('dashboard')}
-          className={`flex-row items-center px-4 py-3 mb-1 rounded-xl ${activeTab === 'dashboard' ? 'bg-[#e8f5e9]' : ''}`}
+          className={`flex-row items-center px-3 py-2.5 mb-1 rounded-xl ${activeTab === 'dashboard' ? 'bg-[#e8f5e9]' : ''}`}
         >
           <Ionicons name="grid-outline" size={20} color={activeTab === 'dashboard' ? '#237227' : '#78716c'} />
           <Text className={`ml-3 font-medium ${activeTab === 'dashboard' ? 'text-[#237227]' : 'text-stone-900'}`}>Dashboard</Text>
@@ -63,7 +80,7 @@ export default function AdminNavbar({ activeTab, setActiveTab, onNavigate, onLog
         ].map((item) => (
           <TouchableOpacity 
             key={item.key} 
-            className={`flex-row items-center px-4 py-3 mb-1 rounded-xl ${activeTab === item.key ? 'bg-[#e8f5e9]' : ''}`}
+            className={`flex-row items-center px-3 py-2.5 mb-1 rounded-xl ${activeTab === item.key ? 'bg-[#e8f5e9]' : ''}`}
             onPress={() => handleTabChange(item.key as any)}
           >
             <Ionicons name={item.icon as any} size={20} color={activeTab === item.key ? '#237227' : '#78716c'} />
@@ -74,7 +91,7 @@ export default function AdminNavbar({ activeTab, setActiveTab, onNavigate, onLog
         <View className="my-4 border-t border-stone-200" />
 
         <TouchableOpacity 
-          className={`flex-row items-center px-4 py-3 mb-1 rounded-xl ${activeTab === 'settings' ? 'bg-[#e8f5e9]' : ''}`}
+          className={`flex-row items-center px-3 py-2.5 mb-1 rounded-xl ${activeTab === 'settings' ? 'bg-[#e8f5e9]' : ''}`}
           onPress={() => handleTabChange('settings')}
         >
           <Ionicons name="settings-outline" size={20} color={activeTab === 'settings' ? '#237227' : '#78716c'} />
@@ -83,9 +100,9 @@ export default function AdminNavbar({ activeTab, setActiveTab, onNavigate, onLog
       </ScrollView>
 
       {/* Sign Out */}
-      <View className="px-4 pt-4 pb-6 border-t border-stone-200">
+      <View className="px-3 pt-3 pb-4 border-t border-stone-200">
         <TouchableOpacity 
-          className="flex-row items-center px-4 py-3 rounded-xl"
+          className="flex-row items-center px-3 py-2.5 rounded-xl"
           onPress={onLogout}
         >
           <Ionicons name="log-out-outline" size={20} color="#dc2626" />
@@ -108,7 +125,7 @@ export default function AdminNavbar({ activeTab, setActiveTab, onNavigate, onLog
   return (
     <Modal
       visible={isMobileMenuOpen || false}
-      animationType="slide"
+      animationType="fade"
       transparent={true}
       onRequestClose={() => setIsMobileMenuOpen && setIsMobileMenuOpen(false)}
     >
@@ -118,9 +135,18 @@ export default function AdminNavbar({ activeTab, setActiveTab, onNavigate, onLog
           activeOpacity={1} 
           onPress={() => setIsMobileMenuOpen && setIsMobileMenuOpen(false)}
         />
-        <View style={{ width: '80%', height: '100%', position: 'absolute', left: 0 }}>
+        <Animated.View style={{ 
+          width: '60%', 
+          maxWidth: 280,
+          height: '100%', 
+          position: 'absolute', 
+          left: 0,
+          top: 0,
+          backgroundColor: '#f8fafb',
+          transform: [{ translateX: slideAnim }]
+        }}>
           <NavContent />
-        </View>
+        </Animated.View>
       </View>
     </Modal>
   );

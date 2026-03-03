@@ -246,8 +246,8 @@ export default function CompanyList({ onNavigate, isMobileMenuOpen, setIsMobileM
               </TouchableOpacity>
             )}
             <View style={{ flex: 1 }}>
-              <Text style={{ fontSize: 20, fontWeight: '700', color: COLORS.textPrimary, lineHeight: 26 }}>Company Management</Text>
-              <Text style={{ fontSize: 12, color: COLORS.textMuted, marginTop: 1 }}>Welcome back, Administrator</Text>
+              <Text style={{ fontSize: isWebView ? 30 : 20, fontWeight: '300', color: COLORS.textPrimary, lineHeight: 26, marginBottom: 4 }}>Company Management</Text>
+              <Text style={{ fontSize: isWebView ? 16 : 12, color: COLORS.textPrimary }}>Welcome back, Administrator</Text>
             </View>
           </View>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, Modal, Pressable, TextInput } from 'react-native';
+import { View, Text, ScrollView, TouchableOpacity, Modal, Pressable, TextInput, Animated } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import SweetAlertModal from '../../components/SweetAlertModal';
 import '../../global.css';
@@ -35,6 +35,7 @@ export default function SiteManagement({ onNavigate }: SiteManagementProps) {
   const [sites, setSites] = useState<Site[]>([]);
   const [isNotificationOpen, setIsNotificationOpen] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const slideAnim = useRef(new Animated.Value(-300)).current;
   
   const [alertVisible, setAlertVisible] = useState(false);
   const [alertConfig, setAlertConfig] = useState({
@@ -64,6 +65,23 @@ export default function SiteManagement({ onNavigate }: SiteManagementProps) {
   const viewMarkerRef = useRef<any>(null);
   const editMapRef = useRef<any>(null);
   const editMarkerRef = useRef<any>(null);
+
+  // Animation for mobile menu
+  useEffect(() => {
+    if (isMobileMenuOpen) {
+      Animated.timing(slideAnim, {
+        toValue: 0,
+        duration: 300,
+        useNativeDriver: true,
+      }).start();
+    } else {
+      Animated.timing(slideAnim, {
+        toValue: -300,
+        duration: 250,
+        useNativeDriver: true,
+      }).start();
+    }
+  }, [isMobileMenuOpen]);
 
   // Fetch companies for dropdown
   useEffect(() => {
@@ -646,7 +664,6 @@ export default function SiteManagement({ onNavigate }: SiteManagementProps) {
               {/* Hamburger Menu Icon (Mobile Only) */}
               <TouchableOpacity
                 className="items-center justify-center w-10 h-10 mr-2 rounded-lg lg:hidden"
-                style={{ backgroundColor: '#f0fdf4' }}
                 onPress={() => setIsMobileMenuOpen(true)}
                 activeOpacity={0.7}
               >
@@ -654,8 +671,8 @@ export default function SiteManagement({ onNavigate }: SiteManagementProps) {
               </TouchableOpacity>
               
               <View className="flex-1">
-                <Text className="text-lg font-semibold text-stone-900">Site Managements</Text>
-                <Text className="text-xs font-semibold text-stone-900">Welcome back, Administrator</Text>
+                <Text className="mb-1 text-xl font-light lg:text-3xl text-stone-900">Site Management</Text>
+                <Text className="text-xs lg:text-base text-stone-900">Welcome back, Administrator</Text>
               </View>
               <View className="flex-row items-center gap-2">
                 <TouchableOpacity
@@ -1380,7 +1397,7 @@ export default function SiteManagement({ onNavigate }: SiteManagementProps) {
       {/* Mobile Sidebar Navigation */}
       <Modal
         visible={isMobileMenuOpen}
-        animationType="slide"
+        animationType="fade"
         transparent={true}
         onRequestClose={() => setIsMobileMenuOpen(false)}
       >
@@ -1390,10 +1407,19 @@ export default function SiteManagement({ onNavigate }: SiteManagementProps) {
             activeOpacity={1} 
             onPress={() => setIsMobileMenuOpen(false)}
           />
-          <View style={{ width: '80%', height: '100%', position: 'absolute', left: 0 }}>
+          <Animated.View style={{ 
+            width: '60%', 
+            maxWidth: 280,
+            height: '100%', 
+            position: 'absolute', 
+            left: 0,
+            top: 0,
+            backgroundColor: '#f8fafb',
+            transform: [{ translateX: slideAnim }]
+          }}>
             <View className="flex-1 bg-[#f8fafb]">
               {/* Header */}
-              <View className="bg-[#e8f5e9] px-6 pt-8 pb-6 border-b border-emerald-100">
+              <View className="bg-[#e8f5e9] px-4 pt-6 pb-4 border-b border-emerald-100">
                 <View className="flex-row items-center justify-between">
                   <View className="flex-row items-center gap-3">
                     <View className="items-center justify-center w-14 h-14 bg-[#f8fafb] rounded-2xl">
@@ -1424,7 +1450,7 @@ export default function SiteManagement({ onNavigate }: SiteManagementProps) {
                 </TouchableOpacity>
 
                 <TouchableOpacity 
-                  className="flex-row items-center px-4 py-3 mb-1 rounded-xl bg-[#e8f5e9]"
+                  className="flex-row items-center px-3 py-2.5 mb-1 rounded-xl bg-[#e8f5e9]"
                   onPress={() => setIsMobileMenuOpen(false)}
                 >
                   <Ionicons name="location-outline" size={20} color="#237227" />
@@ -1432,7 +1458,7 @@ export default function SiteManagement({ onNavigate }: SiteManagementProps) {
                 </TouchableOpacity>
 
                 <TouchableOpacity 
-                  className="flex-row items-center px-4 py-3 mb-1 rounded-xl"
+                  className="flex-row items-center px-3 py-2.5 mb-1 rounded-xl"
                   onPress={() => {
                     onNavigate('walkieTalkie');
                     setIsMobileMenuOpen(false);
@@ -1443,7 +1469,7 @@ export default function SiteManagement({ onNavigate }: SiteManagementProps) {
                 </TouchableOpacity>
 
                 <TouchableOpacity 
-                  className="flex-row items-center px-4 py-3 mb-1 rounded-xl"
+                  className="flex-row items-center px-3 py-2.5 mb-1 rounded-xl"
                   onPress={() => {
                     onNavigate('activityLogs');
                     setIsMobileMenuOpen(false);
@@ -1454,7 +1480,7 @@ export default function SiteManagement({ onNavigate }: SiteManagementProps) {
                 </TouchableOpacity>
 
                 <TouchableOpacity 
-                  className="flex-row items-center px-4 py-3 mb-1 rounded-xl"
+                  className="flex-row items-center px-3 py-2.5 mb-1 rounded-xl"
                   onPress={() => {
                     onNavigate('companyList');
                     setIsMobileMenuOpen(false);
@@ -1465,7 +1491,7 @@ export default function SiteManagement({ onNavigate }: SiteManagementProps) {
                 </TouchableOpacity>
 
                 <TouchableOpacity 
-                  className="flex-row items-center px-4 py-3 mb-1 rounded-xl"
+                  className="flex-row items-center px-3 py-2.5 mb-1 rounded-xl"
                   onPress={() => {
                     onNavigate('employee');
                     setIsMobileMenuOpen(false);
@@ -1478,7 +1504,7 @@ export default function SiteManagement({ onNavigate }: SiteManagementProps) {
                 <View className="my-4 border-t border-stone-200" />
 
                 <TouchableOpacity 
-                  className="flex-row items-center px-4 py-3 mb-1 rounded-xl"
+                  className="flex-row items-center px-3 py-2.5 mb-1 rounded-xl"
                   onPress={() => {
                     onNavigate('settings');
                     setIsMobileMenuOpen(false);
@@ -1490,9 +1516,9 @@ export default function SiteManagement({ onNavigate }: SiteManagementProps) {
               </ScrollView>
 
               {/* Sign Out */}
-              <View className="px-4 pt-4 pb-6 border-t border-stone-200">
+              <View className="px-3 pt-3 pb-4 border-t border-stone-200">
                 <TouchableOpacity 
-                  className="flex-row items-center px-4 py-3 rounded-xl"
+                  className="flex-row items-center px-3 py-2.5 rounded-xl"
                   onPress={() => {
                     setIsMobileMenuOpen(false);
                     // Add logout functionality here if needed
@@ -1503,7 +1529,7 @@ export default function SiteManagement({ onNavigate }: SiteManagementProps) {
                 </TouchableOpacity>
               </View>
             </View>
-          </View>
+          </Animated.View>
         </View>
       </Modal>
 
