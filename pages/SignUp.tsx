@@ -137,31 +137,10 @@ export default function SignUp({ onNavigateToSignIn, onSignUpSuccess }: SignUpPr
       const success = await acceptEula(signedUpUser.id);
       
       if (success) {
-        // Fetch user role from database
-        const { data: userData } = await supabase
-          .from('users')
-          .select('role')
-          .eq('id', signedUpUser.id)
-          .single();
-        
-        const userRole = userData?.role || 'employee';
-        
-        // Update auth user metadata with role to persist it
-        await supabase.auth.updateUser({
-          data: {
-            full_name: signedUpUser.user_metadata?.full_name,
-            role: userRole,
-          },
-        });
-        
-        // Refresh session to get updated user metadata
-        const { data: updatedSession } = await supabase.auth.getSession();
-        const userWithRole = updatedSession?.session?.user || signedUpUser;
-        
+        // User accepted EULA, proceed to dashboard
         setShowEulaModal(false);
         setSignedUpUser(null);
-        // Navigate to dashboard - user is already signed in
-        onSignUpSuccess(userWithRole);
+        onSignUpSuccess(signedUpUser);
       } else {
         setAlertConfig({
           title: "Error",

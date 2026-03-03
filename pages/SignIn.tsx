@@ -58,50 +58,22 @@ export default function SignIn({ onNavigateToSignUp, onSignInSuccess }: SignInPr
       }
 
       if (data?.user) {
-        // Mark user as online and fetch their role
+        // Check if user has accepted EULA
         try {
-          const { data: userData } = await supabase
-            .from('users')
-            .update({ status: 'online' })
-            .eq('id', data.user.id)
-            .select('role')
-            .single();
-          
-          const userRole = userData?.role || 'employee';
-          
-          // Update auth user metadata with role to persist it
-          await supabase.auth.updateUser({
-            data: {
-              full_name: data.user.user_metadata?.full_name,
-              role: userRole,
-            },
-          });
-          
-          // Refresh session to get updated user metadata
-          const { data: updatedSession } = await supabase.auth.getSession();
-          const userWithRole = updatedSession?.session?.user || data.user;
-          
-          // Check if user has accepted EULA
           const eulaAccepted = await hasAcceptedEula(data.user.id);
           
           if (eulaAccepted) {
             // User has accepted EULA, proceed to dashboard
-            onSignInSuccess(userWithRole);
-          } else {
-            // User hasn't accepted EULA, show modal
-            setSignedInUser(userWithRole);
-            setShowEulaModal(true);
-          }
-        } catch (err) {
-          console.error('Failed to set user status to online or fetch role:', err);
-          // Continue anyway with the original user
-          const eulaAccepted = await hasAcceptedEula(data.user.id);
-          if (eulaAccepted) {
             onSignInSuccess(data.user);
           } else {
+            // User hasn't accepted EULA, show modal
             setSignedInUser(data.user);
             setShowEulaModal(true);
           }
+        } catch (err) {
+          console.error('Error during sign in:', err);
+          // Continue with user anyway
+          onSignInSuccess(data.user);
         }
       }
     } catch (err: any) {
@@ -136,19 +108,7 @@ export default function SignIn({ onNavigateToSignUp, onSignInSuccess }: SignInPr
 
   const handleEulaDecline = async () => {
     try {
-      // Attempt to mark the user offline first (if we have their id)
-      const userId = signedInUser?.id;
-      if (userId) {
-        try {
-          await supabase
-            .from('users')
-            .update({ status: 'offline' })
-            .eq('id', userId);
-        } catch (err) {
-          console.error('Failed to set user status to offline:', err);
-        }
-      }
-
+      // Sign out the user
       const { error: signOutError } = await supabase.auth.signOut();
 
       if (!signOutError) {
