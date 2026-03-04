@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { View, Text, TouchableOpacity, ScrollView, TextInput, Alert, Platform, Animated, ActivityIndicator } from 'react-native';
+import { View, Text, TouchableOpacity, ScrollView, TextInput, Alert, ActivityIndicator } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { ExpoSpeechRecognitionModule, useSpeechRecognitionEvent } from 'expo-speech-recognition';
 import supabase from '../../utils/supabase';
 
 interface Contact {
@@ -18,10 +17,14 @@ interface Message {
   sender: string;
   content: string;
   timestamp: string;
+  _rawTs?: string;        // full ISO timestamp for date grouping
   isOwn: boolean;
   status?: 'sending' | 'sent' | 'delivered' | 'read';
-  type?: 'text' | 'image' | 'media';
+  type?: 'text' | 'image' | 'media' | 'voice';
   isRead?: boolean;
+  isVoice?: boolean;
+  audioUrl?: string;
+  duration?: string;
 }
 
 
@@ -32,20 +35,78 @@ interface ChatProps {
   currentUserId?: string;
 }
 
+// ── helpers ──────────────────────────────────────────────────────────────
+const padZero = (n: number) => String(n).padStart(2, '0');
+
+const formatDuration = (seconds: number) =>
+  `${Math.floor(seconds / 60)}:${padZero(seconds % 60)}`;
+
+const parseDurationToMs = (duration?: string): number | null => {
+  if (!duration) return null;
+  const [m, s] = duration.split(':').map(Number);
+  if (isNaN(m) || isNaN(s)) return null;
+  return (m * 60 + s) * 1000;
+};
+
+/** Returns 'Today', 'Yesterday', or a readable date string for a given timestamp */
+const getDateLabel = (timestamp: string): string => {
+  const msgDate = new Date(timestamp);
+  const today = new Date();
+  const yesterday = new Date();
+  yesterday.setDate(today.getDate() - 1);
+
+  const isSameDay = (a: Date, b: Date) =>
+    a.getFullYear() === b.getFullYear() &&
+    a.getMonth() === b.getMonth() &&
+    a.getDate() === b.getDate();
+
+  if (isSameDay(msgDate, today)) return 'Today';
+  if (isSameDay(msgDate, yesterday)) return 'Yesterday';
+  return msgDate.toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' });
+};
+
+/** Returns 'Today', 'Yesterday', or a readable date string for a given timestamp */
+const dateDayKey = (timestamp: string): string => {
+  const d = new Date(timestamp);
+  return `${d.getFullYear()}-${padZero(d.getMonth() + 1)}-${padZero(d.getDate())}`;
+};
+
+/** Returns the delivery label for own messages */
+const getDeliveryLabel = (rawTs: string, status: string, isRead: boolean | undefined, now: Date): string => {
+  if (status === 'sending') return 'Sending...';
+  if (isRead) return 'Seen';
+  const diffMs = now.getTime() - new Date(rawTs).getTime();
+  const mins = Math.floor(diffMs / 60000);
+  if (mins < 1) return 'Delivered';
+  if (mins < 60) return mins === 1 ? 'Delivered 1 minute ago' : `Delivered ${mins} minutes ago`;
+  const hrs = Math.floor(mins / 60);
+  return hrs === 1 ? 'Delivered 1 hour ago' : `Delivered ${hrs} hours ago`;
+};
+// ───────────────────────────────────────────────────────────────────────────────────────────────
+
 export default function Chat({ selectedContact, onBackPress, currentUserId }: ChatProps) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [messageText, setMessageText] = useState('');
   const [showMediaMenu, setShowMediaMenu] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
-  const [isListening, setIsListening] = useState(false);
-  const [recognizedTranscript, setRecognizedTranscript] = useState('');
+  const [recordingTime, setRecordingTime] = useState(0);
   const [isTyping, setIsTyping] = useState(false);
-  const [typingAnimation] = useState(new Animated.Value(0));
   const [loadingMessages, setLoadingMessages] = useState(true);
   const [activeChatUserId, setActiveChatUserId] = useState<string | null>(currentUserId || null);
   const [conversationId, setConversationId] = useState<string | null>(null);
+  const [currentlyPlayingId, setCurrentlyPlayingId] = useState<string | null>(null);
+  // Ticks every 30 s so delivery labels like "Delivered 2 minutes ago" stay up-to-date
+  const [now, setNow] = useState(new Date());
 
   const messagesSubscriptionRef = useRef<any>(null);
+  const scrollViewRef = useRef<ScrollView>(null);
+  const [expandedMessageId, setExpandedMessageId] = useState<string | null>(null);
+  const typingChannelRef = useRef<any>(null);
+  const typingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const mediaRecorderRef = useRef<any>(null);
+  const audioChunksRef = useRef<any[]>([]);
+  const audioPlayerRef = useRef<HTMLAudioElement | null>(null);
+  const recordingIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // Fetch current user if not provided
   useEffect(() => {
@@ -76,8 +137,15 @@ export default function Chat({ selectedContact, onBackPress, currentUserId }: Ch
       return;
     }
     
+    // Unsubscribe any previous subscription before loading new conversation
+    if (messagesSubscriptionRef.current) {
+      messagesSubscriptionRef.current.unsubscribe();
+      messagesSubscriptionRef.current = null;
+    }
+
     fetchConversationMessages();
-    setupRealtimeSubscription();
+    // Note: setupRealtimeSubscription is called inside fetchConversationMessages
+    // once the conversationId is known, to avoid stale-state race condition.
 
     return () => {
       if (messagesSubscriptionRef.current) {
@@ -123,6 +191,7 @@ export default function Chat({ selectedContact, onBackPress, currentUserId }: Ch
           
           if (newConv?.id) {
             setConversationId(newConv.id);
+            setupRealtimeSubscription(newConv.id);
           }
         } catch (e) {
           console.error('Error creating conversation:', e);
@@ -133,6 +202,7 @@ export default function Chat({ selectedContact, onBackPress, currentUserId }: Ch
       }
 
       setConversationId(conversationData.id);
+      setupRealtimeSubscription(conversationData.id);
 
       // Now fetch messages for this conversation
       const { data: messagesData, error } = await supabase
@@ -151,19 +221,28 @@ export default function Chat({ selectedContact, onBackPress, currentUserId }: Ch
       const formattedMessages: Message[] = (messagesData || []).map((msg: any) => {
         const isOwn = msg.sender_id === activeChatUserId;
         const created = msg.created_at ? new Date(msg.created_at) : new Date();
+        const isVoice = !!(msg.file_url && msg.file_url.length > 0);
+        const durationMs = typeof msg.duration_ms === 'number' ? msg.duration_ms : null;
+        const durationSec = durationMs !== null ? Math.round(durationMs / 1000) : null;
         return {
           id: String(msg.id),
           sender: isOwn ? 'You' : selectedContact.initials,
-          content: msg.transcription || '',
+          content: msg.transcription || (isVoice ? 'Voice message' : ''),
           timestamp: created.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+          _rawTs: msg.created_at || new Date().toISOString(),
           isOwn,
           status: 'read',
-          type: 'text',
-          isRead: isOwn ? true : false,
+          type: isVoice ? 'voice' : 'text',
+          isRead: isOwn ? (msg.is_read ?? false) : false,
+          isVoice,
+          audioUrl: isVoice ? msg.file_url : undefined,
+          duration: durationSec !== null ? formatDuration(durationSec) : undefined,
         };
       });
       
       setMessages(formattedMessages);
+      // Scroll to bottom after messages load
+      setTimeout(() => scrollViewRef.current?.scrollToEnd({ animated: false }), 100);
     } catch (e) {
       console.error('Error fetching conversation messages:', e);
       setMessages([]);
@@ -172,35 +251,53 @@ export default function Chat({ selectedContact, onBackPress, currentUserId }: Ch
     }
   };
 
-  const setupRealtimeSubscription = () => {
-    if (!conversationId) return;
+  const setupRealtimeSubscription = (convId: string) => {
+    if (!convId) return;
+
+    // Avoid duplicate subscriptions for the same conversation
+    if (messagesSubscriptionRef.current) {
+      messagesSubscriptionRef.current.unsubscribe();
+      messagesSubscriptionRef.current = null;
+    }
 
     try {
       // Subscribe to new messages for this specific conversation
       messagesSubscriptionRef.current = supabase
-        .channel(`messages:conversation:${conversationId}`)
+        .channel(`messages:conversation:${convId}`)
         .on(
           'postgres_changes',
           {
             event: 'INSERT',
             schema: 'public',
             table: 'messages',
-            filter: `conversation_id=eq.${conversationId}`,
+            filter: `conversation_id=eq.${convId}`,
           },
           (payload) => {
             const newMsg = payload.new as any;
             const isOwn = newMsg.sender_id === activeChatUserId;
+
+            // Own messages are already added optimistically in handleSendMessage
+            // and stopRecording — adding them again from realtime causes duplicate keys.
+            if (isOwn) return;
+
             const created = newMsg.created_at ? new Date(newMsg.created_at) : new Date();
             
+            const isVoice = !!(newMsg.file_url && newMsg.file_url.length > 0);
+            const durationMs = typeof newMsg.duration_ms === 'number' ? newMsg.duration_ms : null;
+            const durationSec = durationMs !== null ? Math.round(durationMs / 1000) : null;
             const formattedMsg: Message = {
               id: String(newMsg.id),
               sender: isOwn ? 'You' : selectedContact.initials,
-              content: newMsg.transcription || '',
+              content: newMsg.transcription || (isVoice ? 'Voice message' : ''),
               timestamp: created.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+              _rawTs: newMsg.created_at || new Date().toISOString(),
               isOwn,
               status: 'read',
-              type: 'text',
-              isRead: isOwn ? true : false,
+              type: isVoice ? 'voice' : 'text',
+              isRead: newMsg.is_read ?? false,
+              isVoice,
+              audioUrl: isVoice ? newMsg.file_url : undefined,
+              duration: durationSec !== null ? formatDuration(durationSec) : undefined,
             };
 
             // Add message if it doesn't already exist
@@ -213,21 +310,68 @@ export default function Chat({ selectedContact, onBackPress, currentUserId }: Ch
             });
           }
         )
+        .on(
+          'postgres_changes',
+          {
+            event: 'UPDATE',
+            schema: 'public',
+            table: 'messages',
+            filter: `conversation_id=eq.${convId}`,
+          },
+          (payload) => {
+            const updated = payload.new as any;
+            if (updated.is_read === true) {
+              setMessages((prev) =>
+                prev.map((m) =>
+                  m.id === String(updated.id) ? { ...m, isRead: true } : m
+                )
+              );
+            }
+          }
+        )
         .subscribe();
     } catch (error) {
       console.error('Error setting up realtime subscription:', error);
     }
   };
 
+  // Set up typing broadcast channel when both IDs are known
   useEffect(() => {
-    // Simulate contact typing occasionally
-    const typingTimer = Math.random() > 0.6;
-    if (typingTimer) {
-      setIsTyping(true);
-      const timer = setTimeout(() => setIsTyping(false), 2000);
-      return () => clearTimeout(timer);
-    }
-  }, [messages.length]);
+    if (!activeChatUserId || !selectedContact?.id) return;
+
+    const channelName = `typing:${[activeChatUserId, selectedContact.id].sort().join(':')}`;
+    const channel = supabase.channel(channelName);
+    typingChannelRef.current = channel;
+
+    channel
+      .on('broadcast', { event: 'typing' }, (payload: any) => {
+        // Only react to events from the other user
+        if (payload?.payload?.userId === selectedContact.id) {
+          setIsTyping(true);
+          // Clear after 3 s of no new typing event
+          if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
+          typingTimeoutRef.current = setTimeout(() => setIsTyping(false), 3000);
+        }
+      })
+      .subscribe();
+
+    return () => {
+      if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
+      channel.unsubscribe();
+      typingChannelRef.current = null;
+    };
+  }, [activeChatUserId, selectedContact?.id]);
+
+  // Handler that updates text and broadcasts typing event
+  const handleTypingInput = (text: string) => {
+    setMessageText(text);
+    if (!activeChatUserId || !typingChannelRef.current) return;
+    typingChannelRef.current.send({
+      type: 'broadcast',
+      event: 'typing',
+      payload: { userId: activeChatUserId },
+    });
+  };
 
   // Mark unread messages as read when viewed
   useEffect(() => {
@@ -248,81 +392,99 @@ export default function Chat({ selectedContact, onBackPress, currentUserId }: Ch
     }
   }, [messages]);
 
-  // Listen for speech recognition results
-  useSpeechRecognitionEvent('result', (event: any) => {
-    if (event.results && event.results.length > 0) {
-      const lastResultIndex = event.results.length - 1;
-      const lastResult = event.results[lastResultIndex];
-      
-      let fullTranscript = '';
-      for (let i = 0; i <= lastResultIndex; i++) {
-        if (event.results[i]) {
-          fullTranscript += event.results[i].transcript + ' ';
-        }
-      }
-      
-      setRecognizedTranscript(fullTranscript.trim());
+  // ── Voice recording ──────────────────────────────────────────────────────
+  const startRecording = async () => {
+    if (!conversationId) {
+      Alert.alert('Not ready', 'Conversation not ready yet. Please wait a moment.');
+      return;
     }
-  });
-
-  // Listen for when recognition ends - send message only once here
-  useSpeechRecognitionEvent('end', async () => {
-    if (recognizedTranscript.trim() && activeChatUserId) {
-      const capitalizedText = recognizedTranscript.charAt(0).toUpperCase() + recognizedTranscript.slice(1);
-      const tempId = Date.now().toString();
-      
-      const newMessage: Message = {
-        id: tempId,
-        sender: 'You',
-        content: capitalizedText,
-        timestamp: new Date().toLocaleTimeString([], {
-          hour: '2-digit',
-          minute: '2-digit',
-        }),
-        isOwn: true,
-        status: 'sending',
-        type: 'text',
+    try {
+      const stream = await (navigator as any).mediaDevices.getUserMedia({ audio: true });
+      audioChunksRef.current = [];
+      const mr = new (window as any).MediaRecorder(stream, { mimeType: 'audio/webm' });
+      mr.ondataavailable = (e: any) => {
+        if (e.data && e.data.size > 0) audioChunksRef.current.push(e.data);
       };
-      setMessages((prevMessages) => [...prevMessages, newMessage]);
-      setRecognizedTranscript('');
-      setMessageText('');
+      mr.start();
+      mediaRecorderRef.current = { mediaRecorder: mr, stream };
+      setIsRecording(true);
+      setRecordingTime(0);
+      recordingIntervalRef.current = setInterval(
+        () => setRecordingTime(prev => prev + 1),
+        1000
+      );
+    } catch (e) {
+      console.error('Microphone error:', e);
+      Alert.alert('Permission Required', 'Microphone access is needed to send voice messages.');
+    }
+  };
 
+  const stopRecording = () => {
+    if (recordingIntervalRef.current) {
+      clearInterval(recordingIntervalRef.current);
+      recordingIntervalRef.current = null;
+    }
+    setIsRecording(false);
+
+    const ref = mediaRecorderRef.current;
+    if (!ref?.mediaRecorder) { setRecordingTime(0); return; }
+
+    const capturedTime = recordingTime;
+    const mr = ref.mediaRecorder as MediaRecorder;
+    mr.onstop = async () => {
       try {
-        // Ensure conversation exists
-        if (!conversationId) {
-          console.error('No conversation ID available');
+        const blob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
+        const dataUrl = await new Promise<string>((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onloadend = () => resolve(reader.result as string);
+          reader.onerror = reject;
+          reader.readAsDataURL(blob);
+        });
+
+        const tempId = `local-${Date.now()}`;
+        const duration = formatDuration(capturedTime);
+        const nowIso = new Date().toISOString();
+        const tempMsg: Message = {
+          id: tempId,
+          sender: 'You',
+          content: 'Voice message',
+          timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+          _rawTs: nowIso,
+          isOwn: true,
+          status: 'sending',
+          type: 'voice',
+          isVoice: true,
+          audioUrl: dataUrl,
+          duration,
+        };
+        setMessages(prev => [...prev, tempMsg]);
+        setTimeout(() => scrollViewRef.current?.scrollToEnd({ animated: true }), 100);
+
+        if (!conversationId || !activeChatUserId) {
           setMessages(msgs => msgs.filter(m => m.id !== tempId));
           return;
         }
-        
-        // Save to Supabase
+
         const { data, error } = await supabase
           .from('messages')
-          .insert([
-            {
-              conversation_id: conversationId,
-              sender_id: activeChatUserId,
-              receiver_id: selectedContact.id,
-              content: capitalizedText,
-              transcription: capitalizedText,
-              created_at: new Date().toISOString(),
-            }
-          ])
+          .insert([{
+            conversation_id: conversationId,
+            sender_id: activeChatUserId,
+            receiver_id: selectedContact.id,
+            file_url: dataUrl,
+            duration_ms: parseDurationToMs(duration),
+            created_at: new Date().toISOString(),
+          }])
           .select()
           .single();
 
         if (error) throw error;
 
-        // Update message with real id and mark as sent
         setMessages(msgs =>
           msgs.map(m =>
-            m.id === tempId 
-              ? { ...m, id: String(data.id), status: 'sent' as const } 
-              : m
+            m.id === tempId ? { ...m, id: String(data.id), status: 'sent' as const } : m
           )
         );
-
-        // Mark as delivered
         setTimeout(() => {
           setMessages(msgs =>
             msgs.map(m =>
@@ -332,25 +494,65 @@ export default function Chat({ selectedContact, onBackPress, currentUserId }: Ch
         }, 500);
       } catch (err) {
         console.error('Error saving voice message:', err);
-        // Remove failed message
-        setMessages(msgs => msgs.filter(m => m.id !== tempId));
+      } finally {
+        audioChunksRef.current = [];
+        setRecordingTime(0);
       }
-    }
-    setIsRecording(false);
-    setIsListening(false);
-  });
+    };
 
-  // Listen for errors
-  useSpeechRecognitionEvent('error', (event: any) => {
-    console.error('Speech recognition error:', event);
-    setRecognizedTranscript('');
-    setIsRecording(false);
-    setIsListening(false);
-    
-    if (event?.error && event.error !== 'network') {
-      Alert.alert('Error', 'Failed to recognize speech. Please try again.');
+    try { mr.stop(); } catch (e) {}
+    try { ref.stream.getTracks().forEach((t: any) => t.stop()); } catch (e) {}
+    mediaRecorderRef.current = null;
+  };
+
+  const handlePlayVoice = (message: Message) => {
+    if (!message.audioUrl) return;
+
+    // Toggle off if already playing this message
+    if (currentlyPlayingId === message.id && audioPlayerRef.current) {
+      try { audioPlayerRef.current.pause(); } catch (e) {}
+      audioPlayerRef.current = null;
+      setCurrentlyPlayingId(null);
+      return;
     }
-  });
+
+    // Stop any currently playing audio
+    if (audioPlayerRef.current) {
+      try {
+        audioPlayerRef.current.pause();
+        audioPlayerRef.current.src = '';
+      } catch (e) {}
+      audioPlayerRef.current = null;
+      setCurrentlyPlayingId(null);
+    }
+
+    const audio = new Audio(message.audioUrl);
+    audioPlayerRef.current = audio;
+    setCurrentlyPlayingId(message.id);
+    audio.onended = () => {
+      setCurrentlyPlayingId(null);
+      audioPlayerRef.current = null;
+    };
+    audio.play().catch(e => {
+      console.error('Playback failed:', e);
+      setCurrentlyPlayingId(null);
+    });
+  };
+
+  // Cleanup audio player on unmount
+  useEffect(() => {
+    // Tick every 30 seconds to refresh delivery labels
+    const ticker = setInterval(() => setNow(new Date()), 30000);
+    return () => {
+      clearInterval(ticker);
+      if (audioPlayerRef.current) {
+        try { audioPlayerRef.current.pause(); audioPlayerRef.current.src = ''; } catch (e) {}
+        audioPlayerRef.current = null;
+      }
+      if (recordingIntervalRef.current) clearInterval(recordingIntervalRef.current);
+    };
+  }, []);
+  // ─────────────────────────────────────────────────────────────────────────
 
   const handleSendMessage = async () => {
     if (!messageText.trim() || !activeChatUserId) return;
@@ -367,6 +569,7 @@ export default function Chat({ selectedContact, onBackPress, currentUserId }: Ch
         hour: '2-digit',
         minute: '2-digit',
       }),
+      _rawTs: new Date().toISOString(),
       isOwn: true,
       status: 'sending',
       type: 'text',
@@ -390,7 +593,6 @@ export default function Chat({ selectedContact, onBackPress, currentUserId }: Ch
             conversation_id: conversationId,
             sender_id: activeChatUserId,
             receiver_id: selectedContact.id,
-            content: messageContent,
             transcription: messageContent,
             created_at: new Date().toISOString(),
           }
@@ -425,53 +627,8 @@ export default function Chat({ selectedContact, onBackPress, currentUserId }: Ch
     }
   };
 
-  const handleCaptureImage = () => {
-    setShowMediaMenu(false);
-  };
-
-  const handleChooseFromGallery = () => {
-    setShowMediaMenu(false);
-  };
-
-  const startSpeechRecognition = async () => {
-    try {
-      setIsRecording(true);
-      setIsListening(true);
-      setRecognizedTranscript('');
-
-      if (Platform.OS !== 'web') {
-        const permissionsResult = await ExpoSpeechRecognitionModule.requestPermissionsAsync();
-        
-        if (!permissionsResult.granted) {
-          Alert.alert('Permission Required', 'Microphone permission is needed for speech recognition.');
-          setIsRecording(false);
-          setIsListening(false);
-          return;
-        }
-      }
-
-      ExpoSpeechRecognitionModule.start({
-        lang: 'en-US',
-        interimResults: true,
-      });
-
-    } catch (error: any) {
-      console.error('Speech recognition error:', error);
-      setIsRecording(false);
-      setIsListening(false);
-      
-      const errorMessage = error?.message || 'Failed to start speech recognition. Please try again.';
-      Alert.alert('Error', errorMessage);
-    }
-  };
-
-  const handleMicrophonePress = () => {
-    startSpeechRecognition();
-  };
-
-  const handleMicrophoneRelease = () => {
-    ExpoSpeechRecognitionModule.stop();
-  };
+  const handleCaptureImage = () => setShowMediaMenu(false);
+  const handleChooseFromGallery = () => setShowMediaMenu(false);
 
   return (
     <View className="flex-1 bg-white">
@@ -522,9 +679,11 @@ export default function Chat({ selectedContact, onBackPress, currentUserId }: Ch
 
       {/* Messages */}
       <ScrollView
+        ref={scrollViewRef}
         className="flex-1 bg-white"
         showsVerticalScrollIndicator={false}
         contentContainerStyle={{ paddingVertical: 20, paddingHorizontal: 16 }}
+        onContentSizeChange={() => scrollViewRef.current?.scrollToEnd({ animated: true })}
       >
         {loadingMessages ? (
           <View className="items-center justify-center py-12">
@@ -541,18 +700,41 @@ export default function Chat({ selectedContact, onBackPress, currentUserId }: Ch
           </View>
         ) : (
           <>
-            {/* Chat Date Header */}
-            <View className="items-center mb-6">
-              <View className="bg-green-100 px-4 py-2 rounded-full">
-                <Text className="text-green-700 text-xs font-bold">Today</Text>
-              </View>
-            </View>
+            {/* Messages grouped by date */}
+            {(() => {
+              const seenDays = new Set<string>();
+              // Only the last own read message shows "Seen"
+              let lastSeenIndex = -1;
+              // Only the last own unread (delivered) message shows "Delivered"
+              let lastDeliveredIndex = -1;
+              messages.forEach((m, i) => {
+                if (m.isOwn && m.isRead) lastSeenIndex = i;
+                if (m.isOwn && !m.isRead && m.status !== 'sending') lastDeliveredIndex = i;
+              });
+              return messages.map((message, index) => {
+                const rawTs: string = (message as any)._rawTs || new Date().toISOString();
+                const dayKey = dateDayKey(rawTs);
+                const showDateSep = !seenDays.has(dayKey);
+                if (showDateSep) seenDays.add(dayKey);
 
-            {messages.map((message, index) => {
-              const shouldShowAvatar = !message.isOwn && (index === messages.length - 1 || messages[index + 1].isOwn);
+                const showTimestamp = expandedMessageId === message.id;
 
-              return (
-                <View key={message.id}>
+                const shouldShowAvatar =
+                  !message.isOwn &&
+                  (index === messages.length - 1 || messages[index + 1].isOwn);
+                const isPlaying = currentlyPlayingId === message.id;
+
+                return (
+                  <View key={message.id}>
+                    {showDateSep && (
+                      <View className="items-center my-4">
+                        <View className="bg-green-100 px-4 py-1.5 rounded-full">
+                          <Text className="text-green-700 text-xs font-bold">
+                            {getDateLabel(rawTs)}
+                          </Text>
+                        </View>
+                      </View>
+                    )}
                   <View
                     className={`mb-3 flex-row ${
                       message.isOwn ? 'justify-end' : 'justify-start'
@@ -571,58 +753,102 @@ export default function Chat({ selectedContact, onBackPress, currentUserId }: Ch
                     {!message.isOwn && !shouldShowAvatar && <View className="w-10 mr-2" />}
 
                     <View className={`max-w-[75%] ${message.isOwn ? 'items-end' : ''}`}>
-                      <View
-                        className={`rounded-3xl px-5 py-3 shadow-sm ${
-                          message.isOwn
-                            ? 'bg-green-500 shadow-green-200'
-                            : 'bg-green-50 border-2 border-green-100 shadow-green-100'
-                        }`}
-                      >
-                        <Text
-                          className={`text-base ${
+                      {message.isVoice ? (
+                        /* ── Voice message bubble ── */
+                        <TouchableOpacity
+                          onPress={() => {
+                            handlePlayVoice(message);
+                            setExpandedMessageId(prev => prev === message.id ? null : message.id);
+                          }}
+                          className={`flex-row items-center gap-3 rounded-3xl px-4 py-3 shadow-sm ${
                             message.isOwn
-                              ? 'text-white font-semibold'
-                              : message.isRead === false
-                                ? 'text-gray-900 font-bold'
-                                : 'text-gray-900 font-medium'
+                              ? 'bg-green-500 shadow-green-200'
+                              : 'bg-green-50 border-2 border-green-100 shadow-green-100'
                           }`}
+                          style={{ minWidth: 160 }}
                         >
-                          {message.content}
-                        </Text>
-                      </View>
-                      <View className={`flex-row items-center gap-1 mt-1 ${message.isOwn ? 'flex-row-reverse' : ''}`}>
-                        <Text
-                          className={`text-xs font-semibold ${
-                            message.isOwn ? 'text-green-700' : 'text-green-600'
-                          }`}
-                        >
-                          {message.timestamp}
-                        </Text>
-                        {message.isOwn && message.status && (
+                          <View className={`w-8 h-8 rounded-full items-center justify-center ${
+                            message.isOwn ? 'bg-white/20' : 'bg-green-100'
+                          }`}>
+                            <Ionicons
+                              name={isPlaying ? 'pause' : 'play'}
+                              size={16}
+                              color={message.isOwn ? '#ffffff' : '#10b981'}
+                            />
+                          </View>
+                          <View className="flex-1">
+                            <View className="flex-row items-center gap-0.5 mb-1">
+                              {[...Array(12)].map((_, i) => (
+                                <View
+                                  key={i}
+                                  style={{ height: 4 + Math.abs(Math.sin(i * 0.8)) * 14, width: 3, borderRadius: 2 }}
+                                  className={message.isOwn ? 'bg-white/70' : 'bg-green-400'}
+                                />
+                              ))}
+                            </View>
+                            <Text className={`text-xs font-semibold ${
+                              message.isOwn ? 'text-white/80' : 'text-green-600'
+                            }`}>
+                              {message.duration || '0:00'}
+                            </Text>
+                          </View>
                           <Ionicons
-                            name={
-                              message.status === 'sending'
-                                ? 'time-outline'
-                                : message.status === 'sent'
-                                  ? 'checkmark'
-                                  : message.status === 'delivered'
-                                    ? 'checkmark-done'
-                                    : 'checkmark-done'
-                            }
+                            name="mic"
                             size={14}
-                            color={
-                              message.status === 'read'
-                                ? '#10b981'
-                                : '#9ca3af'
-                            }
+                            color={message.isOwn ? '#ffffff80' : '#10b981'}
                           />
-                        )}
-                      </View>
+                        </TouchableOpacity>
+                      ) : (
+                        /* ── Text message bubble ── */
+                        <TouchableOpacity
+                          activeOpacity={0.8}
+                          onPress={() => setExpandedMessageId(prev => prev === message.id ? null : message.id)}
+                          className={`rounded-3xl px-5 py-3 shadow-sm ${
+                            message.isOwn
+                              ? 'bg-green-500 shadow-green-200'
+                              : 'bg-green-50 border-2 border-green-100 shadow-green-100'
+                          }`}
+                        >
+                          <Text
+                            className={`text-base ${
+                              message.isOwn
+                                ? 'text-white font-semibold'
+                                : message.isRead === false
+                                  ? 'text-gray-900 font-bold'
+                                  : 'text-gray-900 font-medium'
+                            }`}
+                          >
+                            {message.content}
+                          </Text>
+                        </TouchableOpacity>
+                      )}
+                      {showTimestamp && !message.isOwn && (
+                        <View className="flex-row items-center gap-1 mt-1">
+                          <Text className="text-xs font-semibold text-green-600">
+                            {message.timestamp}
+                          </Text>
+                        </View>
+                      )}
+                      {message.isOwn && message.status &&
+                        (message.status === 'sending' ||
+                          index === lastSeenIndex ||
+                          index === lastDeliveredIndex) && (
+                        <View className="flex-row-reverse items-center gap-1 mt-1">
+                          <Text className={`text-xs font-semibold ${
+                            index === lastSeenIndex
+                              ? 'text-green-500'
+                              : 'text-gray-400'
+                          }`}>
+                            {getDeliveryLabel(rawTs, message.status, index === lastSeenIndex, now)}
+                          </Text>
+                        </View>
+                      )}
                     </View>
                   </View>
                 </View>
               );
-            })}
+              });
+            })()}
 
             {isTyping && (
               <View className="mt-4 flex-row items-center gap-2">
@@ -701,7 +927,7 @@ export default function Chat({ selectedContact, onBackPress, currentUserId }: Ch
             <TextInput
               placeholder="Type a message..."
               value={messageText}
-              onChangeText={setMessageText}
+              onChangeText={handleTypingInput}
               className="flex-1 text-gray-900 text-base font-medium"
               placeholderTextColor="#d1d5db"
               multiline
@@ -720,22 +946,25 @@ export default function Chat({ selectedContact, onBackPress, currentUserId }: Ch
             </TouchableOpacity>
           </View>
 
-          {/* Microphone Button */}
-          <TouchableOpacity 
-            className={`h-11 w-11 rounded-full items-center justify-center active:scale-95 border-2 transition-all ${
-              isRecording
-                ? 'bg-red-50 border-red-300 shadow-md shadow-red-200'
-                : 'bg-green-50 border-green-200'
-            }`}
-            onPress={handleMicrophonePress}
-            onPressOut={handleMicrophoneRelease}
-          >
-            <Ionicons 
-              name="mic" 
-              size={22} 
-              color={isRecording ? '#dc2626' : '#10b981'} 
-            />
-          </TouchableOpacity>
+          {/* Microphone Button — press and hold to record */}
+          {isRecording ? (
+            <View className="items-center">
+              <TouchableOpacity
+                className="h-14 w-14 rounded-full items-center justify-center bg-red-500 shadow-lg shadow-red-300 border-4 border-red-300"
+                onPressOut={stopRecording}
+              >
+                <Ionicons name="stop" size={22} color="white" />
+              </TouchableOpacity>
+              <Text className="text-red-500 text-xs font-bold mt-1">{formatDuration(recordingTime)}</Text>
+            </View>
+          ) : (
+            <TouchableOpacity
+              className="h-11 w-11 rounded-full items-center justify-center active:scale-95 border-2 bg-green-50 border-green-200"
+              onPressIn={startRecording}
+            >
+              <Ionicons name="mic" size={22} color="#10b981" />
+            </TouchableOpacity>
+          )}
         </View>
       </View>
     </View>

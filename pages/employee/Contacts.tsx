@@ -61,6 +61,7 @@ export default function Contacts({ onContactSelected, currentUserId }: ContactsP
   const [activeChatUserId, setActiveChatUserId] = useState<string | null>(currentUserId || null);
   // Track when each contact's chat was last opened (contactId -> ISO timestamp)
   const [lastReadMap, setLastReadMap] = useState<Record<string, string>>({});
+  const [lastReadMapLoaded, setLastReadMapLoaded] = useState(false);
   const LAST_READ_STORAGE_KEY = 'contacts_last_read_map';
 
   const messagesSubscriptionRef = useRef<any>(null);
@@ -75,25 +76,39 @@ export default function Contacts({ onContactSelected, currentUserId }: ContactsP
           } catch (_) {}
         }
       })
-      .catch(() => {});
+      .catch(() => {})
+      .finally(() => setLastReadMapLoaded(true));
   }, []);
 
   // Fetch contacts from Supabase
-  const fetchContacts = async () => {
+  // silent=true: skip loading spinner (used by background/subscription-triggered calls)
+  const fetchContacts = async (silent = false) => {
     try {
-      setLoading(true);
+      if (!silent) setLoading(true);
       
       if (!activeChatUserId) {
         console.log('No active chat user ID');
         setContacts([]);
-        setLoading(false);
-        setRefreshing(false);
+        if (!silent) setLoading(false);
+        if (!silent) setRefreshing(false);
         return;
       }
 
       console.log('Fetching contacts for user:', activeChatUserId);
 
-      // First, fetch all conversations involving the current user
+      // 1. Fetch contacts from the `contacts` table (explicitly added contacts)
+      const { data: contactRows, error: contactsError } = await supabase
+        .from('contacts')
+        .select('contact_id')
+        .eq('user_id', activeChatUserId);
+
+      if (contactsError) console.warn('Error fetching contacts table:', contactsError);
+
+      const explicitContactIds = new Set<string>(
+        (contactRows || []).map((r: any) => r.contact_id).filter(Boolean)
+      );
+
+      // 2. Fetch all conversations involving the current user
       const { data: conversations, error: conversationError } = await supabase
         .from('conversations')
         .select('id,user_one,user_two');
@@ -110,7 +125,7 @@ export default function Contacts({ onContactSelected, currentUserId }: ContactsP
       console.log('My conversations (filtered):', myConversations);
 
       // Extract unique user IDs from conversations (get the other user in each conversation)
-      const contactUserIds = new Set<string>();
+      const contactUserIds = new Set<string>(explicitContactIds);
       (myConversations || []).forEach((conv: any) => {
         const otherUserId = conv.user_one === activeChatUserId ? conv.user_two : conv.user_one;
         if (otherUserId) {
@@ -118,11 +133,11 @@ export default function Contacts({ onContactSelected, currentUserId }: ContactsP
         }
       });
 
-      console.log('Contact user IDs:', Array.from(contactUserIds));
+      console.log('Contact user IDs (contacts + conversations):', Array.from(contactUserIds));
 
-      // If no conversations, show empty contacts
+      // If no contacts or conversations, show empty list
       if (contactUserIds.size === 0) {
-        console.log('No conversations found');
+        console.log('No contacts or conversations found');
         setContacts([]);
         setLoading(false);
         setRefreshing(false);
@@ -266,10 +281,12 @@ export default function Contacts({ onContactSelected, currentUserId }: ContactsP
       }
     } catch (error) {
       console.error('Error fetching contacts:', error);
-      Alert.alert('Error', 'Failed to load contacts');
+      if (!silent) Alert.alert('Error', 'Failed to load contacts');
     } finally {
-      setLoading(false);
-      setRefreshing(false);
+      if (!silent) {
+        setLoading(false);
+        setRefreshing(false);
+      }
     }
   };
 
@@ -290,6 +307,13 @@ export default function Contacts({ onContactSelected, currentUserId }: ContactsP
     }
   }, []);
 
+  // Re-fetch once lastReadMap is loaded so unread counts are accurate
+  useEffect(() => {
+    if (lastReadMapLoaded && activeChatUserId) {
+      fetchContacts();
+    }
+  }, [lastReadMapLoaded]);
+
   useEffect(() => {
     fetchContacts();
 
@@ -297,9 +321,9 @@ export default function Contacts({ onContactSelected, currentUserId }: ContactsP
     const subscription = supabase
       .channel('public:users')
       .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'users' }, payload => {
-        // When a user updates their last_seen, refresh contacts
+        // When a user updates their status, silently refresh contacts (no loading spinner)
         if (payload.new.id !== activeChatUserId) {
-          fetchContacts();
+          fetchContacts(true);
         }
       })
       .subscribe();
@@ -376,6 +400,12 @@ export default function Contacts({ onContactSelected, currentUserId }: ContactsP
     } else if (filterType === 'unread') {
       filtered = filtered.filter(c => (c.unreadCount ?? 0) > 0);
     }
+
+    // Sort: unread contacts always float to the top
+    filtered = [
+      ...filtered.filter(c => (c.unreadCount ?? 0) > 0).sort((a, b) => (b.unreadCount ?? 0) - (a.unreadCount ?? 0)),
+      ...filtered.filter(c => (c.unreadCount ?? 0) === 0),
+    ];
 
     setFilteredContacts(filtered);
   }, [contacts, searchText, filterType]);

@@ -27,6 +27,7 @@ interface Message {
   sender: string;
   text: string;
   time: string;
+  _rawTs?: string;
   status: string;
   isVoice?: boolean;
   duration?: string;
@@ -114,7 +115,10 @@ export default function ContactManagement({ onNavigate }: ContactManagementProps
   const audioChunksRef = useRef<any[]>([]);
   const audioPlayerRef = useRef<HTMLAudioElement | null>(null);
   const [currentlyPlayingId, setCurrentlyPlayingId] = useState<string | null>(null);
+  // Ticks every 30 s so delivery labels like "Delivered 2 minutes ago" stay up-to-date
+  const [now, setNow] = useState(new Date());
   const messagesChannelRef = useRef<any>(null);
+  const [expandedMessageId, setExpandedMessageId] = useState<string | null>(null);
 
   // Sweet alert state
   const [sweetAlertVisible, setSweetAlertVisible] = useState(false);
@@ -203,8 +207,9 @@ export default function ContactManagement({ onNavigate }: ContactManagementProps
     return {
       id: String(row.id),
       sender: isFromMe ? 'Me' : (selectedContact?.initials || 'CT'),
-      text: row.transcription || (isVoice ? 'Voice message' : ''),
+      text: row.transcription || row.content || (isVoice ? 'Voice message' : ''),
       time: created.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      _rawTs: row.created_at || new Date().toISOString(),
       status: 'sent',
       isVoice,
       duration: isVoice ? durationStr : undefined,
@@ -228,8 +233,9 @@ export default function ContactManagement({ onNavigate }: ContactManagementProps
     return {
       id: String(row.id),
       sender: isFromMe ? 'Me' : 'Member',
-      text: row.transcription || (isVoice ? 'Voice message' : ''),
+      text: row.transcription || row.content || (isVoice ? 'Voice message' : ''),
       time: created.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      _rawTs: row.created_at || new Date().toISOString(),
       status: 'sent',
       isVoice,
       duration: isVoice ? durationStr : undefined,
@@ -258,6 +264,22 @@ export default function ContactManagement({ onNavigate }: ContactManagementProps
 
       const mapped = (data || []).map(mapRowToMessage);
       setMessagesList(mapped as Message[]);
+      // Mark all unread messages in this conversation that were NOT sent by admin as read
+      // Use auth.getUser() directly to avoid stale closure on currentUserId state
+      try {
+        const { data: authData } = await supabase.auth.getUser();
+        const meId = authData?.user?.id;
+        if (meId) {
+          await supabase
+            .from('messages')
+            .update({ is_read: true })
+            .eq('conversation_id', conversationId)
+            .neq('sender_id', meId)
+            .eq('is_read', false);
+        }
+      } catch (markErr) {
+        console.warn('Failed to mark messages as read:', markErr);
+      }
     } catch (e) {
       console.error('Error fetching messages:', e);
       setMessagesList([]);
@@ -491,7 +513,9 @@ export default function ContactManagement({ onNavigate }: ContactManagementProps
 
   // Cleanup audio player
   useEffect(() => {
+    const ticker = setInterval(() => setNow(new Date()), 30000);
     return () => {
+      clearInterval(ticker);
       if (audioPlayerRef.current) {
         try {
           audioPlayerRef.current.pause();
@@ -522,6 +546,10 @@ export default function ContactManagement({ onNavigate }: ContactManagementProps
 
     (async () => {
       try {
+        // Capture stable admin ID once for all realtime callbacks (avoids stale closure)
+        const { data: authSnap0 } = await supabase.auth.getUser();
+        const stableAdminId = authSnap0?.user?.id ?? currentUserId;
+
         if (groupId) {
           await fetchGroupMessages(groupId);
 
@@ -533,6 +561,8 @@ export default function ContactManagement({ onNavigate }: ContactManagementProps
               { event: 'INSERT', schema: 'public', table: 'messages', filter: `group_id=eq.${groupId}` },
               (payload: any) => {
                 const newRow = payload.new;
+                // Skip own messages — they're already added optimistically in sendMessage
+                if (stableAdminId && newRow.sender_id === stableAdminId) return;
                 setMessagesList(prev => {
                   if (prev.some(m => m.id === String(newRow.id))) return prev;
                   return [...prev, mapGroupRowToMessage(newRow)];
@@ -559,10 +589,16 @@ export default function ContactManagement({ onNavigate }: ContactManagementProps
               { event: 'INSERT', schema: 'public', table: 'messages', filter: `conversation_id=eq.${conversationId}` },
               (payload: any) => {
                 const newRow = payload.new;
+                // Skip own messages — they're already added optimistically in sendMessage
+                if (stableAdminId && newRow.sender_id === stableAdminId) return;
                 setMessagesList(prev => {
                   if (prev.some(m => m.id === String(newRow.id))) return prev;
                   return [...prev, mapRowToMessage(newRow)];
                 });
+                // Admin is actively viewing — mark as read immediately
+                if (stableAdminId) {
+                  supabase.from('messages').update({ is_read: true }).eq('id', newRow.id).then(() => {});
+                }
               }
             )
             .subscribe();
@@ -583,7 +619,9 @@ export default function ContactManagement({ onNavigate }: ContactManagementProps
         messagesChannelRef.current = null;
       }
     };
-  }, [selectedContact]);
+  // Re-run whenever the selected contact OR the current user id changes so that
+  // mapRowToMessage always has the correct sender info in its closure.
+  }, [selectedContact, currentUserId]);
 
   // Audio recording
   const startRecording = () => {
@@ -643,6 +681,7 @@ export default function ContactManagement({ onNavigate }: ContactManagementProps
               sender: 'Me',
               text: '' as any,
               time: now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+              _rawTs: now.toISOString(),
               status: 'Sent',
               isVoice: true,
               duration: formatRecordingTime(recordingTime),
@@ -692,6 +731,7 @@ export default function ContactManagement({ onNavigate }: ContactManagementProps
         sender: 'Me',
         text,
         time: now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        _rawTs: now.toISOString(),
         status: 'Sent',
         isVoice: false,
       };
@@ -1107,43 +1147,99 @@ export default function ContactManagement({ onNavigate }: ContactManagementProps
                 </View>
 
                 <ScrollView className="flex-1 px-5 py-4">
-                  {messagesList.map(message => (
-                    <View
-                      key={message.id}
-                      className={`mb-4 flex-row ${message.sender === 'Me' ? 'justify-end' : 'justify-start'}`}
-                    >
-                      <View className="max-w-[80%]">
-                        {message.isVoice ? (
-                          <TouchableOpacity
-                            className="bg-emerald-50 border border-emerald-200 px-3 py-2 rounded-2xl flex-row items-center"
-                            onPress={() => handlePlayVoice(message)}
-                          >
-                            <Ionicons
-                              name={currentlyPlayingId === message.id ? 'pause' : 'play'}
-                              size={16}
-                              color="#10b981"
-                            />
-                            <Ionicons
-                              name="mic"
-                              size={16}
-                              color="#10b981"
-                              style={{ marginLeft: 8, marginRight: 4 }}
-                            />
-                            <Text className="text-xs text-stone-800">
-                              {message.duration || formatRecordingTime(recordingTime) || 'Voice message'}
-                            </Text>
-                          </TouchableOpacity>
-                        ) : (
-                          <View className="bg-white px-3 py-2 rounded-2xl border border-stone-200">
-                            <Text className="text-sm text-stone-800">{message.text}</Text>
+                  {messagesList.map((message, index) => {
+                    const rawTs = message._rawTs || new Date().toISOString();
+                    const showTimestamp = expandedMessageId === message.id;
+
+                    // Date separator
+                    const prevMsg = index === 0 ? null : messagesList[index - 1];
+                    const prevRawTs = prevMsg ? (prevMsg._rawTs || prevMsg.time) : null;
+                    const toDay = (ts: string) => ts.slice(0, 10);
+                    const showDateSep = !prevRawTs || toDay(prevRawTs) !== toDay(rawTs);
+                    const dateLabel = (() => {
+                      const d = new Date(rawTs);
+                      const today = new Date();
+                      const yesterday = new Date(); yesterday.setDate(today.getDate() - 1);
+                      const same = (a: Date, b: Date) => a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
+                      if (same(d, today)) return 'Today';
+                      if (same(d, yesterday)) return 'Yesterday';
+                      return d.toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' });
+                    })();
+
+                    return (
+                      <View key={message.id}>
+                        {showDateSep && (
+                          <View className="items-center my-3">
+                            <View className="bg-stone-100 px-3 py-1 rounded-full">
+                              <Text className="text-[10px] text-stone-500 font-semibold">{dateLabel}</Text>
+                            </View>
                           </View>
                         )}
-                        <Text className="text-[10px] text-stone-400 mt-1 text-right">
-                          {message.time} • {message.status}
-                        </Text>
+                        <View
+                          className={`mb-2 flex-row ${message.sender === 'Me' ? 'justify-end' : 'justify-start'}`}
+                        >
+                          <View className="max-w-[80%]">
+                            {message.isVoice ? (
+                              <TouchableOpacity
+                                className="bg-emerald-50 border border-emerald-200 px-3 py-2 rounded-2xl flex-row items-center"
+                                onPress={() => {
+                                  handlePlayVoice(message);
+                                  setExpandedMessageId(prev => prev === message.id ? null : message.id);
+                                }}
+                              >
+                                <Ionicons
+                                  name={currentlyPlayingId === message.id ? 'pause' : 'play'}
+                                  size={16}
+                                  color="#10b981"
+                                />
+                                <Ionicons
+                                  name="mic"
+                                  size={16}
+                                  color="#10b981"
+                                  style={{ marginLeft: 8, marginRight: 4 }}
+                                />
+                                <Text className="text-xs text-stone-800">
+                                  {message.duration || formatRecordingTime(recordingTime) || 'Voice message'}
+                                </Text>
+                              </TouchableOpacity>
+                            ) : (
+                              <TouchableOpacity
+                                activeOpacity={0.8}
+                                onPress={() => setExpandedMessageId(prev => prev === message.id ? null : message.id)}
+                                className="bg-white px-3 py-2 rounded-2xl border border-stone-200"
+                              >
+                                <Text className="text-sm text-stone-800">{message.text}</Text>
+                              </TouchableOpacity>
+                            )}
+                            {showTimestamp && message.sender !== 'Me' && (
+                              <View className="flex-row items-center gap-1 mt-1 justify-start">
+                                <Text className="text-[10px] text-stone-400">
+                                  {message.time}
+                                </Text>
+                              </View>
+                            )}
+                            {message.sender === 'Me' && (
+                              <View className="flex-row items-center gap-1 mt-1 justify-end">
+                                <Text className={`text-[10px] font-semibold ${
+                                  message.status === 'read' ? 'text-emerald-500' : 'text-stone-400'
+                                }`}>
+                                  {(() => {
+                                    if (message.status === 'sending' || message.status === 'Sending') return 'Sending...';
+                                    const diffMs = now.getTime() - new Date(rawTs).getTime();
+                                    const mins = Math.floor(diffMs / 60000);
+                                    if (message.status === 'read' || message.status === 'Read') return 'Seen';
+                                    if (mins < 1) return 'Delivered';
+                                    if (mins === 1) return 'Delivered 1 minute ago';
+                                    return `Delivered ${mins} minutes ago`;
+                                  })()}
+                                </Text>
+                              </View>
+                            )}
+                          </View>
+                        </View>
                       </View>
-                    </View>
-                  ))}
+                    );
+                  })}
 
                   {messagesList.length === 0 && (
                     <View className="flex-1 items-center justify-center mt-10">
