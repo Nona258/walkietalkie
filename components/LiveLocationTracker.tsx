@@ -12,6 +12,7 @@ export default function LiveLocationTracker({ enabled, userId }: Props) {
   const locationSubRef = useRef<Location.LocationSubscription | null>(null);
   const webWatchIdRef = useRef<number | null>(null);
   const lastSentRef = useRef<{ at: number; lat: number | null; lng: number | null }>({ at: 0, lat: null, lng: null });
+  const historyRowIdRef = useRef<number | null>(null);
 
   const distanceMeters = (aLat: number, aLng: number, bLat: number, bLng: number) => {
     const toRad = (d: number) => (d * Math.PI) / 180;
@@ -52,15 +53,25 @@ export default function LiveLocationTracker({ enabled, userId }: Props) {
     async (lat: number, lng: number) => {
       if (!userId) return;
 
+      // Tune these two knobs based on how "live" you want it vs battery/network usage.
+      // This setup updates when the user moves a few meters, with a small time gate to reduce GPS jitter spam.
+      const minIntervalMs = 4000; // 4 seconds
+      const maxIntervalMs = 20000; // 20 seconds (force-refresh)
+      const minDistanceMeters = 4; // 4 meters
+
       const now = Date.now();
       const last = lastSentRef.current;
 
-      // Push at most once every 5 minutes.
-      const minIntervalMs = 5 * 60 * 1000; // 5 minutes
+      const elapsed = now - last.at;
+      const hasLast = typeof last.lat === 'number' && typeof last.lng === 'number';
+      const movedMeters = hasLast ? distanceMeters(last.lat as number, last.lng as number, lat, lng) : Infinity;
 
-      if (now - last.at < minIntervalMs) {
-        return;
-      }
+      const shouldSend =
+        !hasLast ||
+        (elapsed >= minIntervalMs && movedMeters >= minDistanceMeters) ||
+        elapsed >= maxIntervalMs;
+
+      if (!shouldSend) return;
 
       lastSentRef.current = { at: now, lat, lng };
 
@@ -72,33 +83,65 @@ export default function LiveLocationTracker({ enabled, userId }: Props) {
           .eq('id', userId);
         if (userErr) console.error('Failed to update live location (users):', userErr);
 
-        // Maintain at most one history row per user by updating the latest row if present,
-        // otherwise inserting a new one.
-        const { data: existingRows, error: selectErr } = await supabase
-          .from('user_location_history')
-          .select('id')
-          .eq('user_id', userId)
-          .order('recorded_at', { ascending: false })
-          .limit(1);
+        // Maintain at most one history row per user by updating a cached/latest row if present,
+        // otherwise inserting a new one and caching its id.
+        const upsertHistoryRow = async () => {
+          const payload = {
+            latitude: lat,
+            longitude: lng,
+            recorded_at: new Date().toISOString(),
+            status: 'online',
+          };
 
-        if (selectErr) {
-          console.error('Failed to query user_location_history:', selectErr);
-          return;
-        }
+          if (historyRowIdRef.current !== null) {
+            const { error: updateErr } = await supabase
+              .from('user_location_history')
+              .update(payload)
+              .eq('id', historyRowIdRef.current);
+            if (!updateErr) return;
+            console.error('Failed to update cached user_location_history row:', updateErr);
+            historyRowIdRef.current = null;
+          }
 
-        const latest = Array.isArray(existingRows) && existingRows[0];
-        if (latest && latest.id) {
-          const { error: updateErr } = await supabase
+          const { data: existingRows, error: selectErr } = await supabase
             .from('user_location_history')
-            .update({ latitude: lat, longitude: lng, recorded_at: new Date().toISOString(), status: 'online' })
-            .eq('id', latest.id);
-          if (updateErr) console.error('Failed to update user_location_history row:', updateErr);
-        } else {
-          const { error: insertErr } = await supabase
+            .select('id')
+            .eq('user_id', userId)
+            .order('recorded_at', { ascending: false })
+            .limit(1);
+
+          if (selectErr) {
+            console.error('Failed to query user_location_history:', selectErr);
+            return;
+          }
+
+          const latest = Array.isArray(existingRows) ? (existingRows[0] as any) : undefined;
+          if (latest && latest.id) {
+            historyRowIdRef.current = Number(latest.id);
+            const { error: updateErr } = await supabase
+              .from('user_location_history')
+              .update(payload)
+              .eq('id', latest.id);
+            if (updateErr) {
+              console.error('Failed to update user_location_history row:', updateErr);
+              historyRowIdRef.current = null;
+            }
+            return;
+          }
+
+          const { data: inserted, error: insertErr } = await supabase
             .from('user_location_history')
-            .insert([{ user_id: userId, latitude: lat, longitude: lng, status: 'online' }]);
-          if (insertErr) console.error('Failed to insert user_location_history row:', insertErr);
-        }
+            .insert([{ user_id: userId, latitude: lat, longitude: lng, status: 'online' }])
+            .select('id')
+            .single();
+          if (insertErr) {
+            console.error('Failed to insert user_location_history row:', insertErr);
+            return;
+          }
+          if (inserted?.id) historyRowIdRef.current = Number(inserted.id);
+        };
+
+        await upsertHistoryRow();
       } catch (e) {
         console.error('Failed to update live location:', e);
       }
@@ -113,29 +156,18 @@ export default function LiveLocationTracker({ enabled, userId }: Props) {
     if (Platform.OS === 'web') {
       if (typeof navigator === 'undefined' || !navigator.geolocation) return;
       try {
-        // Immediately request current position and then poll every 5 minutes.
-        const poll = async () => {
-          try {
-            navigator.geolocation.getCurrentPosition(
-              pos => {
-                const lat = pos.coords.latitude;
-                const lng = pos.coords.longitude;
-                if (typeof lat === 'number' && typeof lng === 'number') void sendLocation(lat, lng);
-              },
-              err => console.warn('geolocation getCurrentPosition error:', err),
-              { enableHighAccuracy: true, maximumAge: 0, timeout: 10000 }
-            );
-          } catch (e) {
-            console.warn('Failed to get web geolocation position:', e);
-          }
-        };
-
-        // run immediately
-        poll();
-        // then every 5 minutes
-        webWatchIdRef.current = setInterval(poll, 5 * 60 * 1000) as unknown as number;
+        // Continuous web tracking (updates as the device reports movement)
+        webWatchIdRef.current = navigator.geolocation.watchPosition(
+          pos => {
+            const lat = pos.coords.latitude;
+            const lng = pos.coords.longitude;
+            if (typeof lat === 'number' && typeof lng === 'number') void sendLocation(lat, lng);
+          },
+          err => console.warn('geolocation watchPosition error:', err),
+          { enableHighAccuracy: true, maximumAge: 0, timeout: 20000 }
+        );
       } catch (e) {
-        console.warn('Failed to start web geolocation poller:', e);
+        console.warn('Failed to start web geolocation watcher:', e);
       }
       return;
     }
@@ -150,8 +182,9 @@ export default function LiveLocationTracker({ enabled, userId }: Props) {
       locationSubRef.current = await Location.watchPositionAsync(
         {
           accuracy: Location.Accuracy.BestForNavigation,
-          timeInterval: 5 * 60 * 1000, // 5 minutes
-          distanceInterval: 0,
+          // Expo applies `timeInterval` on Android. `distanceInterval` works across platforms.
+          timeInterval: 2000,
+          distanceInterval: 3,
         },
         loc => {
           const lat = loc.coords?.latitude;

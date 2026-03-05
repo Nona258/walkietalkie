@@ -255,6 +255,8 @@ const LIVE_LOCATION_MAP_HTML = `
       let onlineUserMarkersById = {};
       let onlineUserPolylinesById = {};
       let onlineUserLastPosById = {};
+      let onlineUserDataById = {};
+      let openOnlineUserId = null;
 
       const map = new google.maps.Map(document.getElementById('map'), {
         center: { lat: 8.2256, lng: 124.2319 },
@@ -397,6 +399,23 @@ const LIVE_LOCATION_MAP_HTML = `
         if (!Array.isArray(users)) users = [];
         if (!onlineUserInfoWindow) onlineUserInfoWindow = new google.maps.InfoWindow();
 
+        function buildOnlineUserHtml(user) {
+          const u = user || {};
+          return (
+            '<div style="min-width:220px;max-width:300px;font-family:Arial,sans-serif;">' +
+              '<div style="font-weight:700;font-size:14px;margin-bottom:6px;">' + fmt(u.full_name || 'Online User') + '</div>' +
+              '<div style="font-size:12px;line-height:1.4;color:#374151;">' +
+                '<div><b>User ID:</b> ' + fmt(u.id) + '</div>' +
+                '<div><b>Email:</b> ' + fmt(u.email) + '</div>' +
+                '<div><b>Role:</b> ' + fmt(u.role) + '</div>' +
+                '<div><b>Status:</b> ' + fmt(u.status) + '</div>' +
+                '<div><b>Latitude:</b> ' + fmt(u.latitude) + '</div>' +
+                '<div><b>Longitude:</b> ' + fmt(u.longitude) + '</div>' +
+              '</div>' +
+            '</div>'
+          );
+        }
+
         const incomingIds = {};
         users.forEach(u => {
           if (!u || !u.id) return;
@@ -407,6 +426,7 @@ const LIVE_LOCATION_MAP_HTML = `
           if (lat === null || lng === null || Number.isNaN(lat) || Number.isNaN(lng)) return;
 
           const id = String(u.id);
+          onlineUserDataById[id] = u;
           const pos = { lat, lng };
 
           let marker = onlineUserMarkersById[id];
@@ -426,24 +446,14 @@ const LIVE_LOCATION_MAP_HTML = `
             });
 
             marker.addListener('click', () => {
+              openOnlineUserId = id;
               // If Street View pick mode is active, open Street View at this user's location.
               if (typeof streetViewPickMode !== 'undefined' && streetViewPickMode) {
                 openStreetViewAt(marker.getPosition());
                 return;
               }
-
-              const html =
-                '<div style="min-width:220px;max-width:300px;font-family:Arial,sans-serif;">' +
-                  '<div style="font-weight:700;font-size:14px;margin-bottom:6px;">' + fmt(u.full_name || 'Online User') + '</div>' +
-                  '<div style="font-size:12px;line-height:1.4;color:#374151;">' +
-                    '<div><b>User ID:</b> ' + fmt(u.id) + '</div>' +
-                    '<div><b>Email:</b> ' + fmt(u.email) + '</div>' +
-                    '<div><b>Role:</b> ' + fmt(u.role) + '</div>' +
-                    '<div><b>Status:</b> ' + fmt(u.status) + '</div>' +
-                    '<div><b>Latitude:</b> ' + fmt(u.latitude) + '</div>' +
-                    '<div><b>Longitude:</b> ' + fmt(u.longitude) + '</div>' +
-                  '</div>' +
-                '</div>';
+              const current = onlineUserDataById[id] || u;
+              const html = buildOnlineUserHtml(current);
               onlineUserInfoWindow.setContent(html);
               onlineUserInfoWindow.open({ map, anchor: marker });
               map.panTo(marker.getPosition());
@@ -452,6 +462,17 @@ const LIVE_LOCATION_MAP_HTML = `
             onlineUserMarkersById[id] = marker;
           } else {
             marker.setPosition(pos);
+          }
+
+          // If the info window is currently open for this user, refresh its content live.
+          if (openOnlineUserId === id && onlineUserInfoWindow) {
+            try {
+              const current = onlineUserDataById[id] || u;
+              onlineUserInfoWindow.setContent(buildOnlineUserHtml(current));
+              onlineUserInfoWindow.open({ map, anchor: marker });
+            } catch (e) {
+              // ignore
+            }
           }
 
           const prev = onlineUserLastPosById[id];
@@ -487,6 +508,12 @@ const LIVE_LOCATION_MAP_HTML = `
           if (p) p.setMap(null);
           delete onlineUserPolylinesById[id];
           delete onlineUserLastPosById[id];
+          delete onlineUserDataById[id];
+
+          if (openOnlineUserId === id && onlineUserInfoWindow) {
+            try { onlineUserInfoWindow.close(); } catch (e) {}
+            openOnlineUserId = null;
+          }
         });
       }
 
@@ -1082,14 +1109,24 @@ export default function AdminDashboard({ onLogout, onNavigate }: AdminDashboardP
       .channel('admin_user_location_history_live')
       .on(
         'postgres_changes',
-        { event: 'INSERT', schema: 'public', table: 'user_location_history' },
+        { event: '*', schema: 'public', table: 'user_location_history' },
         payload => {
+          const eventType = (payload as any).eventType as string | undefined;
           const newRow = (payload as any).new as OnlineUserHistoryRow | undefined;
           if (!newRow?.user_id) return;
           if (onlineUserIdsForMap.indexOf(String(newRow.user_id)) === -1) return;
 
           setOnlineUserHistoryRows(prev => {
-            const next = prev.concat([newRow]);
+            // If rows are being UPDATED (single-row-per-user approach), replace the latest point for that user.
+            // If rows are being INSERTED (true history), append.
+            let next: OnlineUserHistoryRow[];
+            if (eventType === 'UPDATE') {
+              const userId = String(newRow.user_id);
+              const filtered = prev.filter(r => String(r.user_id) !== userId);
+              next = filtered.concat([newRow]);
+            } else {
+              next = prev.concat([newRow]);
+            }
             // cap per user to 300 points
             const byUser: Record<string, OnlineUserHistoryRow[]> = {};
             for (const r of next) {
