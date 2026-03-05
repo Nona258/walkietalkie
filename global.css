@@ -1,0 +1,30 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Hide Google Maps attribution and branding */
+.gm-style-cc,
+.gmnoprint,
+.gm-style-mtc,
+.gm-style-mmc {
+  display: none !important;
+}
+
+/* Hide Google logo */
+a[href*="google.com"],
+a[href*="maps.google.com"] {
+  display: none !important;
+}
+
+/* Hide all text content that might contain Google branding */
+.gm-style span,
+.gm-style a,
+.gm-attribution {
+  display: none !important;
+}
+
+/* Completely hide attribution container */
+[style*="position: absolute"][style*="bottom"] {
+  visibility: hidden !important;
+  display: none !important;
+}
