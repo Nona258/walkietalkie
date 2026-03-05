@@ -17,6 +17,9 @@ import LiveLocationTracker from './components/LiveLocationTracker';
 import supabase from './utils/supabase';
 import { hasAcceptedEula, signOutUser } from './utils/eula';
 
+// Ensures the TaskManager background location task is registered.
+import './utils/backgroundLocation';
+
 import './global.css';
 
 export default function App() {

@@ -10,7 +10,14 @@
       "tsconfigPaths": true
     },
     "plugins": [
-      "expo-speech-recognition"
+      "expo-speech-recognition",
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "Allow this app to access your location while you are using the app.",
+          "locationAlwaysAndWhenInUsePermission": "Allow this app to access your location even when the app is closed or not in use."
+        }
+      ]
     ],
     "orientation": "portrait",
     "icon": "./assets/icon.png",
@@ -24,13 +31,26 @@
       "**/*"
     ],
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "infoPlist": {
+        "UIBackgroundModes": ["location"],
+        "NSLocationWhenInUseUsageDescription": "We use your location to show your live position while you are online.",
+        "NSLocationAlwaysAndWhenInUseUsageDescription": "We use your location to keep sharing your live position while you are online, even when the app is in the background.",
+        "NSLocationAlwaysUsageDescription": "We use your location to keep sharing your live position while you are online."
+      }
     },
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#ffffff"
-      }
+      },
+      "permissions": [
+        "ACCESS_FINE_LOCATION",
+        "ACCESS_COARSE_LOCATION",
+        "ACCESS_BACKGROUND_LOCATION",
+        "FOREGROUND_SERVICE",
+        "FOREGROUND_SERVICE_LOCATION"
+      ]
     }
   }
 }

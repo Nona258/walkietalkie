@@ -2,6 +2,7 @@ import { useEffect, useRef, useCallback } from 'react';
 import { AppState, Platform } from 'react-native';
 import * as Location from 'expo-location';
 import supabase from '../utils/supabase';
+import { startBackgroundLocation, stopBackgroundLocation } from '../utils/backgroundLocation';
 
 type Props = {
   enabled: boolean;
@@ -48,6 +49,20 @@ export default function LiveLocationTracker({ enabled, userId }: Props) {
     } catch {}
     webWatchIdRef.current = null;
   }, []);
+
+  const startOrStopBackground = useCallback(async () => {
+    // Web does not support Expo background tasks.
+    if (Platform.OS === 'web') return;
+    if (!enabled || !userId) {
+      await stopBackgroundLocation();
+      return;
+    }
+    try {
+      await startBackgroundLocation(userId);
+    } catch (e) {
+      console.warn('Failed to start background location updates:', e);
+    }
+  }, [enabled, userId]);
 
   const sendLocation = useCallback(
     async (lat: number, lng: number) => {
@@ -153,6 +168,10 @@ export default function LiveLocationTracker({ enabled, userId }: Props) {
     stopTracking();
     if (!enabled || !userId) return;
 
+    // Ensure background tracking is started for native platforms.
+    // This is what keeps GPS updates running when the app is in background.
+    await startOrStopBackground();
+
     if (Platform.OS === 'web') {
       if (typeof navigator === 'undefined' || !navigator.geolocation) return;
       try {
@@ -195,11 +214,12 @@ export default function LiveLocationTracker({ enabled, userId }: Props) {
     } catch (e) {
       console.warn('Failed to start location watcher:', e);
     }
-  }, [enabled, userId, sendLocation, stopTracking]);
+  }, [enabled, userId, sendLocation, stopTracking, startOrStopBackground]);
 
   useEffect(() => {
     if (!enabled || !userId) {
       stopTracking();
+      void startOrStopBackground();
       return;
     }
 
@@ -213,8 +233,9 @@ export default function LiveLocationTracker({ enabled, userId }: Props) {
     return () => {
       sub.remove();
       stopTracking();
+      void startOrStopBackground();
     };
-  }, [enabled, userId, startTracking, stopTracking]);
+  }, [enabled, userId, startTracking, stopTracking, startOrStopBackground]);
 
   return null;
 }
