@@ -244,11 +244,11 @@ export default function Chat({ selectedContact, onBackPress }: ChatProps) {
   return (
     <View className="flex-1 bg-white">
       {/* Chat Header */}
-      <View className="bg-white px-6 py-6 pt-12 border-b border-green-100">
+      <View className="px-6 py-6 pt-12 bg-white border-b border-green-100">
         <View className="flex-row items-center justify-between mb-4">
           <TouchableOpacity onPress={onBackPress} className="active:scale-90">
-            <View className="bg-green-50 p-2 rounded-full">
-              <Ionicons name="chevron-back" size={24} color="#10b981" />
+            <View className="p-2 rounded-full bg-green-50">
+              <Ionicons name="chevron-back" size={24} color="#237227" />
             </View>
           </TouchableOpacity>
           <View className="flex-1 mx-4">
@@ -281,8 +281,8 @@ export default function Chat({ selectedContact, onBackPress }: ChatProps) {
             </View>
           </View>
           <TouchableOpacity className="active:scale-90">
-            <View className="bg-green-50 p-2 rounded-full">
-              <Ionicons name="information-circle" size={24} color="#10b981" />
+            <View className="p-2 rounded-full bg-green-50">
+              <Ionicons name="information-circle" size={24} color="#237227" />
             </View>
           </TouchableOpacity>
         </View>
@@ -296,8 +296,8 @@ export default function Chat({ selectedContact, onBackPress }: ChatProps) {
       >
         {/* Chat Date Header */}
         <View className="items-center mb-6">
-          <View className="bg-green-100 px-4 py-2 rounded-full">
-            <Text className="text-green-700 text-xs font-bold">Today</Text>
+          <View className="px-4 py-2 bg-green-100 rounded-full">
+            <Text className="text-xs font-bold text-green-700">Today</Text>
           </View>
         </View>
 
@@ -313,10 +313,10 @@ export default function Chat({ selectedContact, onBackPress }: ChatProps) {
               >
                 {!message.isOwn && shouldShowAvatar && (
                   <View
-                    className="h-8 w-8 items-center justify-center rounded-full mr-2 shadow-sm"
-                    style={{ backgroundColor: selectedContact.avatar_color }}
+                    className="items-center justify-center w-8 h-8 mr-2 rounded-full shadow-sm"
+                    style={{ backgroundColor: '#237227' }}
                   >
-                    <Text className="font-bold text-white text-xs">
+                    <Text className="text-xs font-bold" style={{ color: '#f8fafb' }}>
                       {selectedContact.initials}
                     </Text>
                   </View>
@@ -325,11 +325,10 @@ export default function Chat({ selectedContact, onBackPress }: ChatProps) {
 
                 <View className={`max-w-[75%] ${message.isOwn ? 'items-end' : ''}`}>
                   <View
-                    className={`rounded-3xl px-5 py-3 shadow-sm ${
-                      message.isOwn
-                        ? 'bg-green-500 shadow-green-200'
-                        : 'bg-green-50 border-2 border-green-100 shadow-green-100'
-                    }`}
+                    className={`rounded-3xl px-5 py-3 ${message.isOwn ? 'shadow-sm' : ''}`}
+                    style={{
+                      backgroundColor: message.isOwn ? '#237227' : '#e8f5e9'
+                    }}
                   >
                     <Text
                       className={`text-base ${
@@ -376,20 +375,20 @@ export default function Chat({ selectedContact, onBackPress }: ChatProps) {
         })}
 
         {isTyping && (
-          <View className="mt-4 flex-row items-center gap-2">
+          <View className="flex-row items-center gap-2 mt-4">
             <View
-              className="h-8 w-8 items-center justify-center rounded-full shadow-sm"
+              className="items-center justify-center w-8 h-8 rounded-full shadow-sm"
               style={{ backgroundColor: selectedContact.avatar_color }}
             >
-              <Text className="font-bold text-white text-xs">
+              <Text className="text-xs font-bold text-white">
                 {selectedContact.initials}
               </Text>
             </View>
-            <View className="bg-green-50 border-2 border-green-100 rounded-3xl px-5 py-3 shadow-sm">
+            <View className="px-5 py-3 border-2 border-green-100 shadow-sm bg-green-50 rounded-3xl">
               <View className="flex-row items-center gap-1.5">
-                <View className="h-2 w-2 bg-green-500 rounded-full animate-bounce" />
-                <View className="h-2 w-2 bg-green-500 rounded-full animate-bounce" />
-                <View className="h-2 w-2 bg-green-500 rounded-full animate-bounce" />
+                <View className="w-2 h-2 bg-green-500 rounded-full animate-bounce" />
+                <View className="w-2 h-2 bg-green-500 rounded-full animate-bounce" />
+                <View className="w-2 h-2 bg-green-500 rounded-full animate-bounce" />
               </View>
             </View>
           </View>
@@ -397,28 +396,28 @@ export default function Chat({ selectedContact, onBackPress }: ChatProps) {
       </ScrollView>
 
       {/* Message Input */}
-      <View className="border-t border-green-100 bg-white px-4 py-3">
+      <View className="px-4 py-3 bg-white border-t border-green-100">
         {/* Media Menu */}
         {showMediaMenu && (
-          <View className="mb-4 w-44 flex-col gap-2">
+          <View className="flex-col gap-2 mb-4 w-44">
             <TouchableOpacity
-              className="flex-row items-center rounded-2xl bg-green-50 px-4 py-3 border border-green-200 active:scale-95"
+              className="flex-row items-center px-4 py-3 border border-green-200 rounded-2xl bg-green-50 active:scale-95"
               onPress={handleCaptureImage}
             >
-              <View className="bg-green-500 p-2 rounded-full mr-3">
+              <View className="p-2 mr-3 bg-green-500 rounded-full">
                 <Ionicons name="camera" size={18} color="white" />
               </View>
-              <Text className="font-semibold text-gray-900 flex-1">Camera</Text>
+              <Text className="flex-1 font-semibold text-gray-900">Camera</Text>
               <Ionicons name="chevron-forward" size={16} color="#d1d5db" />
             </TouchableOpacity>
             <TouchableOpacity
-              className="flex-row items-center rounded-2xl bg-green-50 px-4 py-3 border border-green-200 active:scale-95"
+              className="flex-row items-center px-4 py-3 border border-green-200 rounded-2xl bg-green-50 active:scale-95"
               onPress={handleChooseFromGallery}
             >
-              <View className="bg-green-500 p-2 rounded-full mr-3">
+              <View className="p-2 mr-3 bg-green-500 rounded-full">
                 <Ionicons name="image" size={18} color="white" />
               </View>
-              <Text className="font-semibold text-gray-900 flex-1">Gallery</Text>
+              <Text className="flex-1 font-semibold text-gray-900">Gallery</Text>
               <Ionicons name="chevron-forward" size={16} color="#d1d5db" />
             </TouchableOpacity>
           </View>
@@ -430,28 +429,27 @@ export default function Chat({ selectedContact, onBackPress }: ChatProps) {
             className={`h-11 w-11 rounded-full items-center justify-center active:scale-95 border-2 transition-all ${
               showMediaMenu
                 ? 'bg-red-50 border-red-200'
-                : 'bg-green-50 border-green-200'
+                : 'bg-green-50'
             }`}
+            style={!showMediaMenu ? { borderColor: '#237227' } : undefined}
             onPress={() => setShowMediaMenu(!showMediaMenu)}
           >
             <Ionicons
               name={showMediaMenu ? "close" : "add"}
               size={24}
-              color={showMediaMenu ? '#dc2626' : '#10b981'}
+              color={showMediaMenu ? '#dc2626' : '#237227'}
             />
           </TouchableOpacity>
 
           {/* Text Input Field */}
-          <View className={`flex-1 flex-row items-center rounded-2xl px-4 py-2.5 border-2 transition-all ${
-            messageText.trim()
-              ? 'border-green-500 bg-green-50 shadow-sm shadow-green-200'
-              : 'border-green-200 bg-white'
-          }`}>
+          <View className="flex-1 flex-row items-center rounded-2xl px-4 py-2.5 border-2 transition-all bg-white" style={{
+            borderColor: '#237227'
+          }}>
             <TextInput
               placeholder="Type a message..."
               value={messageText}
               onChangeText={setMessageText}
-              className="flex-1 text-gray-900 text-base font-medium"
+              className="flex-1 text-base font-medium text-gray-900"
               placeholderTextColor="#d1d5db"
               multiline
               style={{ maxHeight: 100 }}
@@ -464,7 +462,7 @@ export default function Chat({ selectedContact, onBackPress }: ChatProps) {
               <Ionicons
                 name="send"
                 size={20}
-                color={messageText.trim() ? '#10b981' : '#d1d5db'}
+                color={messageText.trim() ? '#237227' : '#d1d5db'}
               />
             </TouchableOpacity>
           </View>
@@ -474,15 +472,16 @@ export default function Chat({ selectedContact, onBackPress }: ChatProps) {
             className={`h-11 w-11 rounded-full items-center justify-center active:scale-95 border-2 transition-all ${
               isRecording
                 ? 'bg-red-50 border-red-300 shadow-md shadow-red-200'
-                : 'bg-green-50 border-green-200'
+                : 'bg-green-50'
             }`}
+            style={!isRecording ? { borderColor: '#237227' } : undefined}
             onPress={handleMicrophonePress}
             onPressOut={handleMicrophoneRelease}
           >
             <Ionicons 
               name="mic" 
               size={22} 
-              color={isRecording ? '#dc2626' : '#10b981'} 
+              color={isRecording ? '#dc2626' : '#237227'} 
             />
           </TouchableOpacity>
         </View>

@@ -86,6 +86,14 @@ export default function Settings({ onNavigate, isMobileMenuOpen, setIsMobileMenu
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
 
+  // Preferences state
+  const [preferences, setPreferences] = useState({
+    emailNotifications: true,
+    pushNotifications: true,
+    darkMode: false,
+    activityDigest: false,
+  });
+
   const initials = fullName.split(' ').map((w) => w[0]).join('').toUpperCase().slice(0, 2);
 
   const handleSave = () => {
@@ -97,6 +105,13 @@ export default function Settings({ onNavigate, isMobileMenuOpen, setIsMobileMenu
   const handleCancel = () => {
     setIsEditMode(false);
     setCurrentPassword(''); setNewPassword(''); setConfirmPassword('');
+  };
+
+  const handleTogglePreference = (key: keyof typeof preferences) => {
+    setPreferences(prev => ({
+      ...prev,
+      [key]: !prev[key]
+    }));
   };
 
   return (
@@ -259,12 +274,16 @@ export default function Settings({ onNavigate, isMobileMenuOpen, setIsMobileMenu
                   <Text style={{ fontSize: 14, fontWeight: '700', color: COLORS.textPrimary }}>Preferences</Text>
                 </View>
                 {[
-                  { icon: 'notifications-outline', label: 'Email Notifications', desc: 'Receive alerts and updates via email',     value: true  },
-                  { icon: 'phone-portrait-outline', label: 'Push Notifications', desc: 'Get real-time push alerts on your device', value: true  },
-                  { icon: 'moon-outline',           label: 'Dark Mode',          desc: 'Switch interface to dark theme',           value: false },
-                  { icon: 'globe-outline',          label: 'Activity Digest',    desc: 'Weekly summary of system activity',        value: false },
+                  { icon: 'notifications-outline', label: 'Email Notifications', desc: 'Receive alerts and updates via email',     key: 'emailNotifications' as const  },
+                  { icon: 'phone-portrait-outline', label: 'Push Notifications', desc: 'Get real-time push alerts on your device', key: 'pushNotifications' as const  },
+                  { icon: 'moon-outline',           label: 'Dark Mode',          desc: 'Switch interface to dark theme',           key: 'darkMode' as const           },
+                  { icon: 'globe-outline',          label: 'Activity Digest',    desc: 'Weekly summary of system activity',        key: 'activityDigest' as const     },
                 ].map((pref, i, arr) => (
-                  <View key={pref.label} style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 12, borderBottomWidth: i < arr.length - 1 ? 1 : 0, borderBottomColor: COLORS.borderLight }}>
+                  <TouchableOpacity 
+                    key={pref.label}
+                    onPress={() => handleTogglePreference(pref.key)}
+                    style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 12, borderBottomWidth: i < arr.length - 1 ? 1 : 0, borderBottomColor: COLORS.borderLight }}
+                  >
                     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, flex: 1 }}>
                       <View style={{ width: 34, height: 34, borderRadius: 9, backgroundColor: COLORS.cloudMist, borderWidth: 1, borderColor: COLORS.border, alignItems: 'center', justifyContent: 'center' }}>
                         <Ionicons name={pref.icon as any} size={15} color={COLORS.textMuted} />
@@ -274,10 +293,10 @@ export default function Settings({ onNavigate, isMobileMenuOpen, setIsMobileMenu
                         <Text style={{ fontSize: 12, color: COLORS.textMuted, marginTop: 1 }}>{pref.desc}</Text>
                       </View>
                     </View>
-                    <View style={{ width: 38, height: 22, borderRadius: 11, backgroundColor: pref.value ? COLORS.green : COLORS.border, justifyContent: 'center', paddingHorizontal: 3, alignItems: pref.value ? 'flex-end' : 'flex-start' }}>
+                    <View style={{ width: 38, height: 22, borderRadius: 11, backgroundColor: preferences[pref.key] ? COLORS.green : COLORS.border, justifyContent: 'center', paddingHorizontal: 3, alignItems: preferences[pref.key] ? 'flex-end' : 'flex-start' }}>
                       <View style={{ width: 16, height: 16, borderRadius: 8, backgroundColor: COLORS.white }} />
                     </View>
-                  </View>
+                  </TouchableOpacity>
                 ))}
               </View>
 

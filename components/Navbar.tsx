@@ -9,7 +9,7 @@ interface NavbarProps {
 
 export default function Navbar({ activeTab, onTabChange }: NavbarProps) {
   return (
-    <View className="absolute bottom-0 left-0 right-0 bg-white border-t-2 border-green-100 flex-row justify-around px-4 py-2 shadow-lg">
+    <View className="absolute bottom-0 left-0 right-0 flex-row justify-around px-4 py-2 bg-white border-t-2 border-green-100 shadow-lg">
       <NavbarIcon
         icon="home-outline"
         label="Home"
@@ -51,18 +51,19 @@ function NavbarIcon({
 }) {
   return (
     <TouchableOpacity 
-      className="items-center justify-center px-4 py-2 rounded-xl transition-all"
+      className="items-center justify-center px-4 py-2 transition-all rounded-xl"
       onPress={onPress}
     >
       <Ionicons
         name={icon}
         size={26}
-        color={active ? '#10b981' : '#9ca3af'}
+        color={active ? '#237227' : '#9ca3af'}
       />
       <Text
         className={`text-xs mt-1.5 font-semibold ${
-          active ? 'text-green-600' : 'text-gray-500'
+          active ? 'text-gray-500' : 'text-gray-500'
         }`}
+        style={active ? { color: '#237227' } : undefined}
       >
         {label}
       </Text>

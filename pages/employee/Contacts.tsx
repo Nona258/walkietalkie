@@ -232,30 +232,30 @@ export default function Contacts({ onContactSelected, currentUserId }: ContactsP
       <StatusBar barStyle="light-content" />
       
       {/* Header Section */}
-      <View className="bg-white px-6 py-6 pt-12 border-b border-green-100">
+      <View className="px-6 py-6 pt-12 bg-white">
         <View className="flex-row items-center justify-between mb-6">
           <View>
-            <Text className="text-gray-900 text-3xl font-extrabold">Contacts</Text>
-            <Text className="text-green-600 text-xs font-semibold mt-1">Manage your team</Text>
+            <Text className="text-3xl font-extrabold text-black">Contacts</Text>
+            <Text className="mt-1 text-xs font-semibold" style={{ color: '#237227' }}>Manage your team</Text>
           </View>
           <TouchableOpacity
             className="relative active:scale-95"
             onPress={handleAddContact}
           >
-            <View className="rounded-full bg-green-500 p-3 shadow-lg shadow-green-300">
+            <View className="p-3 rounded-full" style={{ backgroundColor: '#237227' }}>
               <Ionicons name="person-add" size={22} color="white" />
             </View>
           </TouchableOpacity>
         </View>
 
         {/* Search Bar */}
-        <View className={`flex-row items-center rounded-2xl bg-gray-100 px-4 py-3 border-2 mb-4 ${searchText.length > 0 ? 'border-green-500' : 'border-gray-300'}`}>
+        <View className="flex-row items-center px-4 py-3 mb-4 bg-gray-100 border-2 rounded-2xl" style={{ borderColor: searchText.length > 0 ? '#237227' : '#237227' }}>
           <Ionicons name="search" size={20} color="#6b7280" />
           <TextInput
             placeholder="Search by name, email, or phone..."
             value={searchText}
             onChangeText={setSearchText}
-            className="flex-1 ml-3 text-gray-900 text-base font-medium"
+            className="flex-1 ml-3 text-base font-medium text-gray-900"
             placeholderTextColor="#9ca3af"
           />
           {searchText.length > 0 && (
@@ -266,7 +266,7 @@ export default function Contacts({ onContactSelected, currentUserId }: ContactsP
         </View>
 
         {/* Filter Buttons */}
-        <View className="flex-row gap-2 -mx-6 px-6">
+        <View className="flex-row gap-2 px-6 -mx-6">
           {[
             { label: 'All', value: 'all', icon: 'people' },
             { label: 'Online', value: 'online', icon: 'radio-button-on' },
@@ -276,20 +276,18 @@ export default function Contacts({ onContactSelected, currentUserId }: ContactsP
             <TouchableOpacity
               key={filter.value}
               onPress={() => setFilterType(filter.value as FilterType)}
-              className={`flex-1 flex-row items-center justify-center gap-1 px-3 py-2 rounded-full border-2 transition-all ${
-                filterType === filter.value
-                  ? 'bg-green-500 border-green-500 shadow-md shadow-green-300'
-                  : 'bg-white border-green-200'
-              }`}
+              className="flex-row items-center justify-center flex-1 gap-1 px-3 py-2 transition-all border-2 rounded-full"
+              style={{
+                backgroundColor: filterType === filter.value ? '#237227' : 'white',
+                borderColor: filterType === filter.value ? '#237227' : '#e8f5e9'
+              }}
             >
               <Ionicons 
                 name={filter.icon as any} 
                 size={14} 
-                color={filterType === filter.value ? 'white' : '#10b981'} 
+                color={filterType === filter.value ? 'white' : '#237227'} 
               />
-              <Text className={`text-xs font-bold ${
-                filterType === filter.value ? 'text-white' : 'text-green-700'
-              }`}>
+              <Text className="text-xs font-bold" style={{ color: filterType === filter.value ? 'white' : '#237227' }}>
                 {filter.label}
               </Text>
             </TouchableOpacity>
@@ -301,8 +299,8 @@ export default function Contacts({ onContactSelected, currentUserId }: ContactsP
       {/* Add Contact Modal */}
       <Modal visible={addModalVisible} animationType="slide" transparent={true} onRequestClose={closeAddModal}>
         <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1 }}>
-          <View className="flex-1 justify-end bg-black/30">
-            <View className="bg-white rounded-t-3xl p-6 h-3/5">
+          <View className="justify-end flex-1 bg-black/30">
+            <View className="p-6 bg-white rounded-t-3xl h-3/5">
               <View className="flex-row items-center justify-between mb-4">
                 <Text className="text-lg font-bold">Add Contact</Text>
                 <TouchableOpacity onPress={closeAddModal}>
@@ -310,14 +308,14 @@ export default function Contacts({ onContactSelected, currentUserId }: ContactsP
                 </TouchableOpacity>
               </View>
 
-              <View className="flex-row items-center bg-gray-100 rounded-xl px-3 py-2 mb-4">
+              <View className="flex-row items-center px-3 py-2 mb-4 bg-gray-100 rounded-xl">
                 <Ionicons name="search" size={18} color="#6b7280" />
                 <TextInput
                   placeholder="Search by email or phone"
                   value={modalQuery}
                   onChangeText={setModalQuery}
                   onSubmitEditing={performSearch}
-                  className="ml-3 flex-1 text-base text-gray-900"
+                  className="flex-1 ml-3 text-base text-gray-900"
                   placeholderTextColor="#9ca3af"
                 />
                 <TouchableOpacity onPress={performSearch} className="ml-2">
@@ -327,8 +325,8 @@ export default function Contacts({ onContactSelected, currentUserId }: ContactsP
 
               {searching ? (
                 <View className="items-center justify-center py-6">
-                  <ActivityIndicator size="small" color="#10b981" />
-                  <Text className="text-gray-500 mt-2">Searching...</Text>
+                  <ActivityIndicator size="small" color="#237227" />
+                  <Text className="mt-2 text-gray-500">Searching...</Text>
                 </View>
               ) : (
                 <FlatList
@@ -348,8 +346,8 @@ export default function Contacts({ onContactSelected, currentUserId }: ContactsP
                     return (
                       <View className="flex-row items-center justify-between py-3 border-b border-gray-100">
                         <View className="flex-row items-center">
-                          <View className="h-12 w-12 rounded-full items-center justify-center mr-3" style={{ backgroundColor: getAvatarColor(item.id) }}>
-                            <Text className="text-white font-bold">{getInitials(item.full_name || item.email || 'U')}</Text>
+                          <View className="items-center justify-center w-12 h-12 mr-3 rounded-full" style={{ backgroundColor: getAvatarColor(item.id) }}>
+                            <Text className="font-bold text-white">{getInitials(item.full_name || item.email || 'U')}</Text>
                           </View>
                           <View>
                             <Text className="font-bold text-gray-900">{item.full_name || item.email}</Text>
@@ -386,14 +384,15 @@ export default function Contacts({ onContactSelected, currentUserId }: ContactsP
         <View className="px-6 py-6">
           {loading && !refreshing ? (
             <View className="items-center justify-center py-16">
-              <ActivityIndicator size="large" color="#10b981" />
-              <Text className="text-gray-500 mt-4">Loading contacts...</Text>
+              <ActivityIndicator size="large" color="#237227" />
+              <Text className="mt-4 text-gray-500">Loading contacts...</Text>
             </View>
           ) : filteredContacts.length > 0 ? (
             filteredContacts.map((contact) => (
               <TouchableOpacity
                 key={contact.id}
-                className="mb-4 flex-row items-center rounded-2xl bg-white px-4 py-4 shadow-sm shadow-green-100 border-2 border-green-100 active:scale-95 active:bg-green-50"
+                className="flex-row items-center px-4 py-4 mb-4 rounded-2xl active:scale-95"
+                style={{ backgroundColor: '#e8f5e9' }}
                 onPress={() => {
                   // Mark contact as read and update state (you might want to integrate real message unread logic)
                   const updatedContacts = contacts.map(c => 
@@ -410,37 +409,40 @@ export default function Contacts({ onContactSelected, currentUserId }: ContactsP
                 {/* Avatar */}
                 <View className="relative">
                   <View
-                    className="h-14 w-14 items-center justify-center rounded-full shadow-md"
-                    style={{ backgroundColor: contact.avatar_color }}
+                    className="items-center justify-center rounded-full h-14 w-14"
+                    style={{ backgroundColor: '#237227' }}
                   >
-                    <Text className="font-bold text-white text-base">
+                    <Text className="text-base font-bold" style={{ color: '#f8fafb' }}>
                       {contact.initials}
                     </Text>
                   </View>
                   {/* Status Indicator */}
                   <View
-                    className={`absolute bottom-0 right-0 h-4 w-4 rounded-full border-3 border-white ${
-                      contact.status === 'online'
-                        ? 'bg-green-500'
+                    className="absolute bottom-0 right-0 w-4 h-4 rounded-full"
+                    style={{
+                      backgroundColor: contact.status === 'online'
+                        ? '#237227'
                         : contact.status === 'busy'
-                          ? 'bg-yellow-500'
-                          : 'bg-gray-300'
-                    }`}
+                          ? '#f59e0b'
+                          : '#9ca3af',
+                      borderWidth: 3,
+                      borderColor: '#e8f5e9'
+                    }}
                   />
                 </View>
 
                 {/* Contact Info */}
                 <View className="flex-1 ml-4">
                   <View className="flex-row items-center gap-2 mb-1">
-                    <Text className="font-bold text-gray-900 text-base flex-1">
+                    <Text className="flex-1 text-base font-bold text-black">
                       {contact.name}
                     </Text>
                   </View>
-                  <Text className="text-gray-600 text-xs font-normal mb-2">
+                  <Text className="mb-2 text-xs font-normal" style={{ color: '#6b7280' }}>
                     {contact.role}
                   </Text>
                   {/* Optional: show email or phone for search context */}
-                  <Text className="text-gray-400 text-xs">
+                  <Text className="text-xs" style={{ color: '#9ca3af' }}>
                     {contact.email} {contact.phone_number ? ` • ${contact.phone_number}` : ''}
                   </Text>
                   {contact.lastMessage && (
@@ -458,20 +460,20 @@ export default function Contacts({ onContactSelected, currentUserId }: ContactsP
                 {/* Quick Actions */}
                 <View className="flex-row gap-2 ml-2">
                   <TouchableOpacity
-                    className="bg-green-50 p-2 rounded-full active:scale-90"
+                    className="p-2 rounded-full active:scale-90"
                   >
-                    <Ionicons name="chevron-forward" size={16} color="#10b981" />
+                    <Ionicons name="chevron-forward" size={16} color="#237227" />
                   </TouchableOpacity>
                 </View>
               </TouchableOpacity>
             ))
           ) : (
             <View className="items-center justify-center py-16">
-              <View className="bg-green-50 p-4 rounded-full mb-4">
+              <View className="p-4 mb-4 rounded-full bg-green-50">
                 <Ionicons name="search" size={48} color="#d1d5db" />
               </View>
-              <Text className="text-gray-500 font-semibold text-base">No contacts found</Text>
-              <Text className="text-gray-400 text-sm mt-2">Try adjusting your filters or search</Text>
+              <Text className="text-base font-semibold text-gray-500">No contacts found</Text>
+              <Text className="mt-2 text-sm text-gray-400">Try adjusting your filters or search</Text>
             </View>
           )}
         </View>

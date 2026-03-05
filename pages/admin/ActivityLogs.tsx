@@ -167,6 +167,55 @@ export default function ActivityLogs({ onNavigate, isMobileMenuOpen, setIsMobile
     return matchesFilter && matchesSearch;
   });
 
+  const handleExportLogs = () => {
+    if (filtered.length === 0) {
+      alert('No logs to export. Please adjust your filters or search.');
+      return;
+    }
+
+    // Create CSV header
+    const headers = ['ID', 'Type', 'Action', 'Description', 'User', 'Timestamp', 'Time Ago'];
+    
+    // Create CSV rows
+    const rows = filtered.map((item) => [
+      item.id,
+      item.type,
+      item.action,
+      item.description,
+      item.user,
+      item.timestamp,
+      item.timeAgo,
+    ]);
+
+    // Combine headers and rows
+    const csvContent = [
+      headers.join(','),
+      ...rows.map((row) => 
+        row.map((cell) => {
+          // Escape quotes and wrap in quotes if contains comma
+          const str = String(cell);
+          return str.includes(',') || str.includes('"') 
+            ? `"${str.replace(/"/g, '""')}"` 
+            : str;
+        }).join(',')
+      ),
+    ].join('\n');
+
+    // Create blob and download
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    const url = URL.createObjectURL(blob);
+    
+    const fileName = `Activity-Logs-${new Date().toISOString().slice(0, 10)}.csv`;
+    link.setAttribute('href', url);
+    link.setAttribute('download', fileName);
+    link.style.visibility = 'hidden';
+    
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
   return (
     <View style={{ flex: 1, backgroundColor: COLORS.cloudMist }}>
       <ScrollView style={{ flex: 1 }} showsVerticalScrollIndicator={false}>
@@ -260,7 +309,7 @@ export default function ActivityLogs({ onNavigate, isMobileMenuOpen, setIsMobile
                   </View>
                 </View>
                 {isWebView && (
-                  <TouchableOpacity style={{ flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 14, height: 34, backgroundColor: COLORS.green, borderRadius: 8 }}>
+                  <TouchableOpacity onPress={handleExportLogs} style={{ flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 14, height: 34, backgroundColor: COLORS.green, borderRadius: 8 }}>
                     <Ionicons name="download-outline" size={14} color={COLORS.white} />
                     <Text style={{ fontSize: 14, fontWeight: '600', color: COLORS.white }}>Export</Text>
                   </TouchableOpacity>
@@ -279,7 +328,7 @@ export default function ActivityLogs({ onNavigate, isMobileMenuOpen, setIsMobile
                   )}
                 </View>
                 {!isWebView && (
-                  <TouchableOpacity style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 10, backgroundColor: COLORS.green, borderRadius: 8 }}>
+                  <TouchableOpacity onPress={handleExportLogs} style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 10, backgroundColor: COLORS.green, borderRadius: 8 }}>
                     <Ionicons name="download-outline" size={14} color={COLORS.white} />
                     <Text style={{ fontSize: 14, fontWeight: '600', color: COLORS.white }}>Export Logs</Text>
                   </TouchableOpacity>
