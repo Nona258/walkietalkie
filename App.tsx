@@ -34,6 +34,9 @@ export default function App() {
       try {
         const { data } = await supabase.auth.getSession();
         if (data?.session?.user) {
+          // Mark user as online
+          supabase.from('users').update({ status: 'online' }).eq('id', data.session.user.id).then(() => {});
+
           // Check if user has accepted EULA
           try {
             const eulaAccepted = await hasAcceptedEula(data.session.user.id);
@@ -78,6 +81,25 @@ export default function App() {
     };
 
     checkUser();
+
+    // Mark user offline when browser tab/window closes
+    const handleBeforeUnload = async () => {
+      try {
+        const { data } = await supabase.auth.getSession();
+        const uid = data?.session?.user?.id;
+        if (uid) {
+          supabase.from('users').update({ status: 'offline' }).eq('id', uid).then(() => {});
+        }
+      } catch (_) {}
+    };
+    if (typeof window !== 'undefined') {
+      window.addEventListener('beforeunload', handleBeforeUnload);
+    }
+    return () => {
+      if (typeof window !== 'undefined') {
+        window.removeEventListener('beforeunload', handleBeforeUnload);
+      }
+    };
   }, []);
 
   // Separate effect for auth state changes
@@ -86,6 +108,8 @@ export default function App() {
     const { data: subscription } = supabase.auth.onAuthStateChange((event, session) => {
       if (session?.user) {
         setUser(session.user);
+        // Mark user online
+        supabase.from('users').update({ status: 'online' }).eq('id', session.user.id).then(() => {});
         // Only navigate based on EULA if not in signup flow
         // The signin page will handle EULA modal display
         if (!isInSignupFlow) {

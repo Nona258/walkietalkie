@@ -123,7 +123,7 @@ export default function AdminDashboard({ onLogout, onNavigate }: AdminDashboardP
       const { data: logsData } = await supabase
         .from('activity_logs')
         .select('*')
-        .order('created_at', { ascending: false })
+        .order('time', { ascending: false })
         .limit(10);
       
       if (logsData) {

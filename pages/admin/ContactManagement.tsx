@@ -82,6 +82,7 @@ export default function ContactManagement({ onNavigate }: ContactManagementProps
   const [recordingTime, setRecordingTime] = useState(0);
   const [transcript, setTranscript] = useState('');
   const [messagesList, setMessagesList] = useState<Message[]>([]);
+  const [lastMessagesMap, setLastMessagesMap] = useState<Record<string, { text: string; time: string } | null>>({});
 	
   // Group Management States (kept from original)
   const [showCreateGroupModal, setShowCreateGroupModal] = useState(false);
@@ -111,6 +112,7 @@ export default function ContactManagement({ onNavigate }: ContactManagementProps
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
 
   const recordingInterval = useRef<ReturnType<typeof setInterval> | null>(null);
+  const statusChannelRef = useRef<any>(null);
   const mediaRecorderRef = useRef<any>(null);
   const audioChunksRef = useRef<any[]>([]);
   const audioPlayerRef = useRef<HTMLAudioElement | null>(null);
@@ -361,7 +363,7 @@ export default function ContactManagement({ onNavigate }: ContactManagementProps
             location: user.role || 'Employee',
             initials: getInitials(user.full_name),
             color: getRandomColor(),
-            online: false,
+            online: user.status === 'online',
             userId: user.id,
           } as Contact;
         })
@@ -395,11 +397,82 @@ export default function ContactManagement({ onNavigate }: ContactManagementProps
 
       const allContacts = [...dbContacts, ...groupContacts];
       setContacts(allContacts);
-      if (!selectedContact && allContacts.length > 0) {
-        setSelectedContact(allContacts[0]);
-      }
+      // Fetch last messages for direct contacts
+      fetchLastMessagesForContacts(dbContacts);
     } catch (e) {
       console.error('Unexpected error loading contacts from Supabase:', e);
+    }
+  };
+
+  // Fetch last messages for each direct contact (for contact list preview)
+  const fetchLastMessagesForContacts = async (directContacts: Contact[]) => {
+    try {
+      const { data: authData } = await supabase.auth.getUser();
+      const meId = authData?.user?.id;
+      if (!meId) return;
+
+      const contactUserIds = directContacts
+        .map(c => c.userId)
+        .filter((id): id is string => !!id);
+
+      if (contactUserIds.length === 0) return;
+
+      // Fetch all conversations involving the admin
+      const { data: conversations } = await supabase
+        .from('conversations')
+        .select('id, user_one, user_two');
+
+      const myConversations = (conversations || []).filter(
+        (conv: any) => conv.user_one === meId || conv.user_two === meId
+      );
+
+      // Build a map: contactUserId -> [conversationId, ...]
+      const convMap = new Map<string, string[]>();
+      myConversations.forEach((conv: any) => {
+        const otherId = conv.user_one === meId ? conv.user_two : conv.user_one;
+        if (!convMap.has(otherId)) convMap.set(otherId, []);
+        convMap.get(otherId)!.push(conv.id);
+      });
+
+      const map: Record<string, { text: string; time: string } | null> = {};
+
+      await Promise.all(
+        directContacts.map(async contact => {
+          if (!contact.userId) { map[String(contact.id)] = null; return; }
+          const convIds = convMap.get(contact.userId);
+          if (!convIds || convIds.length === 0) { map[String(contact.id)] = null; return; }
+
+          // Fetch latest message across all conversations for this contact
+          const results = await Promise.all(
+            convIds.map(cid =>
+              supabase
+                .from('messages')
+                .select('*')
+                .eq('conversation_id', cid)
+                .order('created_at', { ascending: false })
+                .limit(1)
+            )
+          );
+
+          const latest = results
+            .flatMap(r => r.data || [])
+            .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+
+          if (latest.length > 0) {
+            const last = latest[0];
+            const isVoice = typeof last.file_url === 'string' && last.file_url.length > 0;
+            const text = isVoice ? '🎤 Voice message' : (last.transcription || 'Message');
+            const time = new Date(last.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+            map[String(contact.id)] = { text, time };
+          } else {
+            map[String(contact.id)] = null;
+          }
+        })
+      );
+
+      setLastMessagesMap(map);
+    } catch (e) {
+      console.error('Error fetching last messages for contacts:', e);
     }
   };
 
@@ -495,6 +568,95 @@ export default function ContactManagement({ onNavigate }: ContactManagementProps
   // Initial load
   useEffect(() => {
     loadContactsFromDb();
+  }, []);
+
+  // Real-time online status updates
+  useEffect(() => {
+    const channel = supabase
+      .channel('admin-contact-user-status')
+      .on(
+        'postgres_changes',
+        { event: 'UPDATE', schema: 'public', table: 'users' },
+        (payload: any) => {
+          const updated = payload.new;
+          if (!updated?.id) return;
+          setContacts(prev =>
+            prev.map(c =>
+              c.userId === updated.id
+                ? { ...c, online: updated.status === 'online' }
+                : c
+            )
+          );
+        }
+      )
+      .subscribe();
+
+    statusChannelRef.current = channel;
+
+    return () => {
+      if (statusChannelRef.current) {
+        try { supabase.removeChannel(statusChannelRef.current); } catch (e) {}
+        statusChannelRef.current = null;
+      }
+    };
+  }, []);
+
+  // Real-time last-message preview updates
+  const lastMessagesChannelRef = useRef<any>(null);
+  useEffect(() => {
+    const channel = supabase
+      .channel('admin-contact-last-messages')
+      .on(
+        'postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'messages' },
+        (payload: any) => {
+          const newMsg = payload.new;
+          if (!newMsg?.sender_id || !newMsg?.receiver_id) return;
+
+          (async () => {
+            try {
+              const { data: authData } = await supabase.auth.getUser();
+              const meId = authData?.user?.id;
+              if (!meId) return;
+
+              // Determine the other party using sender_id / receiver_id directly
+              const otherUserId =
+                newMsg.sender_id === meId ? newMsg.receiver_id : newMsg.sender_id;
+
+              // Only update preview if this message involves me
+              if (newMsg.sender_id !== meId && newMsg.receiver_id !== meId) return;
+
+              setContacts(prevContacts => {
+                const contact = prevContacts.find(c => c.userId === otherUserId);
+                if (!contact) return prevContacts;
+
+                const isVoice = typeof newMsg.file_url === 'string' && newMsg.file_url.length > 0;
+                const text = isVoice
+                  ? '🎤 Voice message'
+                  : (newMsg.transcription || 'Message');
+                const time = new Date(newMsg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+                setLastMessagesMap(prev => ({
+                  ...prev,
+                  [String(contact.id)]: { text, time },
+                }));
+                return prevContacts;
+              });
+            } catch (e) {
+              console.warn('Failed to update last message preview:', e);
+            }
+          })();
+        }
+      )
+      .subscribe();
+
+    lastMessagesChannelRef.current = channel;
+    return () => {
+      if (lastMessagesChannelRef.current) {
+        try { supabase.removeChannel(lastMessagesChannelRef.current); } catch (e) {}
+        lastMessagesChannelRef.current = null;
+      }
+    };
   }, []);
 
   // Load current user id once
@@ -1030,7 +1192,7 @@ export default function ContactManagement({ onNavigate }: ContactManagementProps
 
   return (
     <View className="flex-1 flex-row bg-stone-50">
-      {/* Main content with header + contact/chat layout, using messagesList and transcript */}
+      {/* Main content */}
       <View className="flex-1 bg-stone-50">
         <View className="bg-white px-5 pt-4 pb-3 border-b border-stone-200">
           <View className="flex-row items-center justify-between">
@@ -1090,30 +1252,43 @@ export default function ContactManagement({ onNavigate }: ContactManagementProps
             </View>
 
             <ScrollView className="flex-1">
-              {filteredContacts.map(contact => (
-                <TouchableOpacity
-                  key={contact.id}
-                  className="flex-row items-center px-5 py-4 border-b border-stone-50"
-                  onPress={() => {
-                    setSelectedContact(contact);
-                    setShowContactList(false);
-                  }}
-                >
-                  <View
-                    className="w-12 h-12 rounded-full items-center justify-center mr-3"
-                    style={{ backgroundColor: contact.color }}
+              {filteredContacts.map(contact => {
+                const lastMsg = lastMessagesMap[String(contact.id)];
+                return (
+                  <TouchableOpacity
+                    key={contact.id}
+                    className={`flex-row items-center px-5 py-3 border-b border-stone-50 ${selectedContact?.id === contact.id ? 'bg-emerald-50' : ''}`}
+                    onPress={() => {
+                      setSelectedContact(contact);
+                      setShowContactList(false);
+                    }}
                   >
-                    <Text className="text-stone-800 font-semibold">{contact.initials}</Text>
-                  </View>
-                  <View className="flex-1">
-                    <Text className="text-sm font-bold text-stone-900">{contact.name}</Text>
-                    <Text className="text-xs text-stone-500 mt-1">{contact.location}</Text>
-                  </View>
-                  {contact.online && (
-                    <View className="w-2.5 h-2.5 bg-emerald-500 rounded-full border-2 border-white" />
-                  )}
-                </TouchableOpacity>
-              ))}
+                    <View className="relative mr-3 shrink-0">
+                      <View
+                        className="w-12 h-12 rounded-full items-center justify-center"
+                        style={{ backgroundColor: contact.color }}
+                      >
+                        <Text className="text-stone-800 font-semibold">{contact.initials}</Text>
+                      </View>
+                      {contact.online && (
+                        <View className="absolute bottom-0 right-0 w-3.5 h-3.5 bg-emerald-500 rounded-full border-2 border-white" />
+                      )}
+                    </View>
+                    <View className="flex-1 min-w-0">
+                      <View className="flex-row items-center justify-between">
+                        <Text className="text-sm font-bold text-stone-900 flex-1 mr-2" numberOfLines={1}>{contact.name}</Text>
+                        {lastMsg && <Text className="text-[10px] text-stone-400 shrink-0">{lastMsg.time}</Text>}
+                      </View>
+                      <Text className="text-xs text-stone-500 mt-0.5" numberOfLines={1}>{contact.location}</Text>
+                      {lastMsg ? (
+                        <Text className="text-xs text-stone-400 mt-0.5" numberOfLines={1}>{lastMsg.text}</Text>
+                      ) : (
+                        <Text className="text-xs text-stone-300 mt-0.5">No messages yet</Text>
+                      )}
+                    </View>
+                  </TouchableOpacity>
+                );
+              })}
 
               {filteredContacts.length === 0 && (
                 <View className="px-5 py-6">
@@ -1142,7 +1317,9 @@ export default function ContactManagement({ onNavigate }: ContactManagementProps
                   </View>
                   <View>
                     <Text className="font-bold text-stone-900">{selectedContact.name}</Text>
-                    <Text className="text-xs text-emerald-600">Direct channel</Text>
+                    <Text className="text-xs text-emerald-600">
+                      {selectedContact.isGroup ? 'Group channel' : 'Direct channel'}
+                    </Text>
                   </View>
                 </View>
 

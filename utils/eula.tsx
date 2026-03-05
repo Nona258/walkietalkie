@@ -70,6 +70,15 @@ export const signOutUser = async (userId?: string): Promise<boolean> => {
       }
     }
 
+    // Mark user as offline before signing out
+    if (id) {
+      try {
+        await supabase.from('users').update({ status: 'offline' }).eq('id', id);
+      } catch (statusErr) {
+        console.warn('Could not set status offline:', statusErr);
+      }
+    }
+
     // If we have an id, sign out the user
     const { error } = await supabase.auth.signOut();
 
