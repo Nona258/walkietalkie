@@ -107,6 +107,10 @@ export default function Chat({ selectedContact, onBackPress, currentUserId }: Ch
   const audioChunksRef = useRef<any[]>([]);
   const audioPlayerRef = useRef<HTMLAudioElement | null>(null);
   const recordingIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  // Flag set when stopRecording is tapped before getUserMedia has resolved
+  const pendingStopRef = useRef(false);
+  // Tracks the MIME type chosen at record-time so stopRecording creates the right Blob
+  const recordingMimeRef = useRef<string>('audio/webm');
 
   // Fetch current user if not provided
   useEffect(() => {
@@ -395,30 +399,72 @@ export default function Chat({ selectedContact, onBackPress, currentUserId }: Ch
   }, [messages, conversationId, activeChatUserId]);
 
   // ── Voice recording ──────────────────────────────────────────────────────
-  const startRecording = async () => {
+  const startRecording = () => {
     if (!conversationId) {
       Alert.alert('Not ready', 'Conversation not ready yet. Please wait a moment.');
       return;
     }
-    try {
-      const stream = await (navigator as any).mediaDevices.getUserMedia({ audio: true });
-      audioChunksRef.current = [];
-      const mr = new (window as any).MediaRecorder(stream, { mimeType: 'audio/webm' });
-      mr.ondataavailable = (e: any) => {
-        if (e.data && e.data.size > 0) audioChunksRef.current.push(e.data);
-      };
-      mr.start();
-      mediaRecorderRef.current = { mediaRecorder: mr, stream };
-      setIsRecording(true);
-      setRecordingTime(0);
-      recordingIntervalRef.current = setInterval(
-        () => setRecordingTime(prev => prev + 1),
-        1000
-      );
-    } catch (e) {
-      console.error('Microphone error:', e);
-      Alert.alert('Permission Required', 'Microphone access is needed to send voice messages.');
-    }
+    pendingStopRef.current = false;
+    setIsRecording(true);
+    setRecordingTime(0);
+    recordingIntervalRef.current = setInterval(
+      () => setRecordingTime(prev => prev + 1),
+      1000
+    );
+
+    (async () => {
+      try {
+        const stream = await (navigator as any).mediaDevices.getUserMedia({ audio: true });
+        audioChunksRef.current = [];
+
+        // Pick the best supported MIME type
+        const candidates = [
+          'audio/webm;codecs=opus',
+          'audio/webm',
+          'audio/ogg;codecs=opus',
+          'audio/ogg',
+          'audio/mp4',
+        ];
+        const mimeType = candidates.find(
+          t => (window as any).MediaRecorder?.isTypeSupported?.(t)
+        ) || '';
+        recordingMimeRef.current = mimeType || 'audio/webm';
+
+        const mr = new (window as any).MediaRecorder(
+          stream,
+          mimeType ? { mimeType } : undefined
+        );
+        mr.ondataavailable = (e: any) => {
+          if (e.data && e.data.size > 0) audioChunksRef.current.push(e.data);
+        };
+        mr.start();
+        mediaRecorderRef.current = { mediaRecorder: mr, stream };
+
+        // If stopRecording was tapped while mic was starting up, stop immediately
+        if (pendingStopRef.current) {
+          pendingStopRef.current = false;
+          try { mr.stop(); } catch (_) {}
+          try { stream.getTracks().forEach((t: any) => t.stop()); } catch (_) {}
+          mediaRecorderRef.current = null;
+          audioChunksRef.current = [];
+          if (recordingIntervalRef.current) {
+            clearInterval(recordingIntervalRef.current);
+            recordingIntervalRef.current = null;
+          }
+          setIsRecording(false);
+          setRecordingTime(0);
+        }
+      } catch (e) {
+        console.error('Microphone error:', e);
+        if (recordingIntervalRef.current) {
+          clearInterval(recordingIntervalRef.current);
+          recordingIntervalRef.current = null;
+        }
+        setIsRecording(false);
+        setRecordingTime(0);
+        Alert.alert('Permission Required', 'Microphone access is needed to send voice messages.');
+      }
+    })();
   };
 
   const stopRecording = () => {
@@ -429,13 +475,19 @@ export default function Chat({ selectedContact, onBackPress, currentUserId }: Ch
     setIsRecording(false);
 
     const ref = mediaRecorderRef.current;
-    if (!ref?.mediaRecorder) { setRecordingTime(0); return; }
+    if (!ref?.mediaRecorder) {
+      // Mic hasn't started yet — mark as pending so startRecording can clean up
+      pendingStopRef.current = true;
+      setRecordingTime(0);
+      return;
+    }
 
     const capturedTime = recordingTime;
+    const blobType = recordingMimeRef.current || 'audio/webm';
     const mr = ref.mediaRecorder as MediaRecorder;
     mr.onstop = async () => {
       try {
-        const blob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
+        const blob = new Blob(audioChunksRef.current, { type: blobType });
         const dataUrl = await new Promise<string>((resolve, reject) => {
           const reader = new FileReader();
           reader.onloadend = () => resolve(reader.result as string);

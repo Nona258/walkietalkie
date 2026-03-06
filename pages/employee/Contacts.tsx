@@ -14,6 +14,7 @@ interface Contact {
   avatar_color: string;
   lastMessage?: string;
   lastMessageTime?: string;
+  lastMessageTimestamp?: string;
   unreadCount?: number;
   // additional fields for search
   email: string;
@@ -266,6 +267,7 @@ export default function Contacts({ onContactSelected, currentUserId }: ContactsP
                   ...contact,
                   lastMessage: msgText,
                   lastMessageTime: created.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+                  lastMessageTimestamp: lastMsg.created_at,
                   unreadCount,
                 };
               }
@@ -438,10 +440,15 @@ export default function Contacts({ onContactSelected, currentUserId }: ContactsP
       filtered = filtered.filter(c => (c.unreadCount ?? 0) > 0);
     }
 
-    // Sort: unread contacts always float to the top
+    // Sort by most recent message first; unread contacts float to the top within that order
+    const byRecency = (a: Contact, b: Contact) => {
+      const aTime = a.lastMessageTimestamp ? new Date(a.lastMessageTimestamp).getTime() : 0;
+      const bTime = b.lastMessageTimestamp ? new Date(b.lastMessageTimestamp).getTime() : 0;
+      return bTime - aTime;
+    };
     filtered = [
-      ...filtered.filter(c => (c.unreadCount ?? 0) > 0).sort((a, b) => (b.unreadCount ?? 0) - (a.unreadCount ?? 0)),
-      ...filtered.filter(c => (c.unreadCount ?? 0) === 0),
+      ...filtered.filter(c => (c.unreadCount ?? 0) > 0).sort(byRecency),
+      ...filtered.filter(c => (c.unreadCount ?? 0) === 0).sort(byRecency),
     ];
 
     setFilteredContacts(filtered);
