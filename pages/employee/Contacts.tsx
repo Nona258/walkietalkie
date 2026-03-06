@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { View, Text, TouchableOpacity, ScrollView, TextInput, Alert, StatusBar, ActivityIndicator, RefreshControl, Modal, FlatList, KeyboardAvoidingView, Platform, Animated, Easing } from 'react-native';
+import { View, Text, TouchableOpacity, ScrollView, TextInput, Alert, StatusBar, ActivityIndicator, RefreshControl, Modal, FlatList, KeyboardAvoidingView, Platform, Animated, Easing, PanResponder } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Ionicons } from '@expo/vector-icons';
 import  supabase, { searchUsers, addContact }  from '../../utils/supabase'; // adjust path to your supabase client
@@ -69,6 +69,36 @@ export default function Contacts({ onContactSelected, currentUserId }: ContactsP
   const messagesSubscriptionRef = useRef<any>(null);
   const backdropAnim = useRef(new Animated.Value(0)).current;
   const sheetAnim = useRef(new Animated.Value(600)).current;
+
+  const sheetPanResponder = useRef(
+    PanResponder.create({
+      onStartShouldSetPanResponder: () => true,
+      onMoveShouldSetPanResponder: (_, { dy }) => Math.abs(dy) > 5,
+      onPanResponderMove: (_, { dy }) => {
+        const clamped = Math.max(0, dy);
+        sheetAnim.setValue(clamped);
+        backdropAnim.setValue(Math.max(0, 1 - clamped / 400));
+      },
+      onPanResponderRelease: (_, { dy, vy }) => {
+        if (dy > 100 || vy > 0.5) {
+          Animated.parallel([
+            Animated.timing(backdropAnim, { toValue: 0, duration: 240, easing: Easing.in(Easing.ease), useNativeDriver: false }),
+            Animated.timing(sheetAnim, { toValue: 600, duration: 260, easing: Easing.in(Easing.ease), useNativeDriver: true }),
+          ]).start(() => {
+            setAddModalVisible(false);
+            setModalQuery('');
+            setSearchResults([]);
+            setAllModalUsers([]);
+            setSearching(false);
+            setAddingId(null);
+          });
+        } else {
+          Animated.spring(sheetAnim, { toValue: 0, tension: 60, friction: 12, useNativeDriver: true }).start();
+          Animated.timing(backdropAnim, { toValue: 1, duration: 150, useNativeDriver: false }).start();
+        }
+      },
+    })
+  ).current;
 
   // Load persisted lastReadMap from AsyncStorage on mount
   useEffect(() => {
@@ -627,15 +657,15 @@ export default function Contacts({ onContactSelected, currentUserId }: ContactsP
       </View>
 
       {/* Add Contact Modal */}
-      <Modal visible={addModalVisible} animationType="none" transparent={true} onRequestClose={handleCloseModal}>
+      <Modal visible={addModalVisible} animationType="none" transparent={true}>
         <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1 }}>
           <Animated.View style={{ flex: 1, justifyContent: 'flex-end', backgroundColor: backdropAnim.interpolate({ inputRange: [0, 1], outputRange: ['rgba(0,0,0,0)', 'rgba(0,0,0,0.4)'] }) }}>
-            {/* Backdrop tap to close */}
-            <TouchableOpacity style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }} activeOpacity={1} onPress={handleCloseModal} />
 
             <Animated.View style={{ backgroundColor: 'white', borderTopLeftRadius: 24, borderTopRightRadius: 24, maxHeight: '85%', transform: [{ translateY: sheetAnim }] }}>
               {/* Drag handle */}
-              <View style={{ alignSelf: 'center', width: 36, height: 4, borderRadius: 2, backgroundColor: '#e5e7eb', marginTop: 12, marginBottom: 4 }} />
+              <View {...sheetPanResponder.panHandlers} style={{ alignSelf: 'stretch', alignItems: 'center', paddingTop: 12, paddingBottom: 8 }}>
+                <View style={{ width: 36, height: 4, borderRadius: 2, backgroundColor: '#e5e7eb' }} />
+              </View>
 
               {/* Header */}
               <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 20, paddingTop: 12, paddingBottom: 16 }}>
@@ -643,9 +673,6 @@ export default function Contacts({ onContactSelected, currentUserId }: ContactsP
                   <Text style={{ fontSize: 18, fontWeight: '700', color: '#111827' }}>Add Contact</Text>
                   <Text style={{ fontSize: 12, color: '#9ca3af', marginTop: 2 }}>Search for an employee or admin</Text>
                 </View>
-                <TouchableOpacity onPress={handleCloseModal} activeOpacity={0.7} style={{ backgroundColor: '#f3f4f6', borderRadius: 20, padding: 8 }}>
-                  <Ionicons name="close" size={18} color="#6b7280" />
-                </TouchableOpacity>
               </View>
 
               {/* Divider */}
@@ -674,7 +701,7 @@ export default function Contacts({ onContactSelected, currentUserId }: ContactsP
               </View>
 
               {/* Body */}
-              <View style={{ minHeight: 220, paddingBottom: 28 }}>
+              <View style={{ minHeight: 220 }}>
                 {searching ? (
                   <View style={{ alignItems: 'center', paddingVertical: 48 }}>
                     <ActivityIndicator size="large" color="#10b981" />

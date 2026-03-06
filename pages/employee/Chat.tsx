@@ -92,7 +92,9 @@ export default function Chat({ selectedContact, onBackPress, currentUserId }: Ch
   const [recordingTime, setRecordingTime] = useState(0);
   const [isTyping, setIsTyping] = useState(false);
   const [loadingMessages, setLoadingMessages] = useState(true);
-  const [activeChatUserId, setActiveChatUserId] = useState<string | null>(currentUserId || null);
+  const [activeChatUserId, setActiveChatUserId] = useState<string | null>(
+    currentUserId || null
+  );
   const [conversationId, setConversationId] = useState<string | null>(null);
   const [currentlyPlayingId, setCurrentlyPlayingId] = useState<string | null>(null);
   // Ticks every 30 s so delivery labels like "Delivered 2 minutes ago" stay up-to-date
@@ -111,6 +113,13 @@ export default function Chat({ selectedContact, onBackPress, currentUserId }: Ch
   const pendingStopRef = useRef(false);
   // Tracks the MIME type chosen at record-time so stopRecording creates the right Blob
   const recordingMimeRef = useRef<string>('audio/webm');
+  // Ref so realtime callbacks always read the latest userId (avoids stale closure)
+  const activeChatUserIdRef = useRef<string | null>(currentUserId || null);
+
+  // Keep ref in sync with state so realtime callbacks always see the latest ID
+  useEffect(() => {
+    activeChatUserIdRef.current = activeChatUserId;
+  }, [activeChatUserId]);
 
   // Fetch current user if not provided
   useEffect(() => {
@@ -269,18 +278,54 @@ export default function Chat({ selectedContact, onBackPress, currentUserId }: Ch
             table: 'messages',
             filter: `conversation_id=eq.${convId}`,
           },
-          (payload) => {
+          async (payload) => {
             const newMsg = payload.new as any;
-            const isOwn = newMsg.sender_id === activeChatUserId;
+            // Always read from the ref so we never compare against a stale null
+            const meId = activeChatUserIdRef.current;
+            const isOwn = !!meId && newMsg.sender_id === meId;
 
             // Own messages are already added optimistically in handleSendMessage
             // and stopRecording — adding them again from realtime causes duplicate keys.
             if (isOwn) return;
 
             const created = newMsg.created_at ? new Date(newMsg.created_at) : new Date();
-            
-            const isVoice = !!(newMsg.file_url && newMsg.file_url.length > 0);
-            const durationMs = typeof newMsg.duration_ms === 'number' ? newMsg.duration_ms : null;
+
+            // Check if it's a voice message. The realtime payload may carry a
+            // truncated or empty file_url when the base64 data is very large, so
+            // we detect voice by the presence of the file_url field on the row OR
+            // by duration_ms being set, then re-fetch the full row to get the
+            // complete audio data.
+            const looksLikeVoice = !!(newMsg.file_url && newMsg.file_url.length > 0) ||
+              typeof newMsg.duration_ms === 'number';
+
+            let audioUrl: string | undefined = looksLikeVoice
+              ? (newMsg.file_url || undefined)
+              : undefined;
+            let durationMs: number | null = typeof newMsg.duration_ms === 'number'
+              ? newMsg.duration_ms
+              : null;
+
+            if (looksLikeVoice) {
+              // Re-fetch the full row so we always get the complete file_url
+              // regardless of realtime payload size limits.
+              try {
+                const { data: fullRow } = await supabase
+                  .from('messages')
+                  .select('file_url, duration_ms')
+                  .eq('id', newMsg.id)
+                  .single();
+                if (fullRow) {
+                  audioUrl = fullRow.file_url || undefined;
+                  durationMs = typeof fullRow.duration_ms === 'number'
+                    ? fullRow.duration_ms
+                    : durationMs;
+                }
+              } catch (fetchErr) {
+                console.warn('Could not re-fetch voice message row:', fetchErr);
+              }
+            }
+
+            const isVoice = !!audioUrl;
             const durationSec = durationMs !== null ? Math.round(durationMs / 1000) : null;
             const formattedMsg: Message = {
               id: String(newMsg.id),
@@ -293,7 +338,7 @@ export default function Chat({ selectedContact, onBackPress, currentUserId }: Ch
               type: isVoice ? 'voice' : 'text',
               isRead: newMsg.is_read ?? false,
               isVoice,
-              audioUrl: isVoice ? newMsg.file_url : undefined,
+              audioUrl,
               duration: durationSec !== null ? formatDuration(durationSec) : undefined,
             };
 
@@ -1004,10 +1049,10 @@ export default function Chat({ selectedContact, onBackPress, currentUserId }: Ch
           {isRecording ? (
             <View className="items-center">
               <TouchableOpacity
-                className="h-14 w-14 rounded-full items-center justify-center bg-red-500 shadow-lg shadow-red-300 border-4 border-red-300"
+                className="h-11 w-11 rounded-full items-center justify-center border-2 bg-red-50 border-red-400"
                 onPressOut={stopRecording}
               >
-                <Ionicons name="stop" size={22} color="white" />
+                <Ionicons name="mic" size={22} color="#ef4444" />
               </TouchableOpacity>
               <Text className="text-red-500 text-xs font-bold mt-1">{formatDuration(recordingTime)}</Text>
             </View>
