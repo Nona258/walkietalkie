@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { View, Text, TouchableOpacity, ScrollView, TextInput, Alert, StatusBar, ActivityIndicator, RefreshControl, Modal, FlatList, KeyboardAvoidingView, Platform } from 'react-native';
+import { View, Text, TouchableOpacity, ScrollView, TextInput, Alert, StatusBar, ActivityIndicator, RefreshControl, Modal, FlatList, KeyboardAvoidingView, Platform, Animated, Easing } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Ionicons } from '@expo/vector-icons';
 import  supabase, { searchUsers, addContact }  from '../../utils/supabase'; // adjust path to your supabase client
@@ -56,6 +56,7 @@ export default function Contacts({ onContactSelected, currentUserId }: ContactsP
   const [addModalVisible, setAddModalVisible] = useState(false);
   const [modalQuery, setModalQuery] = useState('');
   const [searching, setSearching] = useState(false);
+  const [allModalUsers, setAllModalUsers] = useState<any[]>([]);
   const [searchResults, setSearchResults] = useState<any[]>([]);
   const [addingId, setAddingId] = useState<string | null>(null);
   const [activeChatUserId, setActiveChatUserId] = useState<string | null>(currentUserId || null);
@@ -65,6 +66,8 @@ export default function Contacts({ onContactSelected, currentUserId }: ContactsP
   const LAST_READ_STORAGE_KEY = 'contacts_last_read_map';
 
   const messagesSubscriptionRef = useRef<any>(null);
+  const backdropAnim = useRef(new Animated.Value(0)).current;
+  const sheetAnim = useRef(new Animated.Value(600)).current;
 
   // Load persisted lastReadMap from AsyncStorage on mount
   useEffect(() => {
@@ -342,26 +345,60 @@ export default function Contacts({ onContactSelected, currentUserId }: ContactsP
           (payload) => {
             const newMsg = payload.new as any;
             
-            // Only update for messages received by the current user (not sent)
-            if (newMsg.receiver_id === activeChatUserId) {
-              const senderUserId = newMsg.sender_id;
-              
-              // Update the contact with the new message and increment unread
-              setContacts((prevContacts) =>
-                prevContacts.map((contact) => {
-                  if (contact.id === senderUserId) {
-                    const created = newMsg.created_at ? new Date(newMsg.created_at) : new Date();
-                    return {
-                      ...contact,
-                      lastMessage: newMsg.transcription || newMsg.content || '',
-                      lastMessageTime: created.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-                      unreadCount: (contact.unreadCount || 0) + 1,
-                    };
-                  }
-                  return contact;
-                })
-              );
-            }
+            // Only handle messages received by the current user (not sent)
+            if (newMsg.receiver_id !== activeChatUserId) return;
+
+            const senderUserId = newMsg.sender_id;
+            const created = newMsg.created_at ? new Date(newMsg.created_at) : new Date();
+            const msgText = newMsg.transcription || newMsg.content || '';
+            const msgTime = created.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+            setContacts((prevContacts) => {
+              const existing = prevContacts.find(c => c.id === senderUserId);
+
+              if (existing) {
+                // Update existing contact's last message + unread count
+                return prevContacts.map((contact) => {
+                  if (contact.id !== senderUserId) return contact;
+                  return {
+                    ...contact,
+                    lastMessage: msgText,
+                    lastMessageTime: msgTime,
+                    unreadCount: (contact.unreadCount || 0) + 1,
+                  };
+                });
+              }
+
+              // Sender is not yet in the list — fetch their details and add them
+              supabase
+                .from('users')
+                .select('id, email, full_name, phone_number, role, profile_picture_url, status')
+                .eq('id', senderUserId)
+                .single()
+                .then(({ data: userData, error }) => {
+                  if (error || !userData) return;
+                  const newContact: Contact = {
+                    id: userData.id,
+                    name: userData.full_name || 'Unknown',
+                    role: userData.role || 'Employee',
+                    initials: getInitials(userData.full_name || 'Unknown'),
+                    status: userData.status === 'online' ? 'online' : userData.status === 'busy' ? 'busy' : 'offline',
+                    avatar_color: getAvatarColor(userData.id),
+                    email: userData.email,
+                    phone_number: userData.phone_number,
+                    lastMessage: msgText,
+                    lastMessageTime: msgTime,
+                    unreadCount: 1,
+                  };
+                  setContacts(prev => {
+                    // Guard against double-add if the contact was added between the check and now
+                    if (prev.some(c => c.id === senderUserId)) return prev;
+                    return [newContact, ...prev];
+                  });
+                });
+
+              return prevContacts; // unchanged until async fetch completes
+            });
           }
         )
         .subscribe();
@@ -410,30 +447,67 @@ export default function Contacts({ onContactSelected, currentUserId }: ContactsP
     setFilteredContacts(filtered);
   }, [contacts, searchText, filterType]);
 
+  const loadAllModalUsers = async () => {
+    try {
+      setSearching(true);
+      const res = await searchUsers('');
+      const users = (res || []).filter((u: any) => u.id !== activeChatUserId);
+      setAllModalUsers(users);
+      setSearchResults(users);
+    } catch (err: any) {
+      Alert.alert('Error', err?.message || String(err));
+    } finally {
+      setSearching(false);
+    }
+  };
+
   const handleAddContact = () => {
+    // Reset animation values before showing
+    backdropAnim.setValue(0);
+    sheetAnim.setValue(600);
     setAddModalVisible(true);
+    Animated.parallel([
+      Animated.timing(backdropAnim, { toValue: 1, duration: 320, easing: Easing.out(Easing.ease), useNativeDriver: false }),
+      Animated.spring(sheetAnim, { toValue: 0, tension: 60, friction: 12, useNativeDriver: true }),
+    ]).start();
+    loadAllModalUsers();
   };
 
   const closeAddModal = () => {
     setAddModalVisible(false);
     setModalQuery('');
     setSearchResults([]);
+    setAllModalUsers([]);
     setSearching(false);
     setAddingId(null);
   };
 
-  const performSearch = async () => {
-    const q = (modalQuery || '').trim();
-    if (!q) return;
-    try {
-      setSearching(true);
-      const res = await searchUsers(q);
-      setSearchResults(res || []);
-    } catch (err: any) {
-      Alert.alert('Search error', err?.message || String(err));
-    } finally {
-      setSearching(false);
+  const handleCloseModal = () => {
+    Animated.parallel([
+      Animated.timing(backdropAnim, { toValue: 0, duration: 240, easing: Easing.in(Easing.ease), useNativeDriver: false }),
+      Animated.timing(sheetAnim, { toValue: 600, duration: 260, easing: Easing.in(Easing.ease), useNativeDriver: true }),
+    ]).start(() => closeAddModal());
+  };
+
+  // Client-side filter as user types
+  useEffect(() => {
+    if (!addModalVisible) return;
+    const q = modalQuery.trim().toLowerCase();
+    if (!q) {
+      setSearchResults(allModalUsers);
+      return;
     }
+    setSearchResults(
+      allModalUsers.filter(u =>
+        (u.full_name || '').toLowerCase().includes(q) ||
+        (u.email || '').toLowerCase().includes(q) ||
+        (u.phone_number || '').includes(q)
+      )
+    );
+  }, [modalQuery, allModalUsers]);
+
+  const performSearch = () => {
+    // Filtering is handled client-side via useEffect above
   };
 
   const handleAddUser = async (userId: string) => {
@@ -545,82 +619,161 @@ export default function Contacts({ onContactSelected, currentUserId }: ContactsP
         </View>
       </View>
 
-      {/* Contact List */}
       {/* Add Contact Modal */}
-      <Modal visible={addModalVisible} animationType="slide" transparent={true} onRequestClose={closeAddModal}>
+      <Modal visible={addModalVisible} animationType="none" transparent={true} onRequestClose={handleCloseModal}>
         <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1 }}>
-          <View className="flex-1 justify-end bg-black/30">
-            <View className="bg-white rounded-t-3xl p-6 h-3/5">
-              <View className="flex-row items-center justify-between mb-4">
-                <Text className="text-lg font-bold">Add Contact</Text>
-                <TouchableOpacity onPress={closeAddModal}>
-                  <Ionicons name="close" size={22} color="#374151" />
-                </TouchableOpacity>
-              </View>
+          <Animated.View style={{ flex: 1, justifyContent: 'flex-end', backgroundColor: backdropAnim.interpolate({ inputRange: [0, 1], outputRange: ['rgba(0,0,0,0)', 'rgba(0,0,0,0.4)'] }) }}>
+            {/* Backdrop tap to close */}
+            <TouchableOpacity style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }} activeOpacity={1} onPress={handleCloseModal} />
 
-              <View className="flex-row items-center bg-gray-100 rounded-xl px-3 py-2 mb-4">
-                <Ionicons name="search" size={18} color="#6b7280" />
-                <TextInput
-                  placeholder="Search by email or phone"
-                  value={modalQuery}
-                  onChangeText={setModalQuery}
-                  onSubmitEditing={performSearch}
-                  className="ml-3 flex-1 text-base text-gray-900"
-                  placeholderTextColor="#9ca3af"
-                />
-                <TouchableOpacity onPress={performSearch} className="ml-2">
-                  <Ionicons name="arrow-forward-circle" size={22} color="#10b981" />
-                </TouchableOpacity>
-              </View>
+            <Animated.View style={{ backgroundColor: 'white', borderTopLeftRadius: 24, borderTopRightRadius: 24, maxHeight: '85%', transform: [{ translateY: sheetAnim }] }}>
+              {/* Drag handle */}
+              <View style={{ alignSelf: 'center', width: 36, height: 4, borderRadius: 2, backgroundColor: '#e5e7eb', marginTop: 12, marginBottom: 4 }} />
 
-              {searching ? (
-                <View className="items-center justify-center py-6">
-                  <ActivityIndicator size="small" color="#10b981" />
-                  <Text className="text-gray-500 mt-2">Searching...</Text>
+              {/* Header */}
+              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 20, paddingTop: 12, paddingBottom: 16 }}>
+                <View>
+                  <Text style={{ fontSize: 18, fontWeight: '700', color: '#111827' }}>Add Contact</Text>
+                  <Text style={{ fontSize: 12, color: '#9ca3af', marginTop: 2 }}>Search for an employee or admin</Text>
                 </View>
-              ) : (
-                <FlatList
-                  data={searchResults}
-                  keyExtractor={(item) => item.id}
-                  renderItem={({ item }) => {
-                    const now = new Date();
-                    const onlineThreshold = 5 * 60 * 1000;
-                    let status: 'online' | 'offline' | 'busy' = 'offline';
-                    if (item.last_seen) {
-                      const lastSeen = new Date(item.last_seen);
-                      if (now.getTime() - lastSeen.getTime() < onlineThreshold) status = 'online';
-                    } else if (item.status === 'online') {
-                      status = 'online';
-                    }
-                    const already = contacts.some(c => c.id === item.id);
-                    return (
-                      <View className="flex-row items-center justify-between py-3 border-b border-gray-100">
-                        <View className="flex-row items-center">
-                          <View className="h-12 w-12 rounded-full items-center justify-center mr-3" style={{ backgroundColor: getAvatarColor(item.id) }}>
-                            <Text className="text-white font-bold">{getInitials(item.full_name || item.email || 'U')}</Text>
+                <TouchableOpacity onPress={handleCloseModal} activeOpacity={0.7} style={{ backgroundColor: '#f3f4f6', borderRadius: 20, padding: 8 }}>
+                  <Ionicons name="close" size={18} color="#6b7280" />
+                </TouchableOpacity>
+              </View>
+
+              {/* Divider */}
+              <View style={{ height: 1, backgroundColor: '#f3f4f6', marginHorizontal: 20 }} />
+
+              {/* Search bar */}
+              <View style={{ paddingHorizontal: 20, paddingTop: 16, paddingBottom: 12 }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: '#f9fafb', borderRadius: 14, borderWidth: 1.5, borderColor: modalQuery.trim() ? '#10b981' : '#e5e7eb', paddingHorizontal: 14, paddingVertical: 10 }}>
+                  <Ionicons name="search" size={16} color={modalQuery.trim() ? '#10b981' : '#9ca3af'} />
+                  <TextInput
+                    placeholder="Filter by name, email or phone…"
+                    value={modalQuery}
+                    onChangeText={(text) => setModalQuery(text)}
+                    returnKeyType="search"
+                    style={{ flex: 1, marginLeft: 10, color: '#111827', fontSize: 14 }}
+                    placeholderTextColor="#9ca3af"
+                    autoCapitalize="none"
+                    autoCorrect={false}
+                  />
+                  {modalQuery.length > 0 && (
+                    <TouchableOpacity onPress={() => setModalQuery('')}>
+                      <Ionicons name="close-circle" size={17} color="#d1d5db" />
+                    </TouchableOpacity>
+                  )}
+                </View>
+              </View>
+
+              {/* Body */}
+              <View style={{ minHeight: 220, paddingBottom: 28 }}>
+                {searching ? (
+                  <View style={{ alignItems: 'center', paddingVertical: 48 }}>
+                    <ActivityIndicator size="large" color="#10b981" />
+                    <Text style={{ color: '#9ca3af', marginTop: 12, fontSize: 13 }}>Searching…</Text>
+                  </View>
+
+                ) : searchResults.length > 0 ? (
+                  <>
+                    <Text style={{ color: '#9ca3af', fontSize: 11, fontWeight: '600', paddingHorizontal: 20, paddingBottom: 8, textTransform: 'uppercase', letterSpacing: 0.5 }}>
+                        {modalQuery.trim() ? `${searchResults.length} match${searchResults.length !== 1 ? 'es' : ''}` : `${searchResults.length} user${searchResults.length !== 1 ? 's' : ''}`}
+                    </Text>
+                    <FlatList
+                      data={searchResults}
+                      keyExtractor={(item) => item.id}
+                      scrollEnabled={true}
+                      style={{ maxHeight: 360 }}
+                      contentContainerStyle={{ paddingHorizontal: 20 }}
+                      renderItem={({ item }) => {
+                        let status: 'online' | 'offline' | 'busy' = 'offline';
+                        if (item.status === 'online') status = 'online';
+                        else if (item.status === 'busy') status = 'busy';
+
+                        const already = contacts.some(c => c.id === item.id);
+                        const isCurrentUser = item.id === activeChatUserId;
+                        const isAdmin = (item.role || '').toLowerCase() === 'admin';
+                        const avatarColor = getAvatarColor(item.id);
+                        const initials = getInitials(item.full_name || item.email || 'U');
+
+                        return (
+                          <View style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: '#f3f4f6' }}>
+                            {/* Avatar */}
+                            <View style={{ position: 'relative', marginRight: 12 }}>
+                              <View style={{ width: 44, height: 44, borderRadius: 22, backgroundColor: avatarColor, alignItems: 'center', justifyContent: 'center' }}>
+                                <Text style={{ color: 'white', fontWeight: '700', fontSize: 15 }}>{initials}</Text>
+                              </View>
+                              <View style={{
+                                position: 'absolute', bottom: 0, right: 0,
+                                width: 12, height: 12, borderRadius: 6, borderWidth: 2, borderColor: 'white',
+                                backgroundColor: status === 'online' ? '#10b981' : status === 'busy' ? '#f59e0b' : '#d1d5db',
+                              }} />
+                            </View>
+
+                            {/* Info */}
+                            <View style={{ flex: 1, minWidth: 0 }}>
+                              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 2 }}>
+                                <Text style={{ fontWeight: '600', color: '#111827', fontSize: 14 }} numberOfLines={1}>
+                                  {item.full_name || item.email}
+                                </Text>
+                                <View style={{ backgroundColor: isAdmin ? '#ede9fe' : '#dcfce7', borderRadius: 6, paddingHorizontal: 6, paddingVertical: 1 }}>
+                                  <Text style={{ color: isAdmin ? '#7c3aed' : '#16a34a', fontSize: 10, fontWeight: '700' }}>
+                                    {isAdmin ? 'Admin' : 'Employee'}
+                                  </Text>
+                                </View>
+                                {isCurrentUser && (
+                                  <View style={{ backgroundColor: '#dbeafe', borderRadius: 6, paddingHorizontal: 6, paddingVertical: 1 }}>
+                                    <Text style={{ color: '#2563eb', fontSize: 10, fontWeight: '700' }}>You</Text>
+                                  </View>
+                                )}
+                              </View>
+                              <Text style={{ color: '#9ca3af', fontSize: 12 }} numberOfLines={1}>{item.email}</Text>
+                            </View>
+
+                            {/* Action button */}
+                            {isCurrentUser ? null : already ? (
+                              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginLeft: 8 }}>
+                                <Ionicons name="checkmark-circle" size={16} color="#10b981" />
+                                <Text style={{ color: '#10b981', fontSize: 12, fontWeight: '600' }}>Added</Text>
+                              </View>
+                            ) : (
+                              <TouchableOpacity
+                                disabled={addingId === item.id}
+                                onPress={() => handleAddUser(item.id)}
+                                activeOpacity={0.75}
+                                style={{ marginLeft: 8, backgroundColor: '#10b981', borderRadius: 10, paddingHorizontal: 14, paddingVertical: 8 }}
+                              >
+                                {addingId === item.id
+                                  ? <ActivityIndicator size="small" color="white" />
+                                  : <Text style={{ color: 'white', fontSize: 12, fontWeight: '700' }}>Add</Text>
+                                }
+                              </TouchableOpacity>
+                            )}
                           </View>
-                          <View>
-                            <Text className="font-bold text-gray-900">{item.full_name || item.email}</Text>
-                            <Text className="text-xs text-gray-500">{item.email}{item.phone_number ? ` • ${item.phone_number}` : ''}</Text>
-                          </View>
-                        </View>
-                        <View className="flex-row items-center gap-2">
-                          <View className={`h-3 w-3 rounded-full ${status === 'online' ? 'bg-green-500' : 'bg-gray-300'}`} />
-                          <TouchableOpacity
-                            disabled={already || addingId === item.id}
-                            onPress={() => handleAddUser(item.id)}
-                            className={`px-3 py-1 rounded-full ${already ? 'bg-gray-200' : 'bg-green-500'}`}
-                          >
-                            <Text className={`${already ? 'text-gray-500' : 'text-white'} text-sm font-semibold`}>{already ? 'Added' : addingId === item.id ? 'Adding...' : 'Add'}</Text>
-                          </TouchableOpacity>
-                        </View>
-                      </View>
-                    );
-                  }}
-                />
-              )}
-            </View>
-          </View>
+                        );
+                      }}
+                    />
+                  </>
+
+                ) : modalQuery.trim().length > 0 && !searching ? (
+                  <View style={{ alignItems: 'center', paddingVertical: 44 }}>
+                    <Ionicons name="search-outline" size={36} color="#d1d5db" />
+                    <Text style={{ color: '#374151', fontWeight: '600', fontSize: 15, marginTop: 12 }}>No matches</Text>
+                    <Text style={{ color: '#9ca3af', fontSize: 13, marginTop: 4 }}>Try a different name, email, or phone</Text>
+                  </View>
+
+                ) : (
+                  <View style={{ alignItems: 'center', paddingVertical: 40 }}>
+                    <View style={{ backgroundColor: '#f0fdf4', borderRadius: 16, padding: 16, marginBottom: 12 }}>
+                      <Ionicons name="person-add-outline" size={30} color="#10b981" />
+                    </View>
+                    <Text style={{ color: '#374151', fontWeight: '600', fontSize: 15 }}>Find someone to add</Text>
+                    <Text style={{ color: '#9ca3af', fontSize: 13, marginTop: 4 }}>Loading users…</Text>
+                  </View>
+                )}
+              </View>
+            </Animated.View>
+          </Animated.View>
         </KeyboardAvoidingView>
       </Modal>
       <ScrollView

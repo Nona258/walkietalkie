@@ -12,19 +12,20 @@ export async function getSites() {
 	return data;
 }
 
-// Search users by email or phone (partial match)
-export async function searchUsers(query: string) {
+// Search users by name, email, or phone. If query is empty, returns all users.
+export async function searchUsers(query?: string) {
 	const q = (query || '').trim();
-	if (!q) return [];
-	// Use '*' wildcard in Supabase JS .or() filter to avoid manual percent-encoding issues.
-	// sanitize query to avoid injecting reserved characters
-	const safe = q.replace(/\*/g, '').replace(/[()]/g, '');
-	const filter = `email.ilike.*${safe}*,phone_number.ilike.*${safe}*`;
-	const { data, error } = await supabase
+	// Sanitize query to avoid injecting reserved Supabase filter characters
+	const safe = q.replace(/[*()]/g, '');
+	let req = supabase
 		.from('users')
-		.select('id,email,full_name,phone_number,profile_picture_url,status')
-		.or(filter)
-		.limit(20);
+		.select('id,email,full_name,phone_number,profile_picture_url,status,role')
+		.order('full_name')
+		.limit(100);
+	if (safe) {
+		req = req.or(`email.ilike.*${safe}*,phone_number.ilike.*${safe}*,full_name.ilike.*${safe}*`);
+	}
+	const { data, error } = await req;
 	if (error) {
 		console.error('searchUsers error:', error);
 		throw error;
@@ -44,21 +45,61 @@ export async function getEmployees() {
 }
 
 // Add a contact row for the given user id.
-// This creates a contact relationship between the current user and the contact user.
+// Uses upsert so re-adding an existing contact never throws.
 export async function addContact(contactUserId: string) {
 	if (!contactUserId) throw new Error('contactUserId required');
 	
-	// Get the current authenticated user
 	const { data: { user }, error: authError } = await supabase.auth.getUser();
 	if (authError || !user) throw new Error('Unable to get current user');
 	
 	const { data, error } = await supabase
 		.from('contacts')
-		.insert([{ user_id: user.id, contact_id: contactUserId }])
+		.upsert(
+			[{ user_id: user.id, contact_id: contactUserId }],
+			{ onConflict: 'user_id,contact_id', ignoreDuplicates: true }
+		)
 		.select()
-		.single();
+		.maybeSingle();
 	if (error) throw error;
 	return data;
+}
+
+// Find or create a 1-to-1 conversation between two users.
+// IDs are stored in sorted order to guarantee uniqueness regardless of who initiates.
+export async function getOrCreateConversation(
+	meId: string,
+	contactUserId: string
+): Promise<string | null> {
+	if (!meId || !contactUserId || meId === contactUserId) return null;
+	try {
+		// Fetch all conversations (client-side filter avoids 406 errors from .or() on some setups)
+		const { data: all, error: fetchError } = await supabase
+			.from('conversations')
+			.select('id, user_one, user_two');
+		if (fetchError) throw fetchError;
+
+		const existing = (all || []).find(
+			(c: any) =>
+				(c.user_one === meId && c.user_two === contactUserId) ||
+				(c.user_one === contactUserId && c.user_two === meId)
+		);
+		if (existing) return existing.id as string;
+
+		// Sort so both sides always produce the same row order
+		const userOne = meId < contactUserId ? meId : contactUserId;
+		const userTwo = meId < contactUserId ? contactUserId : meId;
+
+		const { data: created, error: createError } = await supabase
+			.from('conversations')
+			.insert([{ user_one: userOne, user_two: userTwo }])
+			.select('id')
+			.single();
+		if (createError) throw createError;
+		return (created?.id as string) ?? null;
+	} catch (e) {
+		console.error('getOrCreateConversation error:', e);
+		return null;
+	}
 }
 
 // Get current authenticated user

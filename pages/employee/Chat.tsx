@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { View, Text, TouchableOpacity, ScrollView, TextInput, Alert, ActivityIndicator } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import supabase from '../../utils/supabase';
+import supabase, { getOrCreateConversation } from '../../utils/supabase';
 
 interface Contact {
   id: string;
@@ -158,57 +158,38 @@ export default function Chat({ selectedContact, onBackPress, currentUserId }: Ch
   const fetchConversationMessages = async () => {
     try {
       setLoadingMessages(true);
-      
-      // First fetch all conversations (without .or() filter to avoid 406 errors)
-      const { data: allConversations } = await supabase
-        .from('conversations')
-        .select('id,user_one,user_two');
-      
-      // Filter for conversation between these two users
-      let conversationData = null;
-      if (allConversations && allConversations.length > 0) {
-        conversationData = allConversations.find((conv: any) => 
-          (conv.user_one === activeChatUserId && conv.user_two === selectedContact.id) ||
-          (conv.user_one === selectedContact.id && conv.user_two === activeChatUserId)
-        );
+
+      // Ensure we have the current user id before proceeding
+      let meId = activeChatUserId;
+      if (!meId) {
+        const { data } = await supabase.auth.getUser();
+        meId = data?.user?.id ?? null;
+        if (meId) setActiveChatUserId(meId);
       }
 
-      if (!conversationData?.id) {
-        // No conversation found, return empty messages
+      if (!meId) {
         setMessages([]);
-        setConversationId(null);
-        
-        // Try to create a new conversation
-        try {
-          const { data: newConv } = await supabase
-            .from('conversations')
-            .insert([{
-              user_one: activeChatUserId,
-              user_two: selectedContact.id
-            }])
-            .select('id')
-            .single();
-          
-          if (newConv?.id) {
-            setConversationId(newConv.id);
-            setupRealtimeSubscription(newConv.id);
-          }
-        } catch (e) {
-          console.error('Error creating conversation:', e);
-        }
-        
         setLoadingMessages(false);
         return;
       }
 
-      setConversationId(conversationData.id);
-      setupRealtimeSubscription(conversationData.id);
+      // Get or create the conversation (uses sorted UUIDs to prevent duplicates)
+      const convId = await getOrCreateConversation(meId, selectedContact.id);
+      if (!convId) {
+        setMessages([]);
+        setConversationId(null);
+        setLoadingMessages(false);
+        return;
+      }
 
-      // Now fetch messages for this conversation
+      setConversationId(convId);
+      setupRealtimeSubscription(convId);
+
+      // Fetch messages for this conversation
       const { data: messagesData, error } = await supabase
         .from('messages')
         .select('*')
-        .eq('conversation_id', conversationData.id)
+        .eq('conversation_id', convId)
         .order('created_at', { ascending: true });
 
       if (error) {
@@ -219,7 +200,7 @@ export default function Chat({ selectedContact, onBackPress, currentUserId }: Ch
       }
 
       const formattedMessages: Message[] = (messagesData || []).map((msg: any) => {
-        const isOwn = msg.sender_id === activeChatUserId;
+        const isOwn = msg.sender_id === meId;
         const created = msg.created_at ? new Date(msg.created_at) : new Date();
         const isVoice = !!(msg.file_url && msg.file_url.length > 0);
         const durationMs = typeof msg.duration_ms === 'number' ? msg.duration_ms : null;
@@ -239,9 +220,21 @@ export default function Chat({ selectedContact, onBackPress, currentUserId }: Ch
           duration: durationSec !== null ? formatDuration(durationSec) : undefined,
         };
       });
-      
+
       setMessages(formattedMessages);
-      // Scroll to bottom after messages load
+
+      // Mark all unread messages from the other person as read in the DB
+      try {
+        await supabase
+          .from('messages')
+          .update({ is_read: true })
+          .eq('conversation_id', convId)
+          .neq('sender_id', meId)
+          .eq('is_read', false);
+      } catch (markErr) {
+        console.warn('Failed to mark messages as read:', markErr);
+      }
+
       setTimeout(() => scrollViewRef.current?.scrollToEnd({ animated: false }), 100);
     } catch (e) {
       console.error('Error fetching conversation messages:', e);
@@ -373,24 +366,33 @@ export default function Chat({ selectedContact, onBackPress, currentUserId }: Ch
     });
   };
 
-  // Mark unread messages as read when viewed
+  // Mark unread messages as read when viewed — update both local state and DB
   useEffect(() => {
-    // Only mark as read if there are unread messages from the contact
-    const hasUnread = messages.some(msg => !msg.isOwn && msg.isRead === false);
-    if (hasUnread) {
-      // Mark all unread messages as read after a short delay (to simulate reading)
-      const timer = setTimeout(() => {
-        setMessages(msgs =>
-          msgs.map(msg =>
-            !msg.isOwn && msg.isRead === false
-              ? { ...msg, isRead: true }
-              : msg
-          )
-        );
-      }, 500);
-      return () => clearTimeout(timer);
-    }
-  }, [messages]);
+    const unreadIds = messages
+      .filter(msg => !msg.isOwn && msg.isRead === false)
+      .map(msg => msg.id);
+    if (unreadIds.length === 0 || !conversationId || !activeChatUserId) return;
+
+    const timer = setTimeout(() => {
+      // Local update
+      setMessages(msgs =>
+        msgs.map(msg =>
+          !msg.isOwn && msg.isRead === false ? { ...msg, isRead: true } : msg
+        )
+      );
+      // DB update
+      supabase
+        .from('messages')
+        .update({ is_read: true })
+        .eq('conversation_id', conversationId)
+        .neq('sender_id', activeChatUserId)
+        .eq('is_read', false)
+        .then(({ error }) => {
+          if (error) console.warn('Failed to mark messages as read in DB:', error);
+        });
+    }, 500);
+    return () => clearTimeout(timer);
+  }, [messages, conversationId, activeChatUserId]);
 
   // ── Voice recording ──────────────────────────────────────────────────────
   const startRecording = async () => {
