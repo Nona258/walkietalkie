@@ -151,18 +151,21 @@ export default function AdminDashboard({ onLogout, onNavigate }: AdminDashboardP
               autoplayAudioRef.current = null;
             };
 
-            // Use Web Audio API: decodeAudioData decodes the full buffer up-front so
-            // AudioBufferSourceNode.onended fires only after every PCM sample plays.
-            // HTMLAudioElement with MediaRecorder WebM blobs fires onended prematurely
-            // because the encoder produces a single cluster with no duration metadata.
-            let playbackStarted = false;
+            // Use Web Audio API: decodeAudioData fully decodes the entire WebM/opus
+            // buffer into raw PCM before playback begins. AudioBufferSourceNode.onended
+            // fires only after every last PCM sample is sent to hardware — it is NOT
+            // affected by missing WebM duration metadata the way HTMLAudioElement is.
+            // NOTE: do NOT await actx.resume(). If the context is already running it is
+            // a no-op; if suspended it will unlock asynchronously and source.start(0)
+            // will begin playing the moment the context resumes.
             try {
               const res = await fetch(audioUrl);
               const arrayBuffer = await res.arrayBuffer();
               const AudioCtxCtor =
                 (window as any).AudioContext || (window as any).webkitAudioContext;
               const actx: AudioContext = new AudioCtxCtor();
-              if (actx.state === 'suspended') await actx.resume();
+              actx.resume().catch(() => {}); // unlock without blocking
+
               const decoded = await actx.decodeAudioData(arrayBuffer);
               const source = actx.createBufferSource();
               source.buffer = decoded;
@@ -177,32 +180,35 @@ export default function AdminDashboard({ onLogout, onNavigate }: AdminDashboardP
                 dismissBanner();
               };
 
-              // Fallback in case onended never fires (should not happen with Web Audio)
+              // Failsafe: if onended somehow never fires, force-stop after actual
+              // decoded duration + 3 s.
               const actualMs = decoded.duration * 1000;
               fallbackTimer = setTimeout(() => {
                 fallbackTimer = null;
                 try { source.stop(0); } catch (_) {}
                 actx.close().catch(() => {});
                 dismissBanner();
-              }, actualMs + 2000);
+              }, actualMs + 3000);
 
               source.start(0);
-              playbackStarted = true;
             } catch (e) {
-              console.warn('Web Audio playback failed, falling back to HTML Audio:', e);
-            }
-
-            if (!playbackStarted) {
-              // HTML Audio fallback — no blob URL revoke to avoid cutting off audio
+              // HTML Audio fallback — plays the raw data URI; no blob URL to revoke.
+              console.warn('Web Audio unavailable, using HTML Audio:', e);
               const audio = new Audio(audioUrl);
               autoplayAudioRef.current = audio;
+              audio.preload = 'auto';
               audio.onended = dismissBanner;
-              const fallbackMs = durationMs ? durationMs + 5000 : 30000;
+              const fallbackMs = durationMs ? durationMs + 8000 : 30000;
               fallbackTimer = setTimeout(() => {
                 fallbackTimer = null;
                 try { audio.pause(); } catch (_) {}
                 dismissBanner();
               }, fallbackMs);
+              await new Promise<void>((resolve) => {
+                if (audio.readyState >= 4) { resolve(); return; }
+                audio.oncanplaythrough = () => resolve();
+                audio.onerror = () => resolve();
+              });
               audio.play().catch(() => dismissBanner());
             }
           }
