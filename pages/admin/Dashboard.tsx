@@ -68,6 +68,8 @@ export default function AdminDashboard({ onLogout, onNavigate }: AdminDashboardP
   const [incomingFrom, setIncomingFrom] = useState('');
   const autoplayAudioRef = useRef<HTMLAudioElement | null>(null);
   const adminUserIdRef = useRef<string | null>(null);
+  const audioContextRef = useRef<AudioContext | null>(null);
+  const audioUnlockedRef = useRef<boolean>(false);
 
   const windowWidth = Dimensions.get('window').width;
   const isWebView = windowWidth > 900;
@@ -82,6 +84,26 @@ export default function AdminDashboard({ onLogout, onNavigate }: AdminDashboardP
 
   useEffect(() => {
     fetchData();
+  }, []);
+
+  // Unlock browser AudioContext on first user interaction so autoplay works
+  useEffect(() => {
+    const unlock = async () => {
+      if (audioUnlockedRef.current) return;
+      audioUnlockedRef.current = true;
+      try {
+        const AudioCtx = (window.AudioContext || (window as any).webkitAudioContext) as typeof AudioContext;
+        const ctx = new AudioCtx();
+        await ctx.resume();
+        audioContextRef.current = ctx;
+      } catch (_) {}
+    };
+    document.addEventListener('click', unlock, { once: true });
+    document.addEventListener('keydown', unlock, { once: true });
+    return () => {
+      document.removeEventListener('click', unlock);
+      document.removeEventListener('keydown', unlock);
+    };
   }, []);
 
   // Fetch admin user id and subscribe to incoming walkie-talkie messages
@@ -155,16 +177,34 @@ export default function AdminDashboard({ onLogout, onNavigate }: AdminDashboardP
             // buffer into raw PCM before playback begins. AudioBufferSourceNode.onended
             // fires only after every last PCM sample is sent to hardware — it is NOT
             // affected by missing WebM duration metadata the way HTMLAudioElement is.
-            // NOTE: do NOT await actx.resume(). If the context is already running it is
-            // a no-op; if suspended it will unlock asynchronously and source.start(0)
-            // will begin playing the moment the context resumes.
+            // Reuse the persistent AudioContext created during the user-gesture unlock
+            // effect. A context created inside an async callback starts in 'suspended'
+            // state and browsers may refuse to resume it, cutting off playback.
             try {
-              const res = await fetch(audioUrl);
-              const arrayBuffer = await res.arrayBuffer();
-              const AudioCtxCtor =
-                (window as any).AudioContext || (window as any).webkitAudioContext;
-              const actx: AudioContext = new AudioCtxCtor();
-              actx.resume().catch(() => {}); // unlock without blocking
+              // Decode base64 data URL directly to ArrayBuffer — avoids browser
+              // fetch() size limits (~2 MB) that truncate large recordings.
+              const base64 = audioUrl.includes(',') ? audioUrl.split(',')[1] : audioUrl;
+              const binary = atob(base64);
+              const bytes = new Uint8Array(binary.length);
+              for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+              const arrayBuffer = bytes.buffer.slice(0) as ArrayBuffer;
+
+              // Prefer the pre-unlocked persistent context; fall back to a fresh one.
+              let actx = audioContextRef.current;
+              let ownsContext = false;
+              if (!actx || actx.state === 'closed') {
+                const AudioCtxCtor =
+                  (window as any).AudioContext || (window as any).webkitAudioContext;
+                actx = new AudioCtxCtor();
+                ownsContext = true;
+              }
+              if (actx.state === 'suspended') {
+                try { await actx.resume(); } catch (_) {}
+              }
+
+              // If the context still isn't running after resume() (browser autoplay
+              // policy can block it), fall through to the HTMLAudioElement fallback.
+              if (actx.state !== 'running') throw new Error('AudioContext not running');
 
               const decoded = await actx.decodeAudioData(arrayBuffer);
               const source = actx.createBufferSource();
@@ -176,7 +216,7 @@ export default function AdminDashboard({ onLogout, onNavigate }: AdminDashboardP
               } as any;
 
               source.onended = () => {
-                actx.close().catch(() => {});
+                if (ownsContext) actx!.close().catch(() => {});
                 dismissBanner();
               };
 
@@ -186,11 +226,15 @@ export default function AdminDashboard({ onLogout, onNavigate }: AdminDashboardP
               fallbackTimer = setTimeout(() => {
                 fallbackTimer = null;
                 try { source.stop(0); } catch (_) {}
-                actx.close().catch(() => {});
+                if (ownsContext) actx!.close().catch(() => {});
                 dismissBanner();
               }, actualMs + 3000);
 
-              source.start(0);
+              // Use actx.currentTime (not 0) so Chrome's BufferSourceNode starts
+              // playback from offset 0 in the buffer. Passing 0 when currentTime is
+              // non-zero causes Chrome to skip that many seconds into the audio buffer,
+              // cutting off the beginning of the recording.
+              source.start(actx.currentTime);
             } catch (e) {
               // HTML Audio fallback — plays the raw data URI; no blob URL to revoke.
               console.warn('Web Audio unavailable, using HTML Audio:', e);

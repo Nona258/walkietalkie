@@ -82,7 +82,7 @@ export default function ContactManagement({ onNavigate }: ContactManagementProps
   const [recordingTime, setRecordingTime] = useState(0);
   const [transcript, setTranscript] = useState('');
   const [messagesList, setMessagesList] = useState<Message[]>([]);
-  const [lastMessagesMap, setLastMessagesMap] = useState<Record<string, { text: string; time: string } | null>>({});
+  const [lastMessagesMap, setLastMessagesMap] = useState<Record<string, { text: string; time: string; unreadCount: number } | null>>({});
 	
   // Group Management States (kept from original)
   const [showCreateGroupModal, setShowCreateGroupModal] = useState(false);
@@ -116,6 +116,17 @@ export default function ContactManagement({ onNavigate }: ContactManagementProps
   const mediaRecorderRef = useRef<any>(null);
   const audioChunksRef = useRef<any[]>([]);
   const audioPlayerRef = useRef<HTMLAudioElement | null>(null);
+  const lastAutoPlayedIdRef = useRef<string | null>(null);
+  const audioUnlockedRef = useRef<boolean>(false);
+  const audioContextRef = useRef<AudioContext | null>(null);
+  // Stores the latest autoPlayVoiceMessage so subscription closures always call the current version
+  const autoPlayVoiceRef = useRef<((msgId: string | number, fileUrl?: string | null) => void) | null>(null);
+  const chatScrollRef = useRef<ScrollView>(null);
+  const selectedContactRef = useRef<Contact | null>(null);
+  // Mirrors contacts state so real-time callbacks can look up contacts synchronously
+  const contactsRef = useRef<Contact[]>([]);
+  // Maps conversationId -> contact.id (string) so realtime callbacks find the right contact
+  const convToContactIdRef = useRef<Map<string, string>>(new Map());
   const [currentlyPlayingId, setCurrentlyPlayingId] = useState<string | null>(null);
   // Ticks every 30 s so delivery labels like "Delivered 2 minutes ago" stay up-to-date
   const [now, setNow] = useState(new Date());
@@ -245,12 +256,9 @@ export default function ContactManagement({ onNavigate }: ContactManagementProps
     };
   };
 
-  const fetchMessagesForConversation = async (conversationId: string | null) => {
+  const fetchMessagesForConversation = async (conversationId: string | null): Promise<Message[]> => {
     try {
-      if (!conversationId) {
-        setMessagesList([]);
-        return;
-      }
+      if (!conversationId) return [];
 
       const { data, error } = await supabase
         .from('messages')
@@ -260,12 +268,11 @@ export default function ContactManagement({ onNavigate }: ContactManagementProps
 
       if (error) {
         console.error('Failed to fetch messages:', error);
-        setMessagesList([]);
-        return;
+        return [];
       }
 
-      const mapped = (data || []).map(mapRowToMessage);
-      setMessagesList(mapped as Message[]);
+      const mapped = (data || []).map(mapRowToMessage) as Message[];
+
       // Mark all unread messages in this conversation that were NOT sent by admin as read
       // Use auth.getUser() directly to avoid stale closure on currentUserId state
       try {
@@ -277,23 +284,22 @@ export default function ContactManagement({ onNavigate }: ContactManagementProps
             .update({ is_read: true })
             .eq('conversation_id', conversationId)
             .neq('sender_id', meId)
-            .eq('is_read', false);
+            .not('is_read', 'is', true);
         }
       } catch (markErr) {
         console.warn('Failed to mark messages as read:', markErr);
       }
+
+      return mapped;
     } catch (e) {
       console.error('Error fetching messages:', e);
-      setMessagesList([]);
+      return [];
     }
   };
 
-  const fetchGroupMessages = async (groupId: string | null) => {
+  const fetchGroupMessages = async (groupId: string | null): Promise<Message[]> => {
     try {
-      if (!groupId) {
-        setMessagesList([]);
-        return;
-      }
+      if (!groupId) return [];
 
       const { data, error } = await supabase
         .from('messages')
@@ -303,15 +309,13 @@ export default function ContactManagement({ onNavigate }: ContactManagementProps
 
       if (error) {
         console.error('Failed to fetch group messages:', error);
-        setMessagesList([]);
-        return;
+        return [];
       }
 
-      const mapped = (data || []).map(mapGroupRowToMessage);
-      setMessagesList(mapped as Message[]);
+      return (data || []).map(mapGroupRowToMessage) as Message[];
     } catch (e) {
       console.error('Error fetching group messages:', e);
-      setMessagesList([]);
+      return [];
     }
   };
 
@@ -434,13 +438,19 @@ export default function ContactManagement({ onNavigate }: ContactManagementProps
         convMap.get(otherId)!.push(conv.id);
       });
 
-      const map: Record<string, { text: string; time: string } | null> = {};
+      // Build reverse map: conversationId -> contact.id for realtime lookups
+      const reverseMap = new Map<string, string>();
+
+      const map: Record<string, { text: string; time: string; unreadCount: number } | null> = {};
 
       await Promise.all(
         directContacts.map(async contact => {
           if (!contact.userId) { map[String(contact.id)] = null; return; }
           const convIds = convMap.get(contact.userId);
           if (!convIds || convIds.length === 0) { map[String(contact.id)] = null; return; }
+
+          // Register all conversation IDs for this contact in the reverse map
+          convIds.forEach(cid => reverseMap.set(cid, String(contact.id)));
 
           // Fetch latest message across all conversations for this contact
           const results = await Promise.all(
@@ -463,7 +473,24 @@ export default function ContactManagement({ onNavigate }: ContactManagementProps
             const isVoice = typeof last.file_url === 'string' && last.file_url.length > 0;
             const text = isVoice ? '🎤 Voice message' : (last.transcription || 'Message');
             const time = new Date(last.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-            map[String(contact.id)] = { text, time };
+
+            // Count unread messages from the other user across all their conversations
+            let unreadCount = 0;
+            try {
+              const unreadResults = await Promise.all(
+                convIds.map(cid =>
+                  supabase
+                    .from('messages')
+                    .select('id')
+                    .eq('conversation_id', cid)
+                    .not('is_read', 'is', true)
+                    .neq('sender_id', meId!)
+                )
+              );
+              unreadCount = unreadResults.reduce((sum, r) => sum + (r.data ? r.data.length : 0), 0);
+            } catch (_) {}
+
+            map[String(contact.id)] = { text, time, unreadCount };
           } else {
             map[String(contact.id)] = null;
           }
@@ -471,6 +498,7 @@ export default function ContactManagement({ onNavigate }: ContactManagementProps
       );
 
       setLastMessagesMap(map);
+      convToContactIdRef.current = reverseMap;
     } catch (e) {
       console.error('Error fetching last messages for contacts:', e);
     }
@@ -570,6 +598,46 @@ export default function ContactManagement({ onNavigate }: ContactManagementProps
     loadContactsFromDb();
   }, []);
 
+  // Unlock browser audio autoplay on first user interaction.
+  // We create an AudioContext here because once it is in 'running' state it
+  // stays unlocked across async/await boundaries — unlike HTMLAudioElement
+  // which requires the play() call to be synchronously inside a user gesture.
+  useEffect(() => {
+    const unlock = async () => {
+      if (audioUnlockedRef.current) return;
+      audioUnlockedRef.current = true;
+      try {
+        const AudioCtx = (window.AudioContext || (window as any).webkitAudioContext) as typeof AudioContext;
+        const ctx = new AudioCtx();
+        await ctx.resume();
+        audioContextRef.current = ctx;
+      } catch (e) {
+        // Fallback: at least unblock HTMLAudioElement by playing silent audio
+        try {
+          const silent = new Audio('data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQAAAAA=');
+          silent.volume = 0;
+          silent.play().catch(() => {});
+        } catch (_) {}
+      }
+    };
+    document.addEventListener('click', unlock, { once: true });
+    document.addEventListener('keydown', unlock, { once: true });
+    return () => {
+      document.removeEventListener('click', unlock);
+      document.removeEventListener('keydown', unlock);
+    };
+  }, []);
+
+  // Keep selectedContactRef in sync for use inside real-time callbacks
+  useEffect(() => {
+    selectedContactRef.current = selectedContact;
+  }, [selectedContact]);
+
+  // Keep contactsRef in sync so real-time callbacks always have the latest list
+  useEffect(() => {
+    contactsRef.current = contacts;
+  }, [contacts]);
+
   // Real-time online status updates
   useEffect(() => {
     const channel = supabase
@@ -611,7 +679,7 @@ export default function ContactManagement({ onNavigate }: ContactManagementProps
         { event: 'INSERT', schema: 'public', table: 'messages' },
         (payload: any) => {
           const newMsg = payload.new;
-          if (!newMsg?.sender_id || !newMsg?.receiver_id) return;
+          if (!newMsg?.sender_id) return;
 
           (async () => {
             try {
@@ -619,29 +687,52 @@ export default function ContactManagement({ onNavigate }: ContactManagementProps
               const meId = authData?.user?.id;
               if (!meId) return;
 
-              // Determine the other party using sender_id / receiver_id directly
-              const otherUserId =
-                newMsg.sender_id === meId ? newMsg.receiver_id : newMsg.sender_id;
+              // Skip messages that don't involve the admin at all
+              const senderIsMe = newMsg.sender_id === meId;
+              const receiverIsMe = newMsg.receiver_id === meId;
+              const knownConv = newMsg.conversation_id && convToContactIdRef.current.has(newMsg.conversation_id);
+              if (!senderIsMe && !receiverIsMe && !knownConv) return;
 
-              // Only update preview if this message involves me
-              if (newMsg.sender_id !== meId && newMsg.receiver_id !== meId) return;
+              // Resolve which contact this message belongs to
+              // 1. Try the conversation reverse-map (most reliable)
+              let contactId: string | undefined =
+                newMsg.conversation_id ? convToContactIdRef.current.get(newMsg.conversation_id) : undefined;
 
-              setContacts(prevContacts => {
-                const contact = prevContacts.find(c => c.userId === otherUserId);
-                if (!contact) return prevContacts;
+              // 2. Fall back to matching by the OTHER user's ID via contactsRef
+              if (!contactId) {
+                const otherUserId = senderIsMe ? newMsg.receiver_id : newMsg.sender_id;
+                const found = contactsRef.current.find(c => c.userId === otherUserId);
+                if (found) {
+                  contactId = String(found.id);
+                  // Register for future messages from this conversation
+                  if (newMsg.conversation_id) {
+                    convToContactIdRef.current.set(newMsg.conversation_id, contactId);
+                  }
+                }
+              }
 
-                const isVoice = typeof newMsg.file_url === 'string' && newMsg.file_url.length > 0;
-                const text = isVoice
-                  ? '🎤 Voice message'
-                  : (newMsg.transcription || 'Message');
-                const time = new Date(newMsg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+              if (!contactId) return;
 
-                setLastMessagesMap(prev => ({
+              const isVoice = typeof newMsg.file_url === 'string' && newMsg.file_url.length > 0;
+              const text = isVoice
+                ? '🎤 Voice message'
+                : (newMsg.transcription || newMsg.content || 'Message');
+              const time = new Date(newMsg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+              const finalContactId = contactId;
+
+              setLastMessagesMap(prev => {
+                const existing = prev[finalContactId];
+                const isContactOpen = selectedContactRef.current && String(selectedContactRef.current.id) === finalContactId;
+                const prevUnread = existing?.unreadCount ?? 0;
+                const newUnread = isContactOpen ? 0 : (!senderIsMe ? prevUnread + 1 : prevUnread);
+                return {
                   ...prev,
-                  [String(contact.id)]: { text, time },
-                }));
-                return prevContacts;
+                  [finalContactId]: { text, time, unreadCount: newUnread },
+                };
               });
+
+              // Autoplay is handled by the global subscription in Dashboard.tsx
+              // so the correct contact-panel context can play without duplication.
             } catch (e) {
               console.warn('Failed to update last message preview:', e);
             }
@@ -701,19 +792,29 @@ export default function ContactManagement({ onNavigate }: ContactManagementProps
       messagesChannelRef.current = null;
     }
 
+    // Clear messages immediately so the previous contact's messages never bleed
+    // into the newly selected contact's chat while the fetch is in-flight.
+    setMessagesList([]);
+
     if (!contactUserId && !groupId) {
-      setMessagesList([]);
       return;
     }
+
+    // Guard against race conditions: if the contact changes before the async
+    // work finishes, this flag is set to true and all state updates are skipped.
+    let cancelled = false;
 
     (async () => {
       try {
         // Capture stable admin ID once for all realtime callbacks (avoids stale closure)
         const { data: authSnap0 } = await supabase.auth.getUser();
+        if (cancelled) return;
         const stableAdminId = authSnap0?.user?.id ?? currentUserId;
 
         if (groupId) {
-          await fetchGroupMessages(groupId);
+          const groupMsgs = await fetchGroupMessages(groupId);
+          if (cancelled) return;
+          setMessagesList(groupMsgs);
 
           const channelName = `group_messages_${groupId}`;
           const channel = supabase
@@ -736,12 +837,22 @@ export default function ContactManagement({ onNavigate }: ContactManagementProps
           messagesChannelRef.current = channel;
         } else if (contactUserId) {
           const conversationId = await getOrCreateConversation(contactUserId);
+          if (cancelled) return;
           if (!conversationId) {
             setMessagesList([]);
             return;
           }
 
-          await fetchMessagesForConversation(conversationId);
+          // Also register the new conversation in the reverse-lookup map so the
+          // last-message preview subscription can route messages correctly.
+          const contactIdStr = selectedContact ? String(selectedContact.id) : null;
+          if (contactIdStr) {
+            convToContactIdRef.current.set(conversationId, contactIdStr);
+          }
+
+          const msgs = await fetchMessagesForConversation(conversationId);
+          if (cancelled) return;
+          setMessagesList(msgs);
 
           const channelName = `messages_conversation_${conversationId}`;
           const channel = supabase
@@ -761,6 +872,7 @@ export default function ContactManagement({ onNavigate }: ContactManagementProps
                 if (stableAdminId) {
                   supabase.from('messages').update({ is_read: true }).eq('id', newRow.id).then(() => {});
                 }
+                // Autoplay is handled by the global subscription in Dashboard.tsx.
               }
             )
             .subscribe();
@@ -768,12 +880,15 @@ export default function ContactManagement({ onNavigate }: ContactManagementProps
           messagesChannelRef.current = channel;
         }
       } catch (e) {
-        console.error('Failed to setup messages realtime subscription:', e);
-        setMessagesList([]);
+        if (!cancelled) {
+          console.error('Failed to setup messages realtime subscription:', e);
+          setMessagesList([]);
+        }
       }
     })();
 
     return () => {
+      cancelled = true;
       if (messagesChannelRef.current) {
         try { supabase.removeChannel(messagesChannelRef.current); } catch (e) {
           try { messagesChannelRef.current.unsubscribe(); } catch (err) {}
@@ -951,6 +1066,73 @@ export default function ContactManagement({ onNavigate }: ContactManagementProps
       setCurrentlyPlayingId(null);
     });
   };
+
+  // Auto-play an incoming voice message. Re-fetches the full DB row first because
+  // realtime payloads truncate large base64 file_url values.
+  // Uses AudioContext (stays unlocked across async/await) with HTMLAudioElement fallback.
+  const autoPlayVoiceMessage = async (msgId: string | number, fileUrl?: string | null) => {
+    const id = String(msgId);
+    if (lastAutoPlayedIdRef.current === id) return;
+    lastAutoPlayedIdRef.current = id;
+
+    // Re-fetch to guarantee the full (non-truncated) base64 URL
+    let url = (typeof fileUrl === 'string' && fileUrl.length > 10) ? fileUrl : null;
+    try {
+      const { data: fullRow } = await supabase
+        .from('messages')
+        .select('file_url')
+        .eq('id', msgId)
+        .single();
+      if (fullRow?.file_url) url = fullRow.file_url;
+    } catch (e) {
+      console.warn('Could not re-fetch voice message for autoplay:', e);
+    }
+
+    if (!url) {
+      lastAutoPlayedIdRef.current = null;
+      return;
+    }
+
+    // Stop anything currently playing
+    if (audioPlayerRef.current) {
+      try { audioPlayerRef.current.pause(); audioPlayerRef.current.src = ''; } catch (e) {}
+      audioPlayerRef.current = null;
+    }
+
+    const ctx = audioContextRef.current;
+    if (ctx && ctx.state === 'running') {
+      // Path A: Web Audio API — fully async-safe, not blocked by autoplay policy
+      try {
+        const base64 = url.includes(',') ? url.split(',')[1] : url;
+        const binary = atob(base64);
+        const bytes = new Uint8Array(binary.length);
+        for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+        const buffer = await ctx.decodeAudioData(bytes.buffer.slice(0));
+        const source = ctx.createBufferSource();
+        source.buffer = buffer;
+        source.connect(ctx.destination);
+        source.onended = () => setCurrentlyPlayingId(null);
+        source.start(0);
+        setCurrentlyPlayingId(id);
+        return;
+      } catch (e) {
+        console.warn('AudioContext decode/play failed, falling back to HTMLAudioElement:', e);
+      }
+    }
+
+    // Path B: HTMLAudioElement fallback
+    const audio = new Audio(url);
+    audioPlayerRef.current = audio;
+    setCurrentlyPlayingId(id);
+    audio.onended = () => { setCurrentlyPlayingId(null); audioPlayerRef.current = null; };
+    audio.play().catch(e => {
+      console.warn('Autoplay failed:', e);
+      setCurrentlyPlayingId(null);
+      audioPlayerRef.current = null;
+      lastAutoPlayedIdRef.current = null;
+    });
+  };
+  autoPlayVoiceRef.current = autoPlayVoiceMessage;
 
   const parseDurationToMs = (duration?: string): number | null => {
     if (!duration) return null;
@@ -1261,6 +1443,12 @@ export default function ContactManagement({ onNavigate }: ContactManagementProps
                     onPress={() => {
                       setSelectedContact(contact);
                       setShowContactList(false);
+                      // Clear unread badge when chat is opened
+                      setLastMessagesMap(prev => {
+                        const existing = prev[String(contact.id)];
+                        if (!existing || existing.unreadCount === 0) return prev;
+                        return { ...prev, [String(contact.id)]: { ...existing, unreadCount: 0 } };
+                      });
                     }}
                   >
                     <View className="relative mr-3 shrink-0">
@@ -1277,11 +1465,24 @@ export default function ContactManagement({ onNavigate }: ContactManagementProps
                     <View className="flex-1 min-w-0">
                       <View className="flex-row items-center justify-between">
                         <Text className="text-sm font-bold text-stone-900 flex-1 mr-2" numberOfLines={1}>{contact.name}</Text>
-                        {lastMsg && <Text className="text-[10px] text-stone-400 shrink-0">{lastMsg.time}</Text>}
+                        {lastMsg && (
+                          <Text className={`text-[10px] shrink-0 ${lastMsg.unreadCount > 0 ? 'text-black font-bold' : 'text-stone-400'}`}>
+                            {lastMsg.time}
+                          </Text>
+                        )}
                       </View>
                       <Text className="text-xs text-stone-500 mt-0.5" numberOfLines={1}>{contact.location}</Text>
                       {lastMsg ? (
-                        <Text className="text-xs text-stone-400 mt-0.5" numberOfLines={1}>{lastMsg.text}</Text>
+                        <View className="flex-row items-center justify-between mt-0.5">
+                          <Text className={`text-xs flex-1 mr-2 ${lastMsg.unreadCount > 0 ? 'text-black font-bold' : 'text-stone-400'}`} numberOfLines={1}>
+                            {lastMsg.text}
+                          </Text>
+                          {lastMsg.unreadCount > 0 && (
+                            <View className="bg-red-500 rounded-full h-4 w-4 items-center justify-center">
+                              <Text className="text-white text-[9px] font-bold">{lastMsg.unreadCount > 9 ? '9+' : lastMsg.unreadCount}</Text>
+                            </View>
+                          )}
+                        </View>
                       ) : (
                         <Text className="text-xs text-stone-300 mt-0.5">No messages yet</Text>
                       )}
@@ -1323,7 +1524,11 @@ export default function ContactManagement({ onNavigate }: ContactManagementProps
                   </View>
                 </View>
 
-                <ScrollView className="flex-1 px-5 py-4">
+                <ScrollView
+                  ref={chatScrollRef}
+                  className="flex-1 px-5 py-4"
+                  onContentSizeChange={() => chatScrollRef.current?.scrollToEnd({ animated: false })}
+                >
                   {messagesList.map((message, index) => {
                     const rawTs = message._rawTs || new Date().toISOString();
                     const showTimestamp = expandedMessageId === message.id;

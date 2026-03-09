@@ -34,6 +34,9 @@ export default function App() {
   const wtAudioChunksRef = useRef<any[]>([]);
   const wtMimeTypeRef = useRef<string>('audio/webm');
   const wtStartTimeRef = useRef<number>(0);
+  // Pre-warmed mic stream — acquired eagerly so the first button press starts
+  // recording immediately without waiting for getUserMedia to resolve.
+  const wtPrewarmStreamRef = useRef<MediaStream | null>(null);
 
   useEffect(() => {
     // Check if user is already logged in and restore previous tab
@@ -152,14 +155,53 @@ export default function App() {
     }
   }, [activeTab, currentPage]);
 
+  // Pre-warm the mic as soon as the employee reaches their dashboard so the
+  // first walkie-talkie button press starts recording with zero latency.
+  useEffect(() => {
+    if (currentPage === 'dashboard' && userRole !== 'admin') {
+      prewarmMic();
+    }
+    return () => {
+      // Release the cached stream when navigating away / logging out.
+      if (wtPrewarmStreamRef.current) {
+        wtPrewarmStreamRef.current.getTracks().forEach((t: any) => t.stop());
+        wtPrewarmStreamRef.current = null;
+      }
+    };
+  }, [currentPage, userRole]);
+
+  // Acquires a mic stream in the background and stores it for instant reuse.
+  // Called on component mount and after each recording to ensure the next
+  // button press starts recording with zero getUserMedia latency.
+  const prewarmMic = () => {
+    if (typeof navigator === 'undefined' || !navigator.mediaDevices?.getUserMedia) return;
+    (navigator as any).mediaDevices.getUserMedia({ audio: true })
+      .then((stream: MediaStream) => {
+        // If the component gained a new pre-warms stream while this one was
+        // in-flight, release whichever is older.
+        if (wtPrewarmStreamRef.current) {
+          wtPrewarmStreamRef.current.getTracks().forEach((t: any) => t.stop());
+        }
+        wtPrewarmStreamRef.current = stream;
+      })
+      .catch(() => {}); // permission denied or unavailable — handled gracefully on button press
+  };
+
   const startWalkieTalkieRecording = () => {
     setIsRecording(true);
-    wtStartTimeRef.current = Date.now();
     wtAudioChunksRef.current = [];
 
     (async () => {
       try {
-        const stream = await (navigator as any).mediaDevices.getUserMedia({ audio: true });
+        // Use the pre-warmed stream so recording begins immediately, with no
+        // getUserMedia round-trip. Consume it so the next call gets a fresh one.
+        let stream: MediaStream | null = wtPrewarmStreamRef.current;
+        wtPrewarmStreamRef.current = null;
+        if (!stream) {
+          // Fallback: acquire fresh (first-ever press or if prewarm wasn't ready).
+          stream = await (navigator as any).mediaDevices.getUserMedia({ audio: true });
+        }
+
         const candidates = [
           'audio/webm;codecs=opus',
           'audio/webm',
@@ -249,6 +291,8 @@ export default function App() {
     try { mr.stop(); } catch (_) {}
     try { ref.stream.getTracks().forEach((t: any) => t.stop()); } catch (_) {}
     wtMediaRecorderRef.current = null;
+    // Pre-warm the mic stream for the next recording press.
+    prewarmMic();
   };
 
   if (loading) {
