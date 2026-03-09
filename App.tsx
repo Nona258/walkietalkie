@@ -189,6 +189,14 @@ export default function App() {
     })();
   };
 
+  const toggleWalkieTalkie = () => {
+    if (isRecording) {
+      stopAndSendWalkieTalkie();
+    } else {
+      startWalkieTalkieRecording();
+    }
+  };
+
   const stopAndSendWalkieTalkie = () => {
     setIsRecording(false);
     const ref = wtMediaRecorderRef.current;
@@ -339,7 +347,7 @@ export default function App() {
               onNavigateToSettings={() => setActiveTab('settings')}
             />
           )}
-          {userRole !== 'admin' && !selectedContact && activeTab !== 'settings' && activeTab !== 'edit-profile' && activeTab !== 'map' && <Navbar activeTab={activeTab} onTabChange={setActiveTab} onMicPressIn={startWalkieTalkieRecording} onMicPressOut={stopAndSendWalkieTalkie} isRecording={isRecording} />}
+          {userRole !== 'admin' && !selectedContact && activeTab !== 'settings' && activeTab !== 'edit-profile' && activeTab !== 'map' && <Navbar activeTab={activeTab} onTabChange={setActiveTab} onMicPress={toggleWalkieTalkie} isRecording={isRecording} />}
         </View>
       )}
       <StatusBar style="dark" />

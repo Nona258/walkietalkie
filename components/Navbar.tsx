@@ -5,12 +5,11 @@ import { Ionicons } from '@expo/vector-icons';
 interface NavbarProps {
   activeTab: string;
   onTabChange: (tab: string) => void;
-  onMicPressIn?: () => void;
-  onMicPressOut?: () => void;
+  onMicPress?: () => void;
   isRecording?: boolean;
 }
 
-export default function Navbar({ activeTab, onTabChange, onMicPressIn, onMicPressOut, isRecording }: NavbarProps) {
+export default function Navbar({ activeTab, onTabChange, onMicPress, isRecording }: NavbarProps) {
   return (
     <View className="absolute bottom-0 left-0 right-0 bg-white border-t-2 border-green-100 shadow-lg">
       <View className="flex-row items-end px-2 py-2">
@@ -30,10 +29,8 @@ export default function Navbar({ activeTab, onTabChange, onMicPressIn, onMicPres
         {/* Floating center mic button */}
         <View className="flex-1 items-center py-2">
           <TouchableOpacity
-            onPressIn={onMicPressIn}
-            onPressOut={onMicPressOut}
+            onPress={onMicPress}
             activeOpacity={0.85}
-            delayLongPress={0}
             style={{
               marginTop: -48,
               width: 64,
@@ -53,7 +50,7 @@ export default function Navbar({ activeTab, onTabChange, onMicPressIn, onMicPres
           >
             <Ionicons name="mic" size={30} color="#ffffff" />
           </TouchableOpacity>
-          <Text className="text-xs mt-1.5 font-semibold text-gray-500">{isRecording ? 'Recording' : 'Hold to Talk'}</Text>
+          <Text className="text-xs mt-1.5 font-semibold text-gray-500">{isRecording ? 'Tap to Stop' : 'Tap to Talk'}</Text>
         </View>
 
         <NavbarIcon
