@@ -34,12 +34,10 @@ export const acceptEula = async (userId: string): Promise<boolean> => {
   try {
     const { error } = await supabase
       .from('eula_acceptance')
-      .insert([
-        {
-          user_id: userId,
-          accepted_at: new Date().toISOString(),
-        },
-      ]);
+      .upsert(
+        [{ user_id: userId, accepted_at: new Date().toISOString() }],
+        { onConflict: 'user_id', ignoreDuplicates: false }
+      );
 
     if (error) {
       console.error('Error accepting EULA:', error);

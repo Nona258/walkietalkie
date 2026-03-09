@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -64,6 +64,10 @@ export default function AdminDashboard({ onLogout, onNavigate }: AdminDashboardP
   const [sites, setSites] = useState<Site[]>([]);
   const [employees, setEmployees] = useState<User[]>([]);
   const [activities, setActivities] = useState<Activity[]>([]);
+  const [incomingAlert, setIncomingAlert] = useState(false);
+  const [incomingFrom, setIncomingFrom] = useState('');
+  const autoplayAudioRef = useRef<HTMLAudioElement | null>(null);
+  const adminUserIdRef = useRef<string | null>(null);
 
   const windowWidth = Dimensions.get('window').width;
   const isWebView = windowWidth > 900;
@@ -78,6 +82,128 @@ export default function AdminDashboard({ onLogout, onNavigate }: AdminDashboardP
 
   useEffect(() => {
     fetchData();
+  }, []);
+
+  // Fetch admin user id and subscribe to incoming walkie-talkie messages
+  useEffect(() => {
+    let channel: any = null;
+
+    (async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user?.id) return;
+      adminUserIdRef.current = user.id;
+
+      channel = supabase
+        .channel('wt-admin-incoming')
+        .on(
+          'postgres_changes',
+          {
+            event: 'INSERT',
+            schema: 'public',
+            table: 'messages',
+            filter: `receiver_id=eq.${user.id}`,
+          },
+          async (payload) => {
+            const msg = payload.new as any;
+            // Only handle voice messages (has duration_ms set or file_url in payload)
+            if (!msg.file_url && typeof msg.duration_ms !== 'number') return;
+
+            // Always re-fetch the full row from DB — realtime payloads truncate
+            // large base64 strings, causing the audio to be cut off mid-playback.
+            let audioUrl: string = '';
+            let durationMs: number | null = null;
+            try {
+              const { data: fullRow } = await supabase
+                .from('messages')
+                .select('file_url, duration_ms')
+                .eq('id', msg.id)
+                .single();
+              if (fullRow?.file_url) audioUrl = fullRow.file_url;
+              if (typeof fullRow?.duration_ms === 'number') durationMs = fullRow.duration_ms;
+            } catch (_) {}
+            if (!audioUrl) return;
+
+            // Look up sender name
+            let senderName = '';
+            try {
+              const { data: sender } = await supabase
+                .from('users')
+                .select('full_name')
+                .eq('id', msg.sender_id)
+                .single();
+              if (sender?.full_name) senderName = sender.full_name;
+            } catch (_) {}
+
+            setIncomingFrom(senderName);
+            setIncomingAlert(true);
+
+            // Autoplay the full audio; dismiss banner when playback ends
+            if (autoplayAudioRef.current) {
+              try { autoplayAudioRef.current.pause(); } catch (_) {}
+            }
+
+            // Convert the base64 data URL to a Blob Object URL so the browser
+            // can stream directly from memory instead of re-decoding the entire
+            // base64 string — this prevents the audio from being cut off at the end.
+            let objectUrl: string | null = null;
+            try {
+              const res = await fetch(audioUrl);
+              const blob = await res.blob();
+              objectUrl = URL.createObjectURL(blob);
+            } catch (_) {}
+            const playbackSrc = objectUrl ?? audioUrl;
+
+            const audio = new Audio(playbackSrc);
+            autoplayAudioRef.current = audio;
+
+            let fallbackTimer: ReturnType<typeof setTimeout> | null = null;
+
+            const cleanup = () => {
+              if (fallbackTimer !== null) {
+                clearTimeout(fallbackTimer);
+                fallbackTimer = null;
+              }
+              if (objectUrl) URL.revokeObjectURL(objectUrl);
+              setIncomingAlert(false);
+              autoplayAudioRef.current = null;
+            };
+
+            audio.onended = cleanup;
+
+            // Wait until the browser has buffered the full recording before playing
+            await new Promise<void>((resolve) => {
+              if (audio.readyState >= 4) { resolve(); return; }
+              audio.oncanplaythrough = () => resolve();
+              audio.load();
+            });
+
+            // Fallback: only fires if onended never triggers.
+            // Pause before revoking the blob URL so playback isn't physically cut off.
+            const fallbackMs = durationMs ? durationMs + 3000 : 30000;
+            fallbackTimer = setTimeout(() => {
+              fallbackTimer = null;
+              if (autoplayAudioRef.current) {
+                try { autoplayAudioRef.current.pause(); } catch (_) {}
+              }
+              cleanup();
+            }, fallbackMs);
+
+            audio.play().catch((e) => {
+              console.warn('Autoplay blocked:', e);
+              cleanup();
+            });
+          }
+        )
+        .subscribe();
+    })();
+
+    return () => {
+      if (channel) channel.unsubscribe();
+      if (autoplayAudioRef.current) {
+        try { autoplayAudioRef.current.pause(); } catch (_) {}
+        autoplayAudioRef.current = null;
+      }
+    };
   }, []);
 
   const fetchData = async () => {
@@ -169,98 +295,8 @@ export default function AdminDashboard({ onLogout, onNavigate }: AdminDashboardP
     );
   }
 
-  // Render SiteManagement if selected
-  if (activeTab === 'siteManagement') {
-    return (
-      <View className="flex-1 flex-row bg-stone-50">
-        <AdminNavbar 
-          activeTab={activeTab}
-          setActiveTab={setActiveTab}
-          onNavigate={onNavigate}
-          onLogout={onLogout}
-        />
-        <SiteManagement onNavigate={setActiveTab} />
-      </View>
-    );
-  }
-
-  // Render ContactManagement if selected
-  if (activeTab === 'walkieTalkie') {
-    return (
-      <View className="flex-1 flex-row bg-stone-50">
-        <AdminNavbar 
-          activeTab={activeTab}
-          setActiveTab={setActiveTab}
-          onNavigate={onNavigate}
-          onLogout={onLogout}
-        />
-        <ContactManagement onNavigate={setActiveTab} />
-      </View>
-    );
-  }
-
-  // Render ActivityLogs if selected
-  if (activeTab === 'activityLogs') {
-    return (
-      <View className="flex-1 flex-row bg-stone-50">
-        <AdminNavbar 
-          activeTab={activeTab}
-          setActiveTab={setActiveTab}
-          onNavigate={onNavigate}
-          onLogout={onLogout}
-        />
-        <ActivityLogs onNavigate={setActiveTab} />
-      </View>
-    );
-  }
-
-  // Render CompanyList if selected
-  if (activeTab === 'companyList') {
-    return (
-      <View className="flex-1 flex-row bg-stone-50">
-        <AdminNavbar 
-          activeTab={activeTab}
-          setActiveTab={setActiveTab}
-          onNavigate={onNavigate}
-          onLogout={onLogout}
-        />
-        <CompanyList onNavigate={setActiveTab} />
-      </View>
-    );
-  }
-
-  // Render Employees if selected
-  if (activeTab === 'employee') {
-    return (
-      <View className="flex-1 flex-row bg-stone-50">
-        <AdminNavbar 
-          activeTab={activeTab}
-          setActiveTab={setActiveTab}
-          onNavigate={onNavigate}
-          onLogout={onLogout}
-        />
-        <Employees onNavigate={setActiveTab} />
-      </View>
-    );
-  }
-
-  // Render Settings if selected
-  if (activeTab === 'settings') {
-    return (
-      <View className="flex-1 flex-row bg-stone-50">
-        <AdminNavbar 
-          activeTab={activeTab}
-          setActiveTab={setActiveTab}
-          onNavigate={onNavigate}
-          onLogout={onLogout}
-        />
-        <Settings onNavigate={setActiveTab} />
-      </View>
-    );
-  }
-
   return (
-    <View className="flex-1 flex-row bg-stone-50">
+    <View style={{ flex: 1, flexDirection: 'row', backgroundColor: '#fafaf9' }}>
       <AdminNavbar 
         activeTab={activeTab}
         setActiveTab={setActiveTab}
@@ -268,97 +304,135 @@ export default function AdminDashboard({ onLogout, onNavigate }: AdminDashboardP
         onLogout={onLogout}
       />
 
-      {/* Main Content Area */}
-      <ScrollView 
-        className="flex-1 bg-stone-50"
-        showsVerticalScrollIndicator={false}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
-      >
-        {/* Header */}
-        <View className="bg-white px-5 pt-4 pb-3 border-b border-stone-200">
-          <View className="flex-row items-center justify-between">
-            <View className="flex-row items-center flex-1">
-              <TouchableOpacity className="lg:hidden w-9 h-9 items-center justify-center mr-3">
-                <Ionicons name="menu" size={24} color="#44403c" />
-              </TouchableOpacity>
-              <View className="flex-1">
-                <Text className="text-lg lg:text-2xl font-bold text-stone-900">Dashboard</Text>
-                <Text className="text-stone-500 text-xs lg:text-sm mt-0.5">Welcome back, Administrator</Text>
-              </View>
-            </View>
-            <View className="flex-row items-center gap-2.5">
-              <TouchableOpacity className="w-9 h-9 bg-stone-100 rounded-full items-center justify-center">
-                <View className="w-2 h-2 bg-red-500 rounded-full absolute top-1.5 right-1.5" />
-                <Ionicons name="notifications-outline" size={18} color="#57534e" />
-              </TouchableOpacity>
-              <View className="w-9 h-9 bg-emerald-100 rounded-full items-center justify-center">
-                <Text className="text-emerald-700 font-semibold text-xs">AD</Text>
-              </View>
-              <View className="hidden lg:flex ml-2">
-                <Text className="text-sm font-semibold text-stone-900">Admin User</Text>
-                <Text className="text-xs text-stone-500">Super Admin</Text>
-              </View>
-            </View>
-          </View>
-        </View>
+      {/* Tab content */}
+      {activeTab === 'siteManagement' && <SiteManagement onNavigate={setActiveTab} />}
+      {activeTab === 'walkieTalkie' && <ContactManagement onNavigate={setActiveTab} />}
+      {activeTab === 'activityLogs' && <ActivityLogs onNavigate={setActiveTab} />}
+      {activeTab === 'companyList' && <CompanyList onNavigate={setActiveTab} />}
+      {activeTab === 'employee' && <Employees onNavigate={setActiveTab} />}
+      {activeTab === 'settings' && <Settings onNavigate={setActiveTab} />}
 
-        {/* Stats Grid */}
-        <View className="px-6 py-6">
-          <View className="flex-row flex-wrap gap-4 lg:gap-6">
-            {stats.map((stat, index) => (
-              <View key={index} style={{ width: isWebView ? '23%' : '48%' }}>
-                <StatCard item={stat} />
-              </View>
-            ))}
-          </View>
-        </View>
-
-        <View className="lg:flex-row lg:gap-6 px-6 pb-6">
-          {/* Left Column */}
-          <View className="flex-1 mb-6 lg:mb-0">
-            <View className="bg-white rounded-2xl border border-stone-200 p-5 lg:p-6 mb-6">
-              <View className="flex-row items-center justify-between mb-4">
-                <Text className="text-lg lg:text-xl font-semibold text-stone-900">Communication Activity</Text>
-                <View className="flex-row items-center bg-stone-50 px-3 py-2 rounded-lg">
-                  <Text className="text-stone-600 text-sm mr-1">Last 7 Days</Text>
-                  <Ionicons name="chevron-down" size={16} color="#57534e" />
+      {/* Main dashboard content */}
+      {activeTab === 'dashboard' && (
+        <ScrollView 
+          className="flex-1 bg-stone-50"
+          showsVerticalScrollIndicator={false}
+          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+        >
+          {/* Header */}
+          <View className="bg-white px-5 pt-4 pb-3 border-b border-stone-200">
+            <View className="flex-row items-center justify-between">
+              <View className="flex-row items-center flex-1">
+                <TouchableOpacity className="lg:hidden w-9 h-9 items-center justify-center mr-3">
+                  <Ionicons name="menu" size={24} color="#44403c" />
+                </TouchableOpacity>
+                <View className="flex-1">
+                  <Text className="text-lg lg:text-2xl font-bold text-stone-900">Dashboard</Text>
+                  <Text className="text-stone-500 text-xs lg:text-sm mt-0.5">Welcome back, Administrator</Text>
                 </View>
               </View>
-              <View className="flex-row items-end justify-between h-32 lg:h-40 gap-1">
-                {[45, 60, 75, 55, 85, 95, 70].map((h, i) => (
-                  <View key={i} className="flex-1 bg-emerald-100 rounded-t-lg" style={{ height: `${h}%` }} />
-                ))}
-              </View>
-            </View>
-
-            <View className="bg-white rounded-2xl border border-stone-200 p-5 lg:p-6 mb-6">
-              <Text className="text-lg lg:text-xl font-semibold text-stone-900 mb-4">Live Location Map</Text>
-              <View className="bg-stone-100 rounded-xl h-48 lg:h-64 items-center justify-center">
-                <Ionicons name="map-outline" size={48} color="#a8a29e" />
-                <Text className="text-stone-400 mt-2">Map Interface Preview</Text>
+              <View className="flex-row items-center gap-2.5">
+                <TouchableOpacity className="w-9 h-9 bg-stone-100 rounded-full items-center justify-center">
+                  <View className="w-2 h-2 bg-red-500 rounded-full absolute top-1.5 right-1.5" />
+                  <Ionicons name="notifications-outline" size={18} color="#57534e" />
+                </TouchableOpacity>
+                <View className="w-9 h-9 bg-emerald-100 rounded-full items-center justify-center">
+                  <Text className="text-emerald-700 font-semibold text-xs">AD</Text>
+                </View>
+                <View className="hidden lg:flex ml-2">
+                  <Text className="text-sm font-semibold text-stone-900">Admin User</Text>
+                  <Text className="text-xs text-stone-500">Super Admin</Text>
+                </View>
               </View>
             </View>
           </View>
 
-          {/* Right Column */}
-          <View className="lg:w-96">
-            <View className="bg-white rounded-2xl border border-stone-200 p-5 lg:p-6">
-              <Text className="text-lg lg:text-xl font-semibold text-stone-900 mb-4">Recent Activity</Text>
-              {MOCK_ACTIVITIES.map((activity, idx) => (
-                <View key={activity.id} className={`flex-row items-start ${idx !== MOCK_ACTIVITIES.length - 1 ? 'mb-4' : ''}`}>
-                  <View className="w-10 h-10 rounded-xl items-center justify-center mr-3" style={{ backgroundColor: activity.color }}>
-                    <Ionicons name={activity.icon as any} size={18} color="#10b981" />
-                  </View>
-                  <View className="flex-1">
-                    <Text className="text-stone-900 font-medium mb-1">{activity.action}</Text>
-                    <Text className="text-stone-500 text-sm">{activity.description}</Text>
-                  </View>
+          {/* Stats Grid */}
+          <View className="px-6 py-6">
+            <View className="flex-row flex-wrap gap-4 lg:gap-6">
+              {stats.map((stat, index) => (
+                <View key={index} style={{ width: isWebView ? '23%' : '48%' }}>
+                  <StatCard item={stat} />
                 </View>
               ))}
             </View>
           </View>
+
+          <View className="lg:flex-row lg:gap-6 px-6 pb-6">
+            {/* Left Column */}
+            <View className="flex-1 mb-6 lg:mb-0">
+              <View className="bg-white rounded-2xl border border-stone-200 p-5 lg:p-6 mb-6">
+                <View className="flex-row items-center justify-between mb-4">
+                  <Text className="text-lg lg:text-xl font-semibold text-stone-900">Communication Activity</Text>
+                  <View className="flex-row items-center bg-stone-50 px-3 py-2 rounded-lg">
+                    <Text className="text-stone-600 text-sm mr-1">Last 7 Days</Text>
+                    <Ionicons name="chevron-down" size={16} color="#57534e" />
+                  </View>
+                </View>
+                <View className="flex-row items-end justify-between h-32 lg:h-40 gap-1">
+                  {[45, 60, 75, 55, 85, 95, 70].map((h, i) => (
+                    <View key={i} className="flex-1 bg-emerald-100 rounded-t-lg" style={{ height: `${h}%` }} />
+                  ))}
+                </View>
+              </View>
+
+              <View className="bg-white rounded-2xl border border-stone-200 p-5 lg:p-6 mb-6">
+                <Text className="text-lg lg:text-xl font-semibold text-stone-900 mb-4">Live Location Map</Text>
+                <View className="bg-stone-100 rounded-xl h-48 lg:h-64 items-center justify-center">
+                  <Ionicons name="map-outline" size={48} color="#a8a29e" />
+                  <Text className="text-stone-400 mt-2">Map Interface Preview</Text>
+                </View>
+              </View>
+            </View>
+
+            {/* Right Column */}
+            <View className="lg:w-96">
+              <View className="bg-white rounded-2xl border border-stone-200 p-5 lg:p-6">
+                <Text className="text-lg lg:text-xl font-semibold text-stone-900 mb-4">Recent Activity</Text>
+                {MOCK_ACTIVITIES.map((activity, idx) => (
+                  <View key={activity.id} className={`flex-row items-start ${idx !== MOCK_ACTIVITIES.length - 1 ? 'mb-4' : ''}`}>
+                    <View className="w-10 h-10 rounded-xl items-center justify-center mr-3" style={{ backgroundColor: activity.color }}>
+                      <Ionicons name={activity.icon as any} size={18} color="#10b981" />
+                    </View>
+                    <View className="flex-1">
+                      <Text className="text-stone-900 font-medium mb-1">{activity.action}</Text>
+                      <Text className="text-stone-500 text-sm">{activity.description}</Text>
+                    </View>
+                  </View>
+                ))}
+              </View>
+            </View>
+          </View>
+        </ScrollView>
+      )}
+
+      {/* Walkie-talkie incoming notification overlay */}
+      {incomingAlert && (
+        <View
+          style={{
+            position: 'absolute',
+            top: 16,
+            right: 16,
+            zIndex: 9999,
+            backgroundColor: '#ef4444',
+            borderRadius: 14,
+            paddingVertical: 12,
+            paddingHorizontal: 16,
+            flexDirection: 'row',
+            alignItems: 'center',
+            shadowColor: '#000',
+            shadowOffset: { width: 0, height: 4 },
+            shadowOpacity: 0.25,
+            shadowRadius: 8,
+            elevation: 10,
+          }}
+        >
+          <Ionicons name="radio" size={20} color="#ffffff" />
+          <Text style={{ color: '#ffffff', fontWeight: '700', fontSize: 14, marginLeft: 8 }}>
+            Incoming Walkie-Talkie{incomingFrom ? ` · ${incomingFrom}` : ''}
+          </Text>
         </View>
-      </ScrollView>
+      )}
     </View>
   );
 }

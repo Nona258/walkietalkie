@@ -5,10 +5,12 @@ import { Ionicons } from '@expo/vector-icons';
 interface NavbarProps {
   activeTab: string;
   onTabChange: (tab: string) => void;
-  onMicPress?: () => void;
+  onMicPressIn?: () => void;
+  onMicPressOut?: () => void;
+  isRecording?: boolean;
 }
 
-export default function Navbar({ activeTab, onTabChange, onMicPress }: NavbarProps) {
+export default function Navbar({ activeTab, onTabChange, onMicPressIn, onMicPressOut, isRecording }: NavbarProps) {
   return (
     <View className="absolute bottom-0 left-0 right-0 bg-white border-t-2 border-green-100 shadow-lg">
       <View className="flex-row items-end px-2 py-2">
@@ -28,20 +30,22 @@ export default function Navbar({ activeTab, onTabChange, onMicPress }: NavbarPro
         {/* Floating center mic button */}
         <View className="flex-1 items-center py-2">
           <TouchableOpacity
-            onPress={onMicPress}
+            onPressIn={onMicPressIn}
+            onPressOut={onMicPressOut}
             activeOpacity={0.85}
+            delayLongPress={0}
             style={{
               marginTop: -48,
               width: 64,
               height: 64,
               borderRadius: 32,
-              backgroundColor: '#10b981',
+              backgroundColor: isRecording ? '#ef4444' : '#10b981',
               alignItems: 'center',
               justifyContent: 'center',
               borderWidth: 4,
               borderColor: '#ffffff',
               elevation: 8,
-              shadowColor: '#10b981',
+              shadowColor: isRecording ? '#ef4444' : '#10b981',
               shadowOffset: { width: 0, height: 4 },
               shadowOpacity: 0.4,
               shadowRadius: 6,
@@ -49,7 +53,7 @@ export default function Navbar({ activeTab, onTabChange, onMicPress }: NavbarPro
           >
             <Ionicons name="mic" size={30} color="#ffffff" />
           </TouchableOpacity>
-          <Text className="text-xs mt-1.5 font-semibold text-gray-500">Talk</Text>
+          <Text className="text-xs mt-1.5 font-semibold text-gray-500">{isRecording ? 'Recording' : 'Hold to Talk'}</Text>
         </View>
 
         <NavbarIcon

@@ -1,5 +1,5 @@
 import { StatusBar } from 'expo-status-bar';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { View, ActivityIndicator } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import SignIn from './pages/SignIn';
@@ -13,7 +13,7 @@ import Logs from './pages/employee/Logs';
 import Settings from './pages/employee/Settings';
 import EditProfile from './pages/employee/EditProfile';
 import Navbar from './components/Navbar';
-import supabase from './utils/supabase';
+import supabase, { getOrCreateConversation } from './utils/supabase';
 import { hasAcceptedEula, signOutUser } from './utils/eula';
 
 import './global.css';
@@ -27,6 +27,13 @@ export default function App() {
   const [userRole, setUserRole] = useState<string>('employee');
   const [loading, setLoading] = useState(true);
   const [isInSignupFlow, setIsInSignupFlow] = useState(false);
+  const [isRecording, setIsRecording] = useState(false);
+
+  // Walkie-talkie recording refs
+  const wtMediaRecorderRef = useRef<any>(null);
+  const wtAudioChunksRef = useRef<any[]>([]);
+  const wtMimeTypeRef = useRef<string>('audio/webm');
+  const wtStartTimeRef = useRef<number>(0);
 
   useEffect(() => {
     // Check if user is already logged in and restore previous tab
@@ -34,39 +41,47 @@ export default function App() {
       try {
         const { data } = await supabase.auth.getSession();
         if (data?.session?.user) {
+          const sessionUser = data.session.user;
           // Mark user as online
-          supabase.from('users').update({ status: 'online' }).eq('id', data.session.user.id).then(() => {});
+          supabase.from('users').update({ status: 'online' }).eq('id', sessionUser.id).then(() => {});
 
-          // Check if user has accepted EULA
+          // Fetch role from the database first (more reliable than user_metadata)
+          let role = sessionUser.user_metadata?.role || 'employee';
           try {
-            const eulaAccepted = await hasAcceptedEula(data.session.user.id);
-            
+            const { data: dbUser } = await supabase
+              .from('users')
+              .select('role')
+              .eq('id', sessionUser.id)
+              .single();
+            if (dbUser?.role) role = dbUser.role;
+          } catch (_) {}
+
+          setUser(sessionUser);
+          setUserRole(role);
+
+          // Admins skip EULA — take them straight to the dashboard
+          if (role === 'admin') {
+            setCurrentPage('dashboard');
+            return;
+          }
+
+          // Check EULA only for non-admin users
+          try {
+            const eulaAccepted = await hasAcceptedEula(sessionUser.id);
             if (eulaAccepted) {
-              // Fetch user role
-              const userRole = data.session.user.user_metadata?.role || 'employee';
-              
-              setUser(data.session.user);
-              setUserRole(userRole);
               setCurrentPage('dashboard');
-              
-              // Restore the previous active tab (only for non-admin users)
-              if (userRole !== 'admin') {
-                const savedTab = await AsyncStorage.getItem('activeTab');
-                if (savedTab && savedTab !== 'settings') {
-                  setActiveTab(savedTab);
-                } else {
-                  setActiveTab('dashboard');
-                }
+              const savedTab = await AsyncStorage.getItem('activeTab');
+              if (savedTab && savedTab !== 'settings') {
+                setActiveTab(savedTab);
+              } else {
+                setActiveTab('dashboard');
               }
             } else {
-              // User hasn't accepted EULA yet, stay on signin to show modal
-              setUser(data.session.user);
+              // Employee hasn't accepted EULA yet — show signin/EULA modal
               setCurrentPage('signin');
             }
           } catch (eulaError) {
-            // If EULA check fails, assume not accepted and show signin
             console.error('Error checking EULA:', eulaError);
-            setUser(data.session.user);
             setCurrentPage('signin');
           }
         } else {
@@ -137,6 +152,96 @@ export default function App() {
     }
   }, [activeTab, currentPage]);
 
+  const startWalkieTalkieRecording = () => {
+    setIsRecording(true);
+    wtStartTimeRef.current = Date.now();
+    wtAudioChunksRef.current = [];
+
+    (async () => {
+      try {
+        const stream = await (navigator as any).mediaDevices.getUserMedia({ audio: true });
+        const candidates = [
+          'audio/webm;codecs=opus',
+          'audio/webm',
+          'audio/ogg;codecs=opus',
+          'audio/ogg',
+          'audio/mp4',
+        ];
+        const mimeType = candidates.find(
+          (t) => (window as any).MediaRecorder?.isTypeSupported?.(t)
+        ) || '';
+        wtMimeTypeRef.current = mimeType || 'audio/webm';
+
+        const mr = new (window as any).MediaRecorder(
+          stream,
+          mimeType ? { mimeType } : undefined
+        );
+        mr.ondataavailable = (e: any) => {
+          if (e.data && e.data.size > 0) wtAudioChunksRef.current.push(e.data);
+        };
+        mr.start();
+        wtMediaRecorderRef.current = { mediaRecorder: mr, stream };
+      } catch (e) {
+        console.error('Microphone error:', e);
+        setIsRecording(false);
+      }
+    })();
+  };
+
+  const stopAndSendWalkieTalkie = () => {
+    setIsRecording(false);
+    const ref = wtMediaRecorderRef.current;
+    if (!ref?.mediaRecorder) return;
+
+    const durationMs = Date.now() - wtStartTimeRef.current;
+    const blobType = wtMimeTypeRef.current || 'audio/webm';
+    const mr = ref.mediaRecorder as MediaRecorder;
+
+    mr.onstop = async () => {
+      try {
+        const blob = new Blob(wtAudioChunksRef.current, { type: blobType });
+        const dataUrl = await new Promise<string>((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onloadend = () => resolve(reader.result as string);
+          reader.onerror = reject;
+          reader.readAsDataURL(blob);
+        });
+
+        const { data: { user: currentUser } } = await supabase.auth.getUser();
+        if (!currentUser) return;
+
+        // Find the first admin user
+        const { data: admins } = await supabase
+          .from('users')
+          .select('id')
+          .eq('role', 'admin')
+          .limit(1);
+        if (!admins?.length) return;
+        const adminId = admins[0].id;
+
+        const convId = await getOrCreateConversation(currentUser.id, adminId);
+        if (!convId) return;
+
+        await supabase.from('messages').insert([{
+          conversation_id: convId,
+          sender_id: currentUser.id,
+          receiver_id: adminId,
+          file_url: dataUrl,
+          duration_ms: durationMs,
+          created_at: new Date().toISOString(),
+        }]);
+      } catch (err) {
+        console.error('Error sending walkie-talkie message:', err);
+      } finally {
+        wtAudioChunksRef.current = [];
+      }
+    };
+
+    try { mr.stop(); } catch (_) {}
+    try { ref.stream.getTracks().forEach((t: any) => t.stop()); } catch (_) {}
+    wtMediaRecorderRef.current = null;
+  };
+
   if (loading) {
     return (
       <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#fff' }}>
@@ -153,9 +258,17 @@ export default function App() {
             setIsInSignupFlow(true);
             setCurrentPage('signup');
           }}
-          onSignInSuccess={(signedInUser) => {
+          onSignInSuccess={async (signedInUser) => {
             setUser(signedInUser);
-            const role = signedInUser.user_metadata?.role || 'employee';
+            let role = signedInUser.user_metadata?.role || 'employee';
+            try {
+              const { data: dbUser } = await supabase
+                .from('users')
+                .select('role')
+                .eq('id', signedInUser.id)
+                .single();
+              if (dbUser?.role) role = dbUser.role;
+            } catch (_) {}
             setUserRole(role);
             setCurrentPage('dashboard');
           }}
@@ -225,7 +338,7 @@ export default function App() {
               onNavigateToSettings={() => setActiveTab('settings')}
             />
           )}
-          {userRole !== 'admin' && !selectedContact && activeTab !== 'settings' && activeTab !== 'edit-profile' && activeTab !== 'map' && <Navbar activeTab={activeTab} onTabChange={setActiveTab} />}
+          {userRole !== 'admin' && !selectedContact && activeTab !== 'settings' && activeTab !== 'edit-profile' && activeTab !== 'map' && <Navbar activeTab={activeTab} onTabChange={setActiveTab} onMicPressIn={startWalkieTalkieRecording} onMicPressOut={stopAndSendWalkieTalkie} isRecording={isRecording} />}
         </View>
       )}
       <StatusBar style="dark" />
