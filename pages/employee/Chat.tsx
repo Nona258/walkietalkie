@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { View, Text, TouchableOpacity, ScrollView, TextInput, Alert, Platform, Animated } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { ExpoSpeechRecognitionModule, useSpeechRecognitionEvent } from 'expo-speech-recognition';
+import supabase from '../../utils/supabase';
 
 interface Contact {
   id: string;
@@ -10,6 +11,8 @@ interface Contact {
   initials: string;
   status: 'online' | 'offline' | 'busy' | 'lost_connection';
   avatar_color: string;
+  isGroup?: boolean;
+  groupId?: string;
 }
 
 interface Message {
@@ -75,6 +78,95 @@ export default function Chat({ selectedContact, onBackPress }: ChatProps) {
   const [recognizedTranscript, setRecognizedTranscript] = useState('');
   const [isTyping, setIsTyping] = useState(false);
   const [typingAnimation] = useState(new Animated.Value(0));
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+
+  const isGroupChat = !!selectedContact?.isGroup && !!selectedContact?.groupId;
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const { data, error } = await supabase.auth.getUser();
+        if (error) throw error;
+        setCurrentUserId(data?.user?.id || null);
+      } catch (e: any) {
+        console.warn('Unable to resolve current user:', e?.message || String(e));
+        setCurrentUserId(null);
+      }
+    })();
+  }, []);
+
+  useEffect(() => {
+    // Load group messages when opening a group chat
+    if (!isGroupChat) {
+      setMessages(MOCK_MESSAGES);
+      return;
+    }
+
+    const groupId = selectedContact.groupId as string;
+    let isActive = true;
+
+    const mapGroupRowToMessage = (row: any): Message => {
+      const created = row.created_at ? new Date(row.created_at) : new Date();
+      const isOwn = !!currentUserId && row.sender_id === currentUserId;
+      return {
+        id: String(row.id),
+        sender: isOwn ? 'You' : 'Member',
+        content: row.transcription || '',
+        timestamp: created.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        isOwn,
+        status: 'sent',
+        type: 'text',
+      };
+    };
+
+    const fetchGroupMessages = async () => {
+      try {
+        const { data, error } = await supabase
+          .from('messages')
+          .select('id, sender_id, transcription, created_at')
+          .eq('group_id', groupId)
+          .order('created_at', { ascending: true });
+        if (error) throw error;
+        if (!isActive) return;
+        setMessages((data || []).map(mapGroupRowToMessage));
+      } catch (e: any) {
+        console.error('Failed to fetch group messages:', e);
+        if (isActive) Alert.alert('Error', e?.message || 'Failed to load group chat');
+      }
+    };
+
+    fetchGroupMessages();
+
+    const channel = supabase
+      .channel(`group-messages-${groupId}`)
+      .on(
+        'postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'messages', filter: `group_id=eq.${groupId}` },
+        (payload: any) => {
+          try {
+            const row = payload?.new;
+            if (!row) return;
+            const mapped = mapGroupRowToMessage(row);
+            setMessages(prev => {
+              if (prev.some(m => m.id === mapped.id)) return prev;
+              return [...prev, mapped];
+            });
+          } catch (err) {
+            console.warn('Failed to handle realtime group insert:', err);
+          }
+        }
+      )
+      .subscribe();
+
+    return () => {
+      isActive = false;
+      try {
+        if (channel) supabase.removeChannel(channel);
+      } catch (e) {
+        // ignore
+      }
+    };
+  }, [isGroupChat, selectedContact?.groupId, currentUserId]);
 
   useEffect(() => {
     // Simulate contact typing occasionally
@@ -103,43 +195,89 @@ export default function Chat({ selectedContact, onBackPress }: ChatProps) {
     }
   });
 
+  const sendTextMessage = async (text: string) => {
+    const trimmed = (text || '').trim();
+    if (!trimmed) return;
+
+    const now = new Date();
+    const localId = `local-${Date.now()}`;
+    const localMessage: Message = {
+      id: localId,
+      sender: 'You',
+      content: trimmed,
+      timestamp: now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      isOwn: true,
+      status: isGroupChat ? 'sent' : 'sending',
+      type: 'text',
+    };
+
+    setMessages(prev => [...prev, localMessage]);
+    setRecognizedTranscript('');
+    setMessageText('');
+
+    if (!isGroupChat) {
+      // Keep existing simulated status for direct chat
+      setTimeout(() => {
+        setMessages(msgs => msgs.map(m => (m.id === localId ? { ...m, status: 'sent' } : m)));
+      }, 500);
+      setTimeout(() => {
+        setMessages(msgs => msgs.map(m => (m.id === localId ? { ...m, status: 'delivered' } : m)));
+      }, 1200);
+      return;
+    }
+
+    // Group chat: save to DB
+    try {
+      const groupId = selectedContact?.groupId;
+      if (!groupId) throw new Error('Missing group id');
+
+      let meId = currentUserId;
+      if (!meId) {
+        const { data, error } = await supabase.auth.getUser();
+        if (error) throw error;
+        meId = data?.user?.id || null;
+        setCurrentUserId(meId);
+      }
+      if (!meId) throw new Error('Not authenticated');
+
+      const payload: any = {
+        conversation_id: null,
+        group_id: groupId,
+        sender_id: meId,
+        receiver_id: null,
+        file_url: null,
+        transcription: trimmed,
+        duration_ms: null,
+      };
+
+      const { data, error } = await supabase.from('messages').insert([payload]).select();
+      if (error) throw error;
+
+      const inserted = data && data[0] ? data[0] : null;
+      if (inserted) {
+        const created = inserted.created_at ? new Date(inserted.created_at) : new Date();
+        const mapped: Message = {
+          id: String(inserted.id),
+          sender: 'You',
+          content: inserted.transcription || trimmed,
+          timestamp: created.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+          isOwn: true,
+          status: 'sent',
+          type: 'text',
+        };
+        setMessages(prev => prev.map(m => (m.id === localId ? mapped : m)));
+      }
+    } catch (e: any) {
+      console.error('Failed to send group message:', e);
+      Alert.alert('Error', e?.message || 'Failed to send message');
+    }
+  };
+
   // Listen for when recognition ends - send message only once here
   useSpeechRecognitionEvent('end', () => {
     if (recognizedTranscript.trim()) {
       const capitalizedText = recognizedTranscript.charAt(0).toUpperCase() + recognizedTranscript.slice(1);
-      
-      const newMessage: Message = {
-        id: (messages.length + 1).toString(),
-        sender: 'You',
-        content: capitalizedText,
-        timestamp: new Date().toLocaleTimeString([], {
-          hour: '2-digit',
-          minute: '2-digit',
-        }),
-        isOwn: true,
-        status: 'sending',
-        type: 'text',
-      };
-      setMessages((prevMessages) => [...prevMessages, newMessage]);
-      setRecognizedTranscript('');
-      setMessageText('');
-
-      // Simulate message status changes
-      setTimeout(() => {
-        setMessages(msgs =>
-          msgs.map(m =>
-            m.id === newMessage.id ? { ...m, status: 'sent' as const } : m
-          )
-        );
-      }, 500);
-
-      setTimeout(() => {
-        setMessages(msgs =>
-          msgs.map(m =>
-            m.id === newMessage.id ? { ...m, status: 'delivered' as const } : m
-          )
-        );
-      }, 1200);
+      sendTextMessage(capitalizedText);
     }
     setIsRecording(false);
     setIsListening(false);
@@ -158,39 +296,7 @@ export default function Chat({ selectedContact, onBackPress }: ChatProps) {
   });
 
   const handleSendMessage = () => {
-    if (messageText.trim()) {
-      const newMessage: Message = {
-        id: (messages.length + 1).toString(),
-        sender: 'You',
-        content: messageText,
-        timestamp: new Date().toLocaleTimeString([], {
-          hour: '2-digit',
-          minute: '2-digit',
-        }),
-        isOwn: true,
-        status: 'sending',
-        type: 'text',
-      };
-      setMessages([...messages, newMessage]);
-      setMessageText('');
-
-      // Simulate message status changes
-      setTimeout(() => {
-        setMessages(msgs =>
-          msgs.map(m =>
-            m.id === newMessage.id ? { ...m, status: 'sent' as const } : m
-          )
-        );
-      }, 500);
-
-      setTimeout(() => {
-        setMessages(msgs =>
-          msgs.map(m =>
-            m.id === newMessage.id ? { ...m, status: 'delivered' as const } : m
-          )
-        );
-      }, 1200);
-    }
+    sendTextMessage(messageText);
   };
 
   const handleCaptureImage = () => {

@@ -11,6 +11,8 @@ interface Contact {
   initials: string;
   status: 'online' | 'offline' | 'busy' | 'lost_connection';
   avatar_color: string;
+  isGroup?: boolean;
+  groupId?: string;
   lastMessage?: string;
   lastMessageTime?: string;
   unreadCount?: number;
@@ -75,6 +77,36 @@ export default function Contacts({ onContactSelected, currentUserId }: ContactsP
         return;
       }
 
+      // Load the user's current group (if any) so it appears as a chat option
+      let myGroupContact: Contact | null = null;
+      try {
+        const { data: meRow, error: meRowError } = await supabase
+          .from('users')
+          .select('group_id, group:group_id ( id, name )')
+          .eq('id', meId)
+          .maybeSingle();
+
+        if (!meRowError && meRow?.group_id) {
+          const g = Array.isArray((meRow as any).group) ? (meRow as any).group[0] : (meRow as any).group;
+          const groupId = String(meRow.group_id);
+          const groupName = g?.name ? String(g.name) : 'My Group Chat';
+          myGroupContact = {
+            id: `group-${groupId}`,
+            name: groupName,
+            role: 'Group',
+            initials: getInitials(groupName),
+            status: 'online',
+            avatar_color: '#10b981',
+            isGroup: true,
+            groupId,
+            email: 'Group Chat',
+            unreadCount: 0,
+          };
+        }
+      } catch (e) {
+        console.warn('Unable to load user group chat:', (e as any)?.message || String(e));
+      }
+
       // Load only the contacts that *this user* added
       const { data: contactRows, error: contactsError } = await supabase
         .from('contacts')
@@ -131,7 +163,7 @@ export default function Contacts({ onContactSelected, currentUserId }: ContactsP
         })
         .filter((c: Contact | null): c is Contact => c !== null);
 
-      setContacts(formattedContacts);
+      setContacts(myGroupContact ? [myGroupContact, ...formattedContacts] : formattedContacts);
     } catch (error) {
       console.error('Error fetching contacts:', error);
       Alert.alert('Error', 'Failed to load contacts');

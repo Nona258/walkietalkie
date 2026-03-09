@@ -1,9 +1,10 @@
-import React, { useState, useEffect } from 'react';
-import { View, Text, TouchableOpacity, ScrollView, TextInput, Alert, StatusBar } from 'react-native';
+import React, { useEffect, useState } from 'react';
+import { View, Text, TouchableOpacity, ScrollView, TextInput, Alert, StatusBar, Modal } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import  supabase  from '../../utils/supabase';
+import supabase from '../../utils/supabase';
+import SiteDetails from './SiteDetails';
 
-interface Site {
+export interface Site {
   id: string;
   name: string;
   companyName: string | null;
@@ -11,19 +12,24 @@ interface Site {
   latitude: number | null;
   longitude: number | null;
   status: 'active' | 'inactive';
-  securityLevel: 'high' | 'medium' | 'low';
+  startTime: string | null;
+  endTime: string | null;
+  dateAccomplished: string | null;
+  membersCount: number | null;
   staffCount: number;
 }
 
 interface SitesProps {
   onMapPress?: () => void;
+  onSiteMapPress?: (site: Site) => void;
+  onSitePress?: (site: Site) => void;
 }
 
-export default function Sites({ onMapPress }: SitesProps) {
+export default function Sites({ onMapPress, onSiteMapPress, onSitePress }: SitesProps) {
   const [sites, setSites] = useState<Site[]>([]);
   const [searchText, setSearchText] = useState('');
-  const [selectedSite, setSelectedSite] = useState<Site | null>(null);
   const [loading, setLoading] = useState(false);
+  const [selectedSite, setSelectedSite] = useState<Site | null>(null);
 
   useEffect(() => {
     fetchSites();
@@ -34,32 +40,55 @@ export default function Sites({ onMapPress }: SitesProps) {
     try {
       const { data, error } = await supabase
         .from('sites')
-        .select(`
+        .select(
+          `
           id,
           name,
           status,
+          created_at,
+          updated_at,
           latitude,
           longitude,
+          company_id,
+          branch_id,
+          start_time,
+          end_time,
+          date_accomplished,
+          members_count,
           company:company_id ( company_name ),
           branch:branch_id ( branch_name )
-        `);
+        `
+        )
+        .order('created_at', { ascending: false });
 
       if (error) throw error;
 
-      if (data) {
-        const mapped: Site[] = data.map((item: any) => ({
+      const mapped: Site[] = (data || []).map((item: any) => {
+        const companyObj = Array.isArray(item.company) ? item.company[0] : item.company;
+        const branchObj = Array.isArray(item.branch) ? item.branch[0] : item.branch;
+        const membersCount = typeof item.members_count === 'number'
+          ? item.members_count
+          : item.members_count != null
+            ? Number(item.members_count)
+            : null;
+
+        return {
           id: item.id,
           name: item.name || 'Unnamed site',
-          companyName: item.company?.company_name || null,
-          branchName: item.branch?.branch_name || null,
-          latitude: item.latitude,
-          longitude: item.longitude,
+          companyName: companyObj?.company_name || null,
+          branchName: branchObj?.branch_name || null,
+          latitude: item.latitude ?? null,
+          longitude: item.longitude ?? null,
           status: (item.status === 'Active' ? 'active' : 'inactive') as 'active' | 'inactive',
-          securityLevel: 'low',
-          staffCount: 0,
-        }));
-        setSites(mapped);
-      }
+          startTime: item.start_time ?? null,
+          endTime: item.end_time ?? null,
+          dateAccomplished: item.date_accomplished ?? null,
+          membersCount,
+          staffCount: membersCount ?? 0,
+        };
+      });
+
+      setSites(mapped);
     } catch (err: any) {
       Alert.alert('Error', err?.message || String(err));
     } finally {
@@ -74,12 +103,13 @@ export default function Sites({ onMapPress }: SitesProps) {
   );
 
   const handleSitePress = (site: Site) => {
+    if (onSitePress) {
+      onSitePress(site);
+      return;
+    }
+
+    // Default behavior: open the details screen
     setSelectedSite(site);
-    Alert.alert(
-      site.name,
-      `Company: ${site.companyName || 'N/A'}\nBranch: ${site.branchName || 'N/A'}\nCoordinates: ${formatCoordinates(site.latitude, site.longitude)}`,
-      [{ text: 'Close', onPress: () => setSelectedSite(null) }]
-    );
   };
 
   const formatCoordinates = (lat: number | null, lng: number | null): string => {
@@ -90,7 +120,23 @@ export default function Sites({ onMapPress }: SitesProps) {
   return (
     <View className="flex-1 bg-white">
       <StatusBar barStyle="light-content" />
-      
+
+      {/* Details Modal */}
+      <Modal
+        visible={!!selectedSite}
+        animationType="slide"
+        onRequestClose={() => setSelectedSite(null)}
+      >
+        <SiteDetails
+          site={selectedSite}
+          onBack={() => setSelectedSite(null)}
+          onViewOnMap={() => {
+            // Optional: take user to the Map tab
+            onMapPress?.();
+          }}
+        />
+      </Modal>
+
       {/* Header Section */}
       <View className="bg-white px-6 py-6 pt-12 border-b border-green-100">
         <View className="flex-row items-center justify-between mb-6">
@@ -104,7 +150,11 @@ export default function Sites({ onMapPress }: SitesProps) {
         </View>
 
         {/* Search Bar */}
-        <View className={`flex-row items-center rounded-2xl bg-gray-100 px-4 py-3 border-2 ${searchText.length > 0 ? 'border-green-500' : 'border-gray-300'}`}>
+        <View
+          className={`flex-row items-center rounded-2xl bg-gray-100 px-4 py-3 border-2 ${
+            searchText.length > 0 ? 'border-green-500' : 'border-gray-300'
+          }`}
+        >
           <Ionicons name="search" size={20} color="#6b7280" />
           <TextInput
             placeholder="Search sites..."
@@ -122,7 +172,7 @@ export default function Sites({ onMapPress }: SitesProps) {
       </View>
 
       {/* Sites List */}
-      <ScrollView 
+      <ScrollView
         className="flex-1"
         contentContainerStyle={{ flexGrow: 1 }}
         showsVerticalScrollIndicator={false}
@@ -144,43 +194,50 @@ export default function Sites({ onMapPress }: SitesProps) {
                   {/* Top Section - Icon and Basic Info */}
                   <View className="flex-row items-start mb-5">
                     {/* Location Icon */}
-                    <View className={`w-14 h-14 rounded-2xl ${site.status === 'active' ? 'bg-green-500' : 'bg-gray-400'} items-center justify-center mr-4`}>
+                    <TouchableOpacity
+                      onPress={() => onSiteMapPress?.(site)}
+                      className={`w-14 h-14 rounded-2xl ${
+                        site.status === 'active' ? 'bg-green-500' : 'bg-gray-400'
+                      } items-center justify-center mr-4 active:scale-95`}
+                    >
                       <Ionicons name="location" size={26} color="white" />
-                    </View>
+                    </TouchableOpacity>
 
                     {/* Site Info with Company & Branch */}
                     <View className="flex-1">
                       <View className="flex-row items-center mb-1">
-                        <Text className="text-gray-900 font-extrabold text-lg flex-1">
-                          {site.name}
-                        </Text>
-                        <View className={`h-3 w-3 rounded-full ${site.status === 'active' ? 'bg-green-500' : 'bg-gray-400'}`} />
+                        <Text className="text-gray-900 font-extrabold text-lg flex-1">{site.name}</Text>
+                        <View
+                          className={`h-3 w-3 rounded-full ${
+                            site.status === 'active' ? 'bg-green-500' : 'bg-gray-400'
+                          }`}
+                        />
                       </View>
-                      
+
                       {/* Company name (if available) */}
                       {site.companyName && (
-                        <Text className="text-gray-700 font-bold text-base">
-                          {site.companyName}
-                        </Text>
+                        <Text className="text-gray-700 font-bold text-base">{site.companyName}</Text>
                       )}
                     </View>
                   </View>
 
                   {/* Staff Count Section */}
                   <View className="bg-green-50 rounded-2xl p-4 items-center justify-center border border-green-200 mb-4">
-                    <Text className="text-gray-500 text-xs font-semibold uppercase">Staff Count</Text>
+                    <Text className="text-gray-500 text-xs font-semibold uppercase">Members Count</Text>
                     <Text className="text-gray-900 font-extrabold text-2xl mt-2">{site.staffCount}</Text>
                   </View>
 
-                  {/* Coordinates Section (beside house icon) */}
+                  {/* Branch Section */}
                   <View className="flex-row items-center">
                     <Ionicons name="home-outline" size={16} color="#6b7280" />
-                      {/* Branch name (if available) */}
-                      {site.branchName && (
-                        <Text className="text-green-600 text-sm  ml-2 flex-1 font-semibold mt-0.5" numberOfLines={1}>
-                          {site.branchName}
-                        </Text>
-                      )}
+                    {site.branchName && (
+                      <Text
+                        className="text-green-600 text-sm  ml-2 flex-1 font-semibold mt-0.5"
+                        numberOfLines={1}
+                      >
+                        {site.branchName}
+                      </Text>
+                    )}
                     <Ionicons name="chevron-forward" size={20} color="#10b981" />
                   </View>
                 </TouchableOpacity>
