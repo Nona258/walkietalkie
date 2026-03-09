@@ -179,7 +179,8 @@ export default function App() {
         mr.ondataavailable = (e: any) => {
           if (e.data && e.data.size > 0) wtAudioChunksRef.current.push(e.data);
         };
-        mr.start();
+        mr.start(100); // 100 ms timeslice → multi-cluster WebM with timestamps (prevents premature onended)
+        wtStartTimeRef.current = Date.now(); // start timer after recorder actually begins
         wtMediaRecorderRef.current = { mediaRecorder: mr, stream };
       } catch (e) {
         console.error('Microphone error:', e);

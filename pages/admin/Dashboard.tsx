@@ -137,61 +137,74 @@ export default function AdminDashboard({ onLogout, onNavigate }: AdminDashboardP
             setIncomingFrom(senderName);
             setIncomingAlert(true);
 
-            // Autoplay the full audio; dismiss banner when playback ends
+            // Stop any previous playback.
             if (autoplayAudioRef.current) {
               try { autoplayAudioRef.current.pause(); } catch (_) {}
+              autoplayAudioRef.current = null;
             }
-
-            // Convert the base64 data URL to a Blob Object URL so the browser
-            // can stream directly from memory instead of re-decoding the entire
-            // base64 string — this prevents the audio from being cut off at the end.
-            let objectUrl: string | null = null;
-            try {
-              const res = await fetch(audioUrl);
-              const blob = await res.blob();
-              objectUrl = URL.createObjectURL(blob);
-            } catch (_) {}
-            const playbackSrc = objectUrl ?? audioUrl;
-
-            const audio = new Audio(playbackSrc);
-            autoplayAudioRef.current = audio;
 
             let fallbackTimer: ReturnType<typeof setTimeout> | null = null;
 
-            const cleanup = () => {
-              if (fallbackTimer !== null) {
-                clearTimeout(fallbackTimer);
-                fallbackTimer = null;
-              }
-              if (objectUrl) URL.revokeObjectURL(objectUrl);
+            const dismissBanner = () => {
+              if (fallbackTimer !== null) { clearTimeout(fallbackTimer); fallbackTimer = null; }
               setIncomingAlert(false);
               autoplayAudioRef.current = null;
             };
 
-            audio.onended = cleanup;
+            // Use Web Audio API: decodeAudioData decodes the full buffer up-front so
+            // AudioBufferSourceNode.onended fires only after every PCM sample plays.
+            // HTMLAudioElement with MediaRecorder WebM blobs fires onended prematurely
+            // because the encoder produces a single cluster with no duration metadata.
+            let playbackStarted = false;
+            try {
+              const res = await fetch(audioUrl);
+              const arrayBuffer = await res.arrayBuffer();
+              const AudioCtxCtor =
+                (window as any).AudioContext || (window as any).webkitAudioContext;
+              const actx: AudioContext = new AudioCtxCtor();
+              if (actx.state === 'suspended') await actx.resume();
+              const decoded = await actx.decodeAudioData(arrayBuffer);
+              const source = actx.createBufferSource();
+              source.buffer = decoded;
+              source.connect(actx.destination);
 
-            // Wait until the browser has buffered the full recording before playing
-            await new Promise<void>((resolve) => {
-              if (audio.readyState >= 4) { resolve(); return; }
-              audio.oncanplaythrough = () => resolve();
-              audio.load();
-            });
+              autoplayAudioRef.current = {
+                pause: () => { try { source.stop(0); } catch (_) {} },
+              } as any;
 
-            // Fallback: only fires if onended never triggers.
-            // Pause before revoking the blob URL so playback isn't physically cut off.
-            const fallbackMs = durationMs ? durationMs + 3000 : 30000;
-            fallbackTimer = setTimeout(() => {
-              fallbackTimer = null;
-              if (autoplayAudioRef.current) {
-                try { autoplayAudioRef.current.pause(); } catch (_) {}
-              }
-              cleanup();
-            }, fallbackMs);
+              source.onended = () => {
+                actx.close().catch(() => {});
+                dismissBanner();
+              };
 
-            audio.play().catch((e) => {
-              console.warn('Autoplay blocked:', e);
-              cleanup();
-            });
+              // Fallback in case onended never fires (should not happen with Web Audio)
+              const actualMs = decoded.duration * 1000;
+              fallbackTimer = setTimeout(() => {
+                fallbackTimer = null;
+                try { source.stop(0); } catch (_) {}
+                actx.close().catch(() => {});
+                dismissBanner();
+              }, actualMs + 2000);
+
+              source.start(0);
+              playbackStarted = true;
+            } catch (e) {
+              console.warn('Web Audio playback failed, falling back to HTML Audio:', e);
+            }
+
+            if (!playbackStarted) {
+              // HTML Audio fallback — no blob URL revoke to avoid cutting off audio
+              const audio = new Audio(audioUrl);
+              autoplayAudioRef.current = audio;
+              audio.onended = dismissBanner;
+              const fallbackMs = durationMs ? durationMs + 5000 : 30000;
+              fallbackTimer = setTimeout(() => {
+                fallbackTimer = null;
+                try { audio.pause(); } catch (_) {}
+                dismissBanner();
+              }, fallbackMs);
+              audio.play().catch(() => dismissBanner());
+            }
           }
         )
         .subscribe();
