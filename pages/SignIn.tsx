@@ -128,13 +128,13 @@ export default function SignIn({ onNavigateToSignUp, onSignInSuccess }: SignInPr
   return (
     <View className="flex-1 bg-white overflow-hidden">
       {/* Background decorative elements */}
-      <View className="absolute top-20 -left-20 w-48 h-48 rounded-full bg-[#34d399] opacity-10" />
+      <View className="absolute top-20 -left-20 w-48 h-48 rounded-full bg-[#10b981] opacity-10" />
       <View className="absolute -bottom-32 -left-32 w-80 h-80 rounded-full bg-[#10b981] opacity-10" />
-      <View className="absolute bottom-40 -right-16 w-48 h-48 rounded-full bg-[#059669] opacity-10" />
+      <View className="absolute bottom-40 -right-16 w-48 h-48 rounded-full bg-[#10b981] opacity-10" />
 
       {/* Decorative rings */}
       <View className="absolute -bottom-20 -left-20 w-56 h-56 rounded-full border-2 border-[#10b981]/15" />
-      <View className="absolute bottom-48 -right-12 w-32 h-32 rounded-full border border-[#34d399]/20" />
+      <View className="absolute bottom-48 -right-12 w-32 h-32 rounded-full border border-[#10b981]/20" />
 
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
@@ -154,7 +154,7 @@ export default function SignIn({ onNavigateToSignUp, onSignInSuccess }: SignInPr
           <View className="mt-2">
             {/* Email Input */}
             <View className="flex-row items-center px-3 py-3 mb-4 bg-white border border-green-300 rounded-xl">
-              <Ionicons name="mail-outline" size={20} color="#4ade80" />
+              <Ionicons name="mail-outline" size={20} color="#10b981" />
               <TextInput
                 className="flex-1 ml-2 text-base outline-none"
                 placeholder="Email address"
@@ -168,7 +168,7 @@ export default function SignIn({ onNavigateToSignUp, onSignInSuccess }: SignInPr
 
             {/* Password Input */}
             <View className="flex-row items-center px-3 py-3 mb-3 bg-white border border-green-300 rounded-xl">
-              <Ionicons name="lock-closed-outline" size={20} color="#4ade80" />
+              <Ionicons name="lock-closed-outline" size={20} color="#10b981" />
               <TextInput
                 className="flex-1 ml-2 text-base outline-none"
                 placeholder="Password"
