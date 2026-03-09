@@ -9,7 +9,7 @@ interface Contact {
   name: string;
   role: string;
   initials: string;
-  status: 'online' | 'offline' | 'busy';
+  status: 'online' | 'offline' | 'busy' | 'lost_connection';
   avatar_color: string;
   lastMessage?: string;
   lastMessageTime?: string;
@@ -108,9 +108,10 @@ export default function Contacts({ onContactSelected, currentUserId }: ContactsP
           const user = usersMap.get(row.contact_id);
           if (!user) return null;
 
-          let status: 'online' | 'offline' | 'busy' = 'offline';
+          let status: 'online' | 'offline' | 'busy' | 'lost_connection' = 'offline';
           if (user.status === 'online') status = 'online';
           else if (user.status === 'busy') status = 'busy';
+          else if (user.status === 'lost_connection') status = 'lost_connection';
 
           const displayName = user.full_name || user.email || 'Unknown';
 
@@ -366,10 +367,12 @@ export default function Contacts({ onContactSelected, currentUserId }: ContactsP
                   renderItem={({ item }) => {
                     const now = new Date();
                     const onlineThreshold = 5 * 60 * 1000;
-                    let status: 'online' | 'offline' | 'busy' = 'offline';
+                    let status: 'online' | 'offline' | 'busy' | 'lost_connection' = 'offline';
                     if (item.last_seen) {
                       const lastSeen = new Date(item.last_seen);
                       if (now.getTime() - lastSeen.getTime() < onlineThreshold) status = 'online';
+                    } else if (item.status === 'lost_connection') {
+                      status = 'lost_connection';
                     } else if (item.status === 'online') {
                       status = 'online';
                     }

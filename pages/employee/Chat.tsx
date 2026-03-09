@@ -8,7 +8,7 @@ interface Contact {
   name: string;
   role: string;
   initials: string;
-  status: 'online' | 'offline' | 'busy';
+  status: 'online' | 'offline' | 'busy' | 'lost_connection';
   avatar_color: string;
 }
 

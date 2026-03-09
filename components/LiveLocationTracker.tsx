@@ -1,5 +1,6 @@
 import { useEffect, useRef, useCallback } from 'react';
 import { AppState, Platform } from 'react-native';
+import NetInfo from '@react-native-community/netinfo';
 import * as Location from 'expo-location';
 import supabase from '../utils/supabase';
 import { startBackgroundLocation, stopBackgroundLocation } from '../utils/backgroundLocation';
@@ -13,7 +14,8 @@ export default function LiveLocationTracker({ enabled, userId }: Props) {
   const locationSubRef = useRef<Location.LocationSubscription | null>(null);
   const webWatchIdRef = useRef<number | null>(null);
   const lastSentRef = useRef<{ at: number; lat: number | null; lng: number | null }>({ at: 0, lat: null, lng: null });
-  const historyRowIdRef = useRef<number | null>(null);
+  const lastCoordsRef = useRef<{ lat: number; lng: number } | null>(null);
+  const lastConnectivityRef = useRef<boolean | null>(null);
 
   const distanceMeters = (aLat: number, aLng: number, bLat: number, bLng: number) => {
     const toRad = (d: number) => (d * Math.PI) / 180;
@@ -40,7 +42,7 @@ export default function LiveLocationTracker({ enabled, userId }: Props) {
         // webWatchIdRef may hold either a geolocation.watchPosition id or a setInterval id
         try {
           navigator.geolocation.clearWatch(webWatchIdRef.current as number);
-        } catch (e) {
+        } catch {
           try {
             clearInterval(webWatchIdRef.current as number);
           } catch {}
@@ -64,9 +66,12 @@ export default function LiveLocationTracker({ enabled, userId }: Props) {
     }
   }, [enabled, userId]);
 
-  const sendLocation = useCallback(
-    async (lat: number, lng: number) => {
+  const syncUserLocation = useCallback(
+    async (lat: number, lng: number, opts?: { status?: string; force?: boolean }) => {
       if (!userId) return;
+
+      const status = opts?.status ?? 'online';
+      const force = opts?.force ?? false;
 
       // Tune these two knobs based on how "live" you want it vs battery/network usage.
       // This setup updates when the user moves a few meters, with a small time gate to reduce GPS jitter spam.
@@ -82,6 +87,7 @@ export default function LiveLocationTracker({ enabled, userId }: Props) {
       const movedMeters = hasLast ? distanceMeters(last.lat as number, last.lng as number, lat, lng) : Infinity;
 
       const shouldSend =
+        force ||
         !hasLast ||
         (elapsed >= minIntervalMs && movedMeters >= minDistanceMeters) ||
         elapsed >= maxIntervalMs;
@@ -91,78 +97,31 @@ export default function LiveLocationTracker({ enabled, userId }: Props) {
       lastSentRef.current = { at: now, lat, lng };
 
       try {
-        // Update users table for live status
+        // Update users table for live status.
+        // (DB trigger can log changes into user_location_history automatically.)
         const { error: userErr } = await supabase
           .from('users')
-          .update({ latitude: lat, longitude: lng, status: 'online' })
+          .update({ latitude: lat, longitude: lng, status })
           .eq('id', userId);
         if (userErr) console.error('Failed to update live location (users):', userErr);
-
-        // Maintain at most one history row per user by updating a cached/latest row if present,
-        // otherwise inserting a new one and caching its id.
-        const upsertHistoryRow = async () => {
-          const payload = {
-            latitude: lat,
-            longitude: lng,
-            recorded_at: new Date().toISOString(),
-            status: 'online',
-          };
-
-          if (historyRowIdRef.current !== null) {
-            const { error: updateErr } = await supabase
-              .from('user_location_history')
-              .update(payload)
-              .eq('id', historyRowIdRef.current);
-            if (!updateErr) return;
-            console.error('Failed to update cached user_location_history row:', updateErr);
-            historyRowIdRef.current = null;
-          }
-
-          const { data: existingRows, error: selectErr } = await supabase
-            .from('user_location_history')
-            .select('id')
-            .eq('user_id', userId)
-            .order('recorded_at', { ascending: false })
-            .limit(1);
-
-          if (selectErr) {
-            console.error('Failed to query user_location_history:', selectErr);
-            return;
-          }
-
-          const latest = Array.isArray(existingRows) ? (existingRows[0] as any) : undefined;
-          if (latest && latest.id) {
-            historyRowIdRef.current = Number(latest.id);
-            const { error: updateErr } = await supabase
-              .from('user_location_history')
-              .update(payload)
-              .eq('id', latest.id);
-            if (updateErr) {
-              console.error('Failed to update user_location_history row:', updateErr);
-              historyRowIdRef.current = null;
-            }
-            return;
-          }
-
-          const { data: inserted, error: insertErr } = await supabase
-            .from('user_location_history')
-            .insert([{ user_id: userId, latitude: lat, longitude: lng, status: 'online' }])
-            .select('id')
-            .single();
-          if (insertErr) {
-            console.error('Failed to insert user_location_history row:', insertErr);
-            return;
-          }
-          if (inserted?.id) historyRowIdRef.current = Number(inserted.id);
-        };
-
-        await upsertHistoryRow();
       } catch (e) {
         console.error('Failed to update live location:', e);
       }
     },
     [userId]
   );
+
+  const markLostConnection = useCallback(async () => {
+    if (!enabled || !userId) return;
+    const last = lastCoordsRef.current;
+    if (!last) return;
+    try {
+      await syncUserLocation(last.lat, last.lng, { status: 'lost_connection', force: true });
+    } catch (e) {
+      // If we truly have no internet, this will fail; the admin map has a staleness-based fallback.
+      console.warn('Failed to mark lost_connection (likely offline):', e);
+    }
+  }, [enabled, userId, syncUserLocation]);
 
   const startTracking = useCallback(async () => {
     stopTracking();
@@ -180,7 +139,10 @@ export default function LiveLocationTracker({ enabled, userId }: Props) {
           pos => {
             const lat = pos.coords.latitude;
             const lng = pos.coords.longitude;
-            if (typeof lat === 'number' && typeof lng === 'number') void sendLocation(lat, lng);
+            if (typeof lat === 'number' && typeof lng === 'number') {
+              lastCoordsRef.current = { lat, lng };
+              void syncUserLocation(lat, lng);
+            }
           },
           err => console.warn('geolocation watchPosition error:', err),
           { enableHighAccuracy: true, maximumAge: 0, timeout: 20000 }
@@ -208,13 +170,16 @@ export default function LiveLocationTracker({ enabled, userId }: Props) {
         loc => {
           const lat = loc.coords?.latitude;
           const lng = loc.coords?.longitude;
-          if (typeof lat === 'number' && typeof lng === 'number') void sendLocation(lat, lng);
+          if (typeof lat === 'number' && typeof lng === 'number') {
+            lastCoordsRef.current = { lat, lng };
+            void syncUserLocation(lat, lng);
+          }
         }
       );
     } catch (e) {
       console.warn('Failed to start location watcher:', e);
     }
-  }, [enabled, userId, sendLocation, stopTracking, startOrStopBackground]);
+  }, [enabled, userId, syncUserLocation, stopTracking, startOrStopBackground]);
 
   useEffect(() => {
     if (!enabled || !userId) {
@@ -236,6 +201,52 @@ export default function LiveLocationTracker({ enabled, userId }: Props) {
       void startOrStopBackground();
     };
   }, [enabled, userId, startTracking, stopTracking, startOrStopBackground]);
+
+  // Connectivity watcher: when internet is lost, mark the user as lost_connection using the last known GPS fix.
+  // Note: if there is *no* connection, this write may fail; the admin map also has a staleness-based fallback.
+  useEffect(() => {
+    if (!enabled || !userId) return;
+
+    const setConnected = (connected: boolean) => {
+      const prev = lastConnectivityRef.current;
+      lastConnectivityRef.current = connected;
+      if (prev === null) return;
+      if (prev === true && connected === false) void markLostConnection();
+    };
+
+    if (Platform.OS === 'web') {
+      const onOffline = () => setConnected(false);
+      const onOnline = () => setConnected(true);
+
+      try {
+        setConnected(typeof navigator !== 'undefined' ? !!(navigator as any).onLine : true);
+      } catch {
+        setConnected(true);
+      }
+
+      window.addEventListener('offline', onOffline);
+      window.addEventListener('online', onOnline);
+      return () => {
+        window.removeEventListener('offline', onOffline);
+        window.removeEventListener('online', onOnline);
+      };
+    }
+
+    const unsubscribe = NetInfo.addEventListener(state => {
+      // isInternetReachable can be null initially; treat null as "connected" until we know.
+      const reachable = state.isInternetReachable;
+      const connected = !!state.isConnected && (reachable === null ? true : !!reachable);
+      setConnected(connected);
+    });
+
+    return () => {
+      try {
+        unsubscribe();
+      } catch {
+        // ignore
+      }
+    };
+  }, [enabled, userId, markLostConnection]);
 
   return null;
 }

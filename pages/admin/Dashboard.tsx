@@ -65,7 +65,7 @@ function buildLiveLocationMapHtml(
   const onlineUsersForMap = (onlineUsers ?? [])
     .filter(
       u =>
-        u && u.status === 'online' &&
+        u && (String(u.status || '').toLowerCase() === 'online' || String(u.status || '').toLowerCase() === 'lost_connection' || String(u.status || '').toLowerCase() === 'lost connection') &&
         u.latitude !== null && u.latitude !== undefined &&
         u.longitude !== null && u.longitude !== undefined &&
         !Number.isNaN(Number(u.latitude)) && !Number.isNaN(Number(u.longitude))
@@ -75,7 +75,11 @@ function buildLiveLocationMapHtml(
       email: u.email,
       full_name: u.full_name,
       role: u.role,
-      status: u.status,
+      status: (() => {
+        const s = String(u.status || '').toLowerCase();
+        if (s === 'lost connection') return 'lost_connection';
+        return s || 'offline';
+      })(),
       latitude: Number(u.latitude),
       longitude: Number(u.longitude),
     }));
@@ -258,6 +262,37 @@ const LIVE_LOCATION_MAP_HTML = `
       let onlineUserDataById = {};
       let openOnlineUserId = null;
 
+      // Marker color is based on the user's persisted status from the database.
+      const ONLINE_MARKER_COLOR = '#10b981';
+      // Reuse an existing neutral tone already used elsewhere in this file (stone-400).
+      const LOST_CONNECTION_MARKER_COLOR = '#a8a29e';
+
+      function markerFillForStatus(status) {
+        const s = String(status || '').toLowerCase();
+        if (s === 'lost_connection' || s === 'lost connection') return LOST_CONNECTION_MARKER_COLOR;
+        return ONLINE_MARKER_COLOR;
+      }
+
+      function setMarkerStatus(marker, status) {
+        if (!marker) return;
+        const icon = marker.getIcon && marker.getIcon();
+        const fillColor = markerFillForStatus(status);
+        const nextIcon = {
+          path: google.maps.SymbolPath.CIRCLE,
+          scale: 6,
+          fillColor,
+          fillOpacity: 1,
+          strokeColor: '#ffffff',
+          strokeWeight: 2,
+        };
+        // Ensure we always have a predictable icon object.
+        if (!icon) {
+          marker.setIcon(nextIcon);
+        } else {
+          marker.setIcon(nextIcon);
+        }
+      }
+
       const map = new google.maps.Map(document.getElementById('map'), {
         center: { lat: 8.2256, lng: 124.2319 },
         zoom: 12,
@@ -438,7 +473,7 @@ const LIVE_LOCATION_MAP_HTML = `
               icon: {
                 path: google.maps.SymbolPath.CIRCLE,
                 scale: 6,
-                fillColor: '#10b981',
+                fillColor: markerFillForStatus(u.status),
                 fillOpacity: 1,
                 strokeColor: '#ffffff',
                 strokeWeight: 2,
@@ -462,6 +497,12 @@ const LIVE_LOCATION_MAP_HTML = `
             onlineUserMarkersById[id] = marker;
           } else {
             marker.setPosition(pos);
+            // Keep marker style in sync with status changes.
+            try {
+              setMarkerStatus(marker, u.status);
+            } catch (e) {
+              // ignore
+            }
           }
 
           // If the info window is currently open for this user, refresh its content live.
@@ -565,7 +606,6 @@ const LIVE_LOCATION_MAP_HTML = `
       recenterBtn.addEventListener('click', function() {
         followUser = true;
         if (lastUserLocation) {
-          map.panTo(lastUserLocation);
           if (map.getZoom() < 16) map.setZoom(16);
         }
       });
@@ -1031,6 +1071,15 @@ export default function AdminDashboard({ onLogout, onNavigate }: AdminDashboardP
   const [pendingUsersCount, setPendingUsersCount] = useState(0);
   const [onlineUserHistoryRows, setOnlineUserHistoryRows] = useState<OnlineUserHistoryRow[]>([]);
 
+  const normalizePresenceStatus = React.useCallback((raw: unknown) => {
+    const s = String(raw || '').toLowerCase();
+    if (s === 'lost connection' || s === 'lost_connection') return 'lost_connection';
+    if (s === 'online') return 'online';
+    if (s === 'busy') return 'busy';
+    if (s === 'offline') return 'offline';
+    return s || 'offline';
+  }, []);
+
   const windowWidth = Dimensions.get('window').width;
   const isWebView = windowWidth > 900;
 
@@ -1039,12 +1088,17 @@ export default function AdminDashboard({ onLogout, onNavigate }: AdminDashboardP
       users.filter(
         u =>
           u && u.role !== 'admin' &&
-          u.status === 'online' &&
+          (normalizePresenceStatus(u.status) === 'online' || normalizePresenceStatus(u.status) === 'lost_connection') &&
           u.latitude !== null && u.latitude !== undefined &&
           u.longitude !== null && u.longitude !== undefined &&
           !Number.isNaN(Number(u.latitude)) && !Number.isNaN(Number(u.longitude))
-      ).map(u => ({ ...u, latitude: Number(u.latitude), longitude: Number(u.longitude) })),
-    [users]
+      ).map(u => ({
+        ...u,
+        status: normalizePresenceStatus(u.status),
+        latitude: Number(u.latitude),
+        longitude: Number(u.longitude),
+      })),
+    [users, normalizePresenceStatus]
   );
 
   const onlineUserIdsForMap = React.useMemo(() => {
