@@ -1051,12 +1051,16 @@ interface Site {
 }
 
 interface Activity {
-  id?: number;
+  id: number;
+  user_name: string;
+  initials?: string | null;
   action: string;
-  description?: string;
-  icon?: string;
-  color?: string;
-  created_at?: string;
+  description?: string | null;
+  location?: string | null;
+  time?: string | null;
+  type?: string | null;
+  color?: string | null;
+  icon?: string | null;
 }
 
 export default function AdminDashboard({ onLogout, onNavigate }: AdminDashboardProps) {
@@ -1205,14 +1209,6 @@ export default function AdminDashboard({ onLogout, onNavigate }: AdminDashboardP
       channel.unsubscribe();
     };
   }, [onlineUserIdsKey, onlineUserIdsForMap]);
-
-  // Mock activity data for recent activity display
-  const MOCK_ACTIVITIES = [
-    { id: 1, action: 'Site Check-in', description: 'Recent facility registration', icon: 'location-outline', color: '#ecfdf5' },
-    { id: 2, action: 'New Message', description: 'System broadcast notification', icon: 'chatbubble-outline', color: '#fffbeb' },
-    { id: 3, action: 'User Added', description: 'New employee assigned', icon: 'person-add-outline', color: '#eff6ff' },
-    { id: 4, action: 'System Alert', description: 'Activity log generated', icon: 'warning-outline', color: '#fef2f2' },
-  ];
 
   useEffect(() => {
     fetchData();
@@ -1379,7 +1375,7 @@ export default function AdminDashboard({ onLogout, onNavigate }: AdminDashboardP
         .limit(10);
       
       if (logsData) {
-        setActivities(logsData);
+        setActivities((logsData as Activity[]) || []);
       }
     } catch (error) {
       console.error('Error fetching admin dashboard data:', error);
@@ -1603,19 +1599,35 @@ export default function AdminDashboard({ onLogout, onNavigate }: AdminDashboardP
 
           {/* Right Column */}
           <View className="lg:w-96">
-            <View className="bg-white rounded-2xl border border-stone-200 p-5 lg:p-6">
+            <View className="bg-white rounded-2xl border border-stone-200 p-5 lg:p-6 h-96">
               <Text className="text-lg lg:text-xl font-semibold text-stone-900 mb-4">Recent Activity</Text>
-              {MOCK_ACTIVITIES.map((activity, idx) => (
-                <View key={activity.id} className={`flex-row items-start ${idx !== MOCK_ACTIVITIES.length - 1 ? 'mb-4' : ''}`}>
-                  <View className="w-10 h-10 rounded-xl items-center justify-center mr-3" style={{ backgroundColor: activity.color }}>
-                    <Ionicons name={activity.icon as any} size={18} color="#10b981" />
-                  </View>
-                  <View className="flex-1">
-                    <Text className="text-stone-900 font-medium mb-1">{activity.action}</Text>
-                    <Text className="text-stone-500 text-sm">{activity.description}</Text>
-                  </View>
-                </View>
-              ))}
+              {activities.length === 0 ? (
+                <Text className="text-stone-500 text-sm">No activities yet.</Text>
+              ) : (
+                <ScrollView className="flex-1" nestedScrollEnabled showsVerticalScrollIndicator>
+                  {activities.map((activity, idx) => (
+                    <View key={activity.id} className={`${idx !== activities.length - 1 ? 'mb-4' : ''}`}>
+                      <View className="flex-row items-start">
+                        <View
+                          className="w-10 h-10 rounded-xl items-center justify-center mr-3"
+                          style={{ backgroundColor: activity.color || '#ecfdf5' }}
+                        >
+                          <Ionicons name={(activity.icon || 'notifications-outline') as any} size={18} color="#10b981" />
+                        </View>
+                        <View className="flex-1">
+                          <Text className="text-stone-900 font-medium mb-1">{activity.action}</Text>
+                          {activity.description ? (
+                            <Text className="text-stone-500 text-sm">{activity.description}</Text>
+                          ) : null}
+                        </View>
+                        <Text className="text-stone-400 text-xs ml-2 mt-1">
+                          {activity.time ? new Date(activity.time).toLocaleString() : ''}
+                        </Text>
+                      </View>
+                    </View>
+                  ))}
+                </ScrollView>
+              )}
             </View>
           </View>
         </View>
