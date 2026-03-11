@@ -1,7 +1,8 @@
-import React, { useState, useEffect } from 'react';
-import { View, Text, TouchableOpacity, ScrollView, TextInput, Alert, Platform, Animated } from 'react-native';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { View, Text, TouchableOpacity, ScrollView, TextInput, Alert, Platform } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { ExpoSpeechRecognitionModule, useSpeechRecognitionEvent } from 'expo-speech-recognition';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import supabase from '../../utils/supabase';
 
 interface Contact {
@@ -25,62 +26,35 @@ interface Message {
   type?: 'text' | 'image' | 'media';
 }
 
-const MOCK_MESSAGES: Message[] = [
-  {
-    id: '1',
-    sender: 'MK',
-    content: 'Team, please confirm positions for the shift change.',
-    timestamp: '10:30 AM',
-    isOwn: false,
-    status: 'read',
-    type: 'text',
-  },
-  {
-    id: '2',
-    sender: 'You',
-    content: 'Position A confirmed. All clear.',
-    timestamp: '10:32 AM',
-    isOwn: true,
-    status: 'read',
-    type: 'text',
-  },
-  {
-    id: '3',
-    sender: 'MK',
-    content: 'Thanks for the quick response. Stay alert!',
-    timestamp: '10:35 AM',
-    isOwn: false,
-    status: 'read',
-    type: 'text',
-  },
-  {
-    id: '4',
-    sender: 'You',
-    content: 'Will do. Everything looks good on my end.',
-    timestamp: '10:40 AM',
-    isOwn: true,
-    status: 'delivered',
-    type: 'text',
-  },
-];
-
 interface ChatProps {
   selectedContact: Contact;
   onBackPress: () => void;
 }
 
 export default function Chat({ selectedContact, onBackPress }: ChatProps) {
-  const [messages, setMessages] = useState<Message[]>(MOCK_MESSAGES);
+  const [messages, setMessages] = useState<Message[]>([]);
   const [messageText, setMessageText] = useState('');
   const [showMediaMenu, setShowMediaMenu] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
   const [isListening, setIsListening] = useState(false);
   const [recognizedTranscript, setRecognizedTranscript] = useState('');
-  const [isTyping, setIsTyping] = useState(false);
-  const [typingAnimation] = useState(new Animated.Value(0));
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+  const [activeThreadKey, setActiveThreadKey] = useState<string | null>(null);
+  const [isLeavingGroup, setIsLeavingGroup] = useState(false);
+  const [showGroupMenu, setShowGroupMenu] = useState(false);
+  const activeThreadKeyRef = useRef<string | null>(null);
+  const mountedRef = useRef(true);
+
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
 
   const isGroupChat = !!selectedContact?.isGroup && !!selectedContact?.groupId;
+  const groupId = useMemo(() => (isGroupChat ? (selectedContact.groupId as string) : null), [isGroupChat, selectedContact?.groupId]);
+  const directPeerUserId = useMemo(() => (!isGroupChat ? selectedContact?.id : null), [isGroupChat, selectedContact?.id]);
 
   useEffect(() => {
     (async () => {
@@ -95,88 +69,188 @@ export default function Chat({ selectedContact, onBackPress }: ChatProps) {
     })();
   }, []);
 
-  useEffect(() => {
-    // Load group messages when opening a group chat
-    if (!isGroupChat) {
-      setMessages(MOCK_MESSAGES);
-      return;
+  const makeThreadKey = (kind: 'group' | 'direct', id: string) => `chat:lastRead:${kind}:${id}`;
+
+  const markThreadReadNow = async (kind: 'group' | 'direct', id: string) => {
+    try {
+      const key = makeThreadKey(kind, id);
+      const nowIso = new Date().toISOString();
+      await AsyncStorage.setItem(key, nowIso);
+    } catch (e) {
+      // ignore
     }
+  };
 
-    const groupId = selectedContact.groupId as string;
-    let isActive = true;
+  const formatTime = (isoOrDate: string | Date | null | undefined) => {
+    const date = isoOrDate ? new Date(isoOrDate) : new Date();
+    if (Number.isNaN(date.getTime())) return '';
+    return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  };
 
-    const mapGroupRowToMessage = (row: any): Message => {
-      const created = row.created_at ? new Date(row.created_at) : new Date();
-      const isOwn = !!currentUserId && row.sender_id === currentUserId;
-      return {
-        id: String(row.id),
-        sender: isOwn ? 'You' : 'Member',
-        content: row.transcription || '',
-        timestamp: created.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-        isOwn,
-        status: 'sent',
-        type: 'text',
-      };
+  const mapRowToMessage = (row: any, meId: string | null): Message => {
+    const isOwn = !!meId && row.sender_id === meId;
+    const id = String(row.id);
+    const content = String(row.transcription || '');
+    return {
+      id,
+      sender: isOwn ? 'You' : selectedContact?.initials || 'User',
+      content,
+      timestamp: formatTime(row.created_at),
+      isOwn,
+      status: isOwn ? 'sent' : undefined,
+      type: 'text',
     };
+  };
 
-    const fetchGroupMessages = async () => {
+  const getOrCreateConversationId = async (meId: string, otherId: string) => {
+    const pairFilter = `and(user_one.eq.${meId},user_two.eq.${otherId}),and(user_one.eq.${otherId},user_two.eq.${meId})`;
+    const { data: existing, error: existingError } = await supabase
+      .from('conversations')
+      .select('id')
+      .or(pairFilter)
+      .limit(1);
+    if (existingError) throw existingError;
+    const existingId = existing && existing[0] ? existing[0].id : null;
+    if (existingId) return String(existingId);
+
+    const { data: inserted, error: insertError } = await supabase
+      .from('conversations')
+      .insert([{ user_one: meId, user_two: otherId }])
+      .select('id')
+      .single();
+    if (insertError) throw insertError;
+    return String(inserted.id);
+  };
+
+  useEffect(() => {
+    // Load + subscribe messages for either direct or group threads.
+    // Intentionally no blocking "loading" UI; the list fills when data arrives.
+    let cancelled = false;
+    let realtimeChannel: any = null;
+
+    const run = async () => {
       try {
+        // Resolve auth user if missing.
+        let meId = currentUserId;
+        if (!meId) {
+          const { data, error } = await supabase.auth.getUser();
+          if (error) throw error;
+          meId = data?.user?.id || null;
+          if (mountedRef.current) setCurrentUserId(meId);
+        }
+        if (!meId) throw new Error('Not authenticated');
+
+        if (isGroupChat) {
+          if (!groupId) throw new Error('Missing group id');
+          const threadKey = makeThreadKey('group', groupId);
+          if (mountedRef.current) {
+            setActiveThreadKey(threadKey);
+            activeThreadKeyRef.current = threadKey;
+          }
+
+          const { data, error } = await supabase
+            .from('messages')
+            .select('id, sender_id, transcription, created_at')
+            .eq('group_id', groupId)
+            .order('created_at', { ascending: true });
+          if (error) throw error;
+          if (cancelled) return;
+          setMessages((data || []).map(r => mapRowToMessage(r, meId)));
+
+          await markThreadReadNow('group', groupId);
+
+          realtimeChannel = supabase
+            .channel(`messages-group-${groupId}`)
+            .on(
+              'postgres_changes',
+              { event: 'INSERT', schema: 'public', table: 'messages', filter: `group_id=eq.${groupId}` },
+              async (payload: any) => {
+                try {
+                  const row = payload?.new;
+                  if (!row) return;
+                  const mapped = mapRowToMessage(row, meId);
+                  setMessages(prev => {
+                    if (prev.some(m => m.id === mapped.id)) return prev;
+                    return [...prev, mapped];
+                  });
+
+                  // If I'm viewing this thread, treat it as read.
+                  const stillActive = activeThreadKeyRef.current === makeThreadKey('group', groupId);
+                  if (stillActive) await markThreadReadNow('group', groupId);
+                } catch (err) {
+                  console.warn('Failed to handle realtime group insert:', err);
+                }
+              }
+            )
+            .subscribe();
+
+          return;
+        }
+
+        // Direct chat
+        if (!directPeerUserId) throw new Error('Missing contact id');
+        const conversationId = await getOrCreateConversationId(meId, directPeerUserId);
+        const threadKey = makeThreadKey('direct', conversationId);
+        if (mountedRef.current) {
+          setActiveThreadKey(threadKey);
+          activeThreadKeyRef.current = threadKey;
+        }
+
         const { data, error } = await supabase
           .from('messages')
-          .select('id, sender_id, transcription, created_at')
-          .eq('group_id', groupId)
+          .select('id, sender_id, receiver_id, transcription, created_at')
+          .eq('conversation_id', conversationId)
           .order('created_at', { ascending: true });
         if (error) throw error;
-        if (!isActive) return;
-        setMessages((data || []).map(mapGroupRowToMessage));
+        if (cancelled) return;
+        setMessages((data || []).map(r => mapRowToMessage(r, meId)));
+
+        await markThreadReadNow('direct', conversationId);
+
+        realtimeChannel = supabase
+          .channel(`messages-direct-${conversationId}`)
+          .on(
+            'postgres_changes',
+            { event: 'INSERT', schema: 'public', table: 'messages', filter: `conversation_id=eq.${conversationId}` },
+            async (payload: any) => {
+              try {
+                const row = payload?.new;
+                if (!row) return;
+                const mapped = mapRowToMessage(row, meId);
+                setMessages(prev => {
+                  if (prev.some(m => m.id === mapped.id)) return prev;
+                  return [...prev, mapped];
+                });
+
+                const stillActive = activeThreadKeyRef.current === makeThreadKey('direct', conversationId);
+                if (stillActive) await markThreadReadNow('direct', conversationId);
+              } catch (err) {
+                console.warn('Failed to handle realtime direct insert:', err);
+              }
+            }
+          )
+          .subscribe();
       } catch (e: any) {
-        console.error('Failed to fetch group messages:', e);
-        if (isActive) Alert.alert('Error', e?.message || 'Failed to load group chat');
+        console.error('Chat init failed:', e);
+        if (!cancelled) Alert.alert('Error', e?.message || 'Failed to load chat');
       }
     };
 
-    fetchGroupMessages();
-
-    const channel = supabase
-      .channel(`group-messages-${groupId}`)
-      .on(
-        'postgres_changes',
-        { event: 'INSERT', schema: 'public', table: 'messages', filter: `group_id=eq.${groupId}` },
-        (payload: any) => {
-          try {
-            const row = payload?.new;
-            if (!row) return;
-            const mapped = mapGroupRowToMessage(row);
-            setMessages(prev => {
-              if (prev.some(m => m.id === mapped.id)) return prev;
-              return [...prev, mapped];
-            });
-          } catch (err) {
-            console.warn('Failed to handle realtime group insert:', err);
-          }
-        }
-      )
-      .subscribe();
+    // reset list when switching threads
+    setMessages([]);
+    setActiveThreadKey(null);
+    activeThreadKeyRef.current = null;
+    run();
 
     return () => {
-      isActive = false;
+      cancelled = true;
       try {
-        if (channel) supabase.removeChannel(channel);
+        if (realtimeChannel) supabase.removeChannel(realtimeChannel);
       } catch (e) {
         // ignore
       }
     };
-  }, [isGroupChat, selectedContact?.groupId, currentUserId]);
-
-  useEffect(() => {
-    // Simulate contact typing occasionally
-    const typingTimer = Math.random() > 0.6;
-    if (typingTimer) {
-      setIsTyping(true);
-      const timer = setTimeout(() => setIsTyping(false), 2000);
-      return () => clearTimeout(timer);
-    }
-  }, [messages.length]);
+  }, [currentUserId, isGroupChat, groupId, directPeerUserId]);
 
   // Listen for speech recognition results
   useSpeechRecognitionEvent('result', (event: any) => {
@@ -207,7 +281,7 @@ export default function Chat({ selectedContact, onBackPress }: ChatProps) {
       content: trimmed,
       timestamp: now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
       isOwn: true,
-      status: isGroupChat ? 'sent' : 'sending',
+      status: 'sending',
       type: 'text',
     };
 
@@ -215,22 +289,8 @@ export default function Chat({ selectedContact, onBackPress }: ChatProps) {
     setRecognizedTranscript('');
     setMessageText('');
 
-    if (!isGroupChat) {
-      // Keep existing simulated status for direct chat
-      setTimeout(() => {
-        setMessages(msgs => msgs.map(m => (m.id === localId ? { ...m, status: 'sent' } : m)));
-      }, 500);
-      setTimeout(() => {
-        setMessages(msgs => msgs.map(m => (m.id === localId ? { ...m, status: 'delivered' } : m)));
-      }, 1200);
-      return;
-    }
-
-    // Group chat: save to DB
+    // Save to DB (direct or group)
     try {
-      const groupId = selectedContact?.groupId;
-      if (!groupId) throw new Error('Missing group id');
-
       let meId = currentUserId;
       if (!meId) {
         const { data, error } = await supabase.auth.getUser();
@@ -242,7 +302,7 @@ export default function Chat({ selectedContact, onBackPress }: ChatProps) {
 
       const payload: any = {
         conversation_id: null,
-        group_id: groupId,
+        group_id: null,
         sender_id: meId,
         receiver_id: null,
         file_url: null,
@@ -250,26 +310,39 @@ export default function Chat({ selectedContact, onBackPress }: ChatProps) {
         duration_ms: null,
       };
 
-      const { data, error } = await supabase.from('messages').insert([payload]).select();
+      if (isGroupChat) {
+        if (!groupId) throw new Error('Missing group id');
+        payload.group_id = groupId;
+      } else {
+        if (!directPeerUserId) throw new Error('Missing contact id');
+        const conversationId = await getOrCreateConversationId(meId, directPeerUserId);
+        payload.conversation_id = conversationId;
+        payload.receiver_id = directPeerUserId;
+      }
+
+      const { data, error } = await supabase.from('messages').insert([payload]).select('id, sender_id, transcription, created_at');
       if (error) throw error;
 
       const inserted = data && data[0] ? data[0] : null;
       if (inserted) {
-        const created = inserted.created_at ? new Date(inserted.created_at) : new Date();
-        const mapped: Message = {
-          id: String(inserted.id),
-          sender: 'You',
-          content: inserted.transcription || trimmed,
-          timestamp: created.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-          isOwn: true,
-          status: 'sent',
-          type: 'text',
-        };
-        setMessages(prev => prev.map(m => (m.id === localId ? mapped : m)));
+        const mapped = mapRowToMessage(inserted, meId);
+        setMessages(prev => {
+          const seen = new Set<string>();
+          const replaced = prev.map(m => (m.id === localId ? { ...mapped, status: 'sent' as const } : m));
+          return replaced.filter(m => {
+            if (seen.has(m.id)) return false;
+            seen.add(m.id);
+            return true;
+          });
+        });
+        if (isGroupChat && groupId) await markThreadReadNow('group', groupId);
+      } else {
+        setMessages(prev => prev.map(m => (m.id === localId ? { ...m, status: 'sent' } : m)));
       }
     } catch (e: any) {
       console.error('Failed to send group message:', e);
       Alert.alert('Error', e?.message || 'Failed to send message');
+      setMessages(prev => prev.map(m => (m.id === localId ? { ...m, status: 'sending' } : m)));
     }
   };
 
@@ -347,10 +420,51 @@ export default function Chat({ selectedContact, onBackPress }: ChatProps) {
     ExpoSpeechRecognitionModule.stop();
   };
 
+  const leaveGroupChat = async () => {
+    if (!isGroupChat || !groupId) return;
+    if (isLeavingGroup) return;
+
+    try {
+      setShowGroupMenu(false);
+      setIsLeavingGroup(true);
+      let meId = currentUserId;
+      if (!meId) {
+        const { data, error } = await supabase.auth.getUser();
+        if (error) throw error;
+        meId = data?.user?.id || null;
+        if (mountedRef.current) setCurrentUserId(meId);
+      }
+      if (!meId) throw new Error('Not authenticated');
+
+      const { error } = await supabase.from('users').update({ group_id: null }).eq('id', meId);
+      if (error) throw error;
+
+      onBackPress();
+    } catch (e: any) {
+      console.error('Failed to leave group chat:', e);
+      Alert.alert('Error', e?.message || 'Failed to leave group chat');
+    } finally {
+      if (mountedRef.current) setIsLeavingGroup(false);
+    }
+  };
+
+  const toggleGroupMenu = () => {
+    if (!isGroupChat) return;
+    if (isLeavingGroup) return;
+    setShowGroupMenu(prev => !prev);
+  };
+
   return (
     <View className="flex-1 bg-white">
+      {showGroupMenu && (
+        <TouchableOpacity
+          activeOpacity={1}
+          onPress={() => setShowGroupMenu(false)}
+          style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, zIndex: 1 }}
+        />
+      )}
       {/* Chat Header */}
-      <View className="bg-white px-6 py-6 pt-12 border-b border-green-100">
+      <View className="bg-white px-6 py-6 pt-12 border-b border-green-100" style={{ position: 'relative', zIndex: 10 }}>
         <View className="flex-row items-center justify-between mb-4">
           <TouchableOpacity onPress={onBackPress} className="active:scale-90">
             <View className="bg-green-50 p-2 rounded-full">
@@ -386,11 +500,39 @@ export default function Chat({ selectedContact, onBackPress }: ChatProps) {
               </Text>
             </View>
           </View>
-          <TouchableOpacity className="active:scale-90">
-            <View className="bg-green-50 p-2 rounded-full">
-              <Ionicons name="information-circle" size={24} color="#10b981" />
+          {isGroupChat ? (
+            <View style={{ position: 'relative' }}>
+              <TouchableOpacity className="active:scale-90" onPress={toggleGroupMenu} disabled={isLeavingGroup}>
+                <View className="bg-green-50 p-2 rounded-full">
+                  <Ionicons name="ellipsis-vertical" size={24} color={isLeavingGroup ? '#9ca3af' : '#10b981'} />
+                </View>
+              </TouchableOpacity>
+
+              {showGroupMenu && (
+                <View
+                  className="bg-white border border-green-200 rounded-2xl overflow-hidden"
+                  style={{ position: 'absolute', right: 0, top: 52, zIndex: 20, width: 190 }}
+                >
+                  <TouchableOpacity
+                    className="flex-row items-center px-4 py-3 active:opacity-80"
+                    onPress={leaveGroupChat}
+                    disabled={isLeavingGroup}
+                  >
+                    <Ionicons name="log-out-outline" size={18} color={isLeavingGroup ? '#9ca3af' : '#dc2626'} />
+                    <Text className={`ml-3 font-semibold ${isLeavingGroup ? 'text-gray-400' : 'text-red-600'}`}>
+                      Leave group chat
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+              )}
             </View>
-          </TouchableOpacity>
+          ) : (
+            <TouchableOpacity className="active:scale-90">
+              <View className="bg-green-50 p-2 rounded-full">
+                <Ionicons name="information-circle" size={24} color="#10b981" />
+              </View>
+            </TouchableOpacity>
+          )}
         </View>
       </View>
 
@@ -481,25 +623,6 @@ export default function Chat({ selectedContact, onBackPress }: ChatProps) {
           );
         })}
 
-        {isTyping && (
-          <View className="mt-4 flex-row items-center gap-2">
-            <View
-              className="h-8 w-8 items-center justify-center rounded-full shadow-sm"
-              style={{ backgroundColor: selectedContact.avatar_color }}
-            >
-              <Text className="font-bold text-white text-xs">
-                {selectedContact.initials}
-              </Text>
-            </View>
-            <View className="bg-green-50 border-2 border-green-100 rounded-3xl px-5 py-3 shadow-sm">
-              <View className="flex-row items-center gap-1.5">
-                <View className="h-2 w-2 bg-green-500 rounded-full animate-bounce" />
-                <View className="h-2 w-2 bg-green-500 rounded-full animate-bounce" />
-                <View className="h-2 w-2 bg-green-500 rounded-full animate-bounce" />
-              </View>
-            </View>
-          </View>
-        )}
       </ScrollView>
 
       {/* Message Input */}

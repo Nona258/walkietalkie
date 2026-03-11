@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, TouchableOpacity, ScrollView, TextInput, Alert, StatusBar, ActivityIndicator, RefreshControl, Modal, FlatList, KeyboardAvoidingView, Platform } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as Notifications from 'expo-notifications';
 import  supabase, { searchUsers, addContact, getCurrentUserProfile }  from '../../utils/supabase'; // adjust path to your supabase client
 import Chat from './Chat';
 
@@ -53,6 +55,7 @@ export default function Contacts({ onContactSelected, currentUserId }: ContactsP
   const [filterType, setFilterType] = useState<FilterType>('all');
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [resolvedMeId, setResolvedMeId] = useState<string | null>(currentUserId || null);
   // Modal/search states
   const [addModalVisible, setAddModalVisible] = useState(false);
   const [modalQuery, setModalQuery] = useState('');
@@ -71,6 +74,8 @@ export default function Contacts({ onContactSelected, currentUserId }: ContactsP
         const profile = await getCurrentUserProfile();
         meId = profile?.id || undefined;
       }
+
+      setResolvedMeId(meId || null);
 
       if (!meId) {
         setContacts([]);
@@ -163,13 +168,94 @@ export default function Contacts({ onContactSelected, currentUserId }: ContactsP
         })
         .filter((c: Contact | null): c is Contact => c !== null);
 
-      setContacts(myGroupContact ? [myGroupContact, ...formattedContacts] : formattedContacts);
+      const base = myGroupContact ? [myGroupContact, ...formattedContacts] : formattedContacts;
+      setContacts(base);
+
+      // Hydrate unread counts after we have the base list.
+      if (meId) {
+        setTimeout(() => {
+          refreshUnreadCounts(meId as string, base);
+        }, 0);
+      } else {
+        updateAppBadge(0);
+      }
     } catch (error) {
       console.error('Error fetching contacts:', error);
       Alert.alert('Error', 'Failed to load contacts');
     } finally {
       setLoading(false);
       setRefreshing(false);
+    }
+  };
+
+  const makeThreadKey = (kind: 'group' | 'direct', id: string) => `chat:lastRead:${kind}:${id}`;
+
+  const getLastReadIso = async (kind: 'group' | 'direct', id: string) => {
+    try {
+      return (await AsyncStorage.getItem(makeThreadKey(kind, id))) || null;
+    } catch {
+      return null;
+    }
+  };
+
+  const getConversationIdForPair = async (meId: string, otherId: string) => {
+    const pairFilter = `and(user_one.eq.${meId},user_two.eq.${otherId}),and(user_one.eq.${otherId},user_two.eq.${meId})`;
+    const { data, error } = await supabase
+      .from('conversations')
+      .select('id')
+      .or(pairFilter)
+      .limit(1);
+    if (error) throw error;
+    const id = data && data[0] ? data[0].id : null;
+    return id ? String(id) : null;
+  };
+
+  const updateAppBadge = async (totalUnread: number) => {
+    try {
+      // Only affects iOS/Android; harmless no-op on unsupported platforms.
+      await Notifications.setBadgeCountAsync(Math.max(0, totalUnread | 0));
+    } catch {
+      // ignore
+    }
+  };
+
+  const refreshUnreadCounts = async (meId: string, snapshot: Contact[]) => {
+    try {
+      const updated = await Promise.all(
+        (snapshot || []).map(async (c) => {
+          // Group chat unread count
+          if (c.isGroup && c.groupId) {
+            const lastRead = (await getLastReadIso('group', c.groupId)) || '1970-01-01T00:00:00.000Z';
+            const { count, error } = await supabase
+              .from('messages')
+              .select('id', { count: 'exact', head: true })
+              .eq('group_id', c.groupId)
+              .neq('sender_id', meId)
+              .gt('created_at', lastRead);
+            if (error) throw error;
+            return { ...c, unreadCount: count || 0 };
+          }
+
+          // Direct unread count
+          const conversationId = await getConversationIdForPair(meId, c.id);
+          if (!conversationId) return { ...c, unreadCount: 0 };
+          const lastRead = (await getLastReadIso('direct', conversationId)) || '1970-01-01T00:00:00.000Z';
+          const { count, error } = await supabase
+            .from('messages')
+            .select('id', { count: 'exact', head: true })
+            .eq('conversation_id', conversationId)
+            .eq('receiver_id', meId)
+            .gt('created_at', lastRead);
+          if (error) throw error;
+          return { ...c, unreadCount: count || 0 };
+        })
+      );
+
+      setContacts(updated);
+      const total = updated.reduce((acc, c) => acc + ((c.unreadCount || 0) > 0 ? (c.unreadCount || 0) : 0), 0);
+      updateAppBadge(total);
+    } catch (e) {
+      console.warn('refreshUnreadCounts failed:', (e as any)?.message || String(e));
     }
   };
 
@@ -196,6 +282,64 @@ export default function Contacts({ onContactSelected, currentUserId }: ContactsP
       }
     };
   }, [currentUserId]);
+
+  useEffect(() => {
+    // Realtime: increment unread counts on new inbound messages.
+    if (!resolvedMeId) return;
+
+    const channel = supabase
+      .channel(`messages-unread-${resolvedMeId}`)
+      .on(
+        'postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'messages' },
+        async (payload: any) => {
+          try {
+            const row = payload?.new;
+            if (!row) return;
+
+            // If user is currently inside a chat, let Chat.tsx handle read-marking.
+            if (selectedContact) return;
+
+            // Direct message inbound to me
+            if (row.receiver_id && String(row.receiver_id) === String(resolvedMeId)) {
+              const senderId = String(row.sender_id);
+              setContacts((prev) => {
+                const next = prev.map((c) => (c.id === senderId ? { ...c, unreadCount: (c.unreadCount || 0) + 1 } : c));
+                const total = next.reduce((acc, c) => acc + (c.unreadCount || 0), 0);
+                updateAppBadge(total);
+                return next;
+              });
+              return;
+            }
+
+            // Group message inbound (not from me)
+            if (row.group_id && String(row.sender_id) !== String(resolvedMeId)) {
+              const gid = String(row.group_id);
+              setContacts((prev) => {
+                const next = prev.map((c) => {
+                  if (!c.isGroup || !c.groupId) return c;
+                  return c.groupId === gid ? { ...c, unreadCount: (c.unreadCount || 0) + 1 } : c;
+                });
+                const total = next.reduce((acc, c) => acc + (c.unreadCount || 0), 0);
+                updateAppBadge(total);
+                return next;
+              });
+            }
+          } catch (err) {
+            console.warn('Unread realtime handler failed:', err);
+          }
+        }
+      )
+      .subscribe();
+
+    return () => {
+      try {
+        if (channel) supabase.removeChannel(channel);
+      } catch {
+        // ignore
+      }
+    };
+  }, [resolvedMeId, selectedContact]);
 
   // Apply filters and search whenever contacts, searchText, or filterType changes
   useEffect(() => {
@@ -448,12 +592,7 @@ export default function Contacts({ onContactSelected, currentUserId }: ContactsP
         }
       >
         <View className="px-6 py-6">
-          {loading && !refreshing ? (
-            <View className="items-center justify-center py-16">
-              <ActivityIndicator size="large" color="#10b981" />
-              <Text className="text-gray-500 mt-4">Loading contacts...</Text>
-            </View>
-          ) : filteredContacts.length > 0 ? (
+          {filteredContacts.length > 0 ? (
             filteredContacts.map((contact) => (
               <TouchableOpacity
                 key={contact.id}
@@ -466,6 +605,8 @@ export default function Contacts({ onContactSelected, currentUserId }: ContactsP
                       : c
                   );
                   setContacts(updatedContacts);
+                  const total = updatedContacts.reduce((acc, c) => acc + (c.unreadCount || 0), 0);
+                  updateAppBadge(total);
                   const readContact = { ...contact, unreadCount: 0 };
                   setSelectedContact(readContact);
                   onContactSelected?.(readContact);
@@ -481,6 +622,13 @@ export default function Contacts({ onContactSelected, currentUserId }: ContactsP
                       {contact.initials}
                     </Text>
                   </View>
+                  {(contact.unreadCount ?? 0) > 0 && (
+                    <View className="absolute -top-1 -right-1 bg-green-500 rounded-full min-w-[20px] h-5 px-1 items-center justify-center border-2 border-white">
+                      <Text className="text-white text-xs font-extrabold">
+                        {(contact.unreadCount ?? 0) > 99 ? '99+' : String(contact.unreadCount)}
+                      </Text>
+                    </View>
+                  )}
                   {/* Status Indicator */}
                   <View
                     className={`absolute bottom-0 right-0 h-4 w-4 rounded-full border-3 border-white ${
