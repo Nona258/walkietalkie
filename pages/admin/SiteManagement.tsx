@@ -215,6 +215,7 @@ export default function SiteManagement({ onNavigate }: SiteManagementProps) {
           const pos = e.latLng;
           setLatitude(pos.lat());
           setLongitude(pos.lng());
+          setErrors(prev => ({ ...prev, location: undefined }));
           setLastUpdateSource('map');
         });
 
@@ -223,6 +224,7 @@ export default function SiteManagement({ onNavigate }: SiteManagementProps) {
           marker.setPosition(pos);
           setLatitude(pos.lat());
           setLongitude(pos.lng());
+          setErrors(prev => ({ ...prev, location: undefined }));
           setLastUpdateSource('map');
         });
 
@@ -269,6 +271,7 @@ export default function SiteManagement({ onNavigate }: SiteManagementProps) {
         const lng = place.geometry.location.lng();
         setLatitude(lat);
         setLongitude(lng);
+        setErrors(prev => ({ ...prev, location: undefined }));
         setLastUpdateSource('places');
         // move marker and center map if available
         try {
@@ -319,6 +322,7 @@ export default function SiteManagement({ onNavigate }: SiteManagementProps) {
           const pos = e.latLng;
           setLatitude(pos.lat());
           setLongitude(pos.lng());
+          setErrors(prev => ({ ...prev, location: undefined }));
           setLastUpdateSource('map');
         });
 
@@ -327,6 +331,7 @@ export default function SiteManagement({ onNavigate }: SiteManagementProps) {
           marker.setPosition(pos);
           setLatitude(pos.lat());
           setLongitude(pos.lng());
+          setErrors(prev => ({ ...prev, location: undefined }));
           setLastUpdateSource('map');
         });
 
@@ -381,6 +386,7 @@ export default function SiteManagement({ onNavigate }: SiteManagementProps) {
         const lng = place.geometry.location.lng();
         setLatitude(lat);
         setLongitude(lng);
+        setErrors(prev => ({ ...prev, location: undefined }));
         setLastUpdateSource('places');
         try {
           if (editMarkerRef.current && editMarkerRef.current.setPosition) {
@@ -693,6 +699,59 @@ export default function SiteManagement({ onNavigate }: SiteManagementProps) {
     if (result.formatted_address) return result.formatted_address;
 
     return address || 'Site';
+  };
+
+  const geocodeSiteNameToLocation = (mode: 'add' | 'edit') => {
+    if (typeof window === 'undefined') return;
+
+    const query = (siteName || '').trim();
+    if (!query) return;
+
+    // Only run when the user manually typed the site name
+    if (lastUpdateSource !== 'user') return;
+
+    const g = (window as any).google;
+    if (!g || !g.maps || !g.maps.Geocoder) return;
+
+    try {
+      const geocoder = new g.maps.Geocoder();
+      geocoder.geocode({ address: query }, (results: any, status: string) => {
+        if (status !== 'OK' || !results || !results[0] || !results[0].geometry || !results[0].geometry.location) {
+          return;
+        }
+
+        const loc = results[0].geometry.location;
+        const lat = typeof loc.lat === 'function' ? loc.lat() : null;
+        const lng = typeof loc.lng === 'function' ? loc.lng() : null;
+        if (typeof lat !== 'number' || typeof lng !== 'number') return;
+
+        const newName = formatGeocoderResult(results[0], results);
+        if (newName) setSiteName(sanitizeSiteName(newName));
+
+        setLatitude(lat);
+        setLongitude(lng);
+        setErrors(prev => ({ ...prev, location: undefined }));
+        setLastUpdateSource('places');
+
+        try {
+          if (mode === 'edit') {
+            if (editMarkerRef.current && editMarkerRef.current.setPosition) {
+              editMarkerRef.current.setPosition({ lat, lng });
+            }
+            if (editMapRef.current && editMapRef.current.setCenter) {
+              editMapRef.current.setCenter({ lat, lng });
+            }
+          } else {
+            if (markerRef.current && markerRef.current.setPosition) {
+              markerRef.current.setPosition({ lat, lng });
+            }
+            if (mapRef.current && mapRef.current.setCenter) {
+              mapRef.current.setCenter({ lat, lng });
+            }
+          }
+        } catch {}
+      });
+    } catch {}
   };
 
   const handleAddSite = async () => {
@@ -1229,7 +1288,11 @@ export default function SiteManagement({ onNavigate }: SiteManagementProps) {
                     editable={true}
                     selectTextOnFocus={true}
                     onChangeText={(value) => handleFieldChange('siteName', value)}
-                    onBlur={() => handleFieldBlur('siteName', siteName)}
+                    onBlur={() => {
+                      handleFieldBlur('siteName', siteName);
+                      geocodeSiteNameToLocation('add');
+                    }}
+                    onSubmitEditing={() => geocodeSiteNameToLocation('add')}
                 />
                 {touched.siteName && errors.siteName && (
                   <View className="flex-row items-center mt-1.5">
@@ -1496,7 +1559,11 @@ export default function SiteManagement({ onNavigate }: SiteManagementProps) {
                     id="edit-site-name-input"
                     nativeID="edit-site-name-input"
                     onChangeText={(value) => handleFieldChange('siteName', value)}
-                    onBlur={() => handleFieldBlur('siteName', siteName)}
+                    onBlur={() => {
+                      handleFieldBlur('siteName', siteName);
+                      geocodeSiteNameToLocation('edit');
+                    }}
+                    onSubmitEditing={() => geocodeSiteNameToLocation('edit')}
                   maxLength={50}
                 />
                 {touched.siteName && errors.siteName && (
