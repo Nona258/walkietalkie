@@ -7,9 +7,10 @@ interface AdminNavbarProps {
   setActiveTab: (tab: 'dashboard' | 'siteManagement' | 'walkieTalkie' | 'activityLogs' | 'companyList' | 'employee' | 'settings') => void;
   onNavigate?: (page: string) => void;
   onLogout: () => void;
+  pendingUsersCount?: number;
 }
 
-export default function AdminNavbar({ activeTab, setActiveTab, onNavigate, onLogout }: AdminNavbarProps) {
+export default function AdminNavbar({ activeTab, setActiveTab, onNavigate, onLogout, pendingUsersCount }: AdminNavbarProps) {
   return (
     <View className="hidden lg:flex w-72 bg-white border-r border-stone-200">
       {/* Header */}

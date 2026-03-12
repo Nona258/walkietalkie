@@ -6,9 +6,10 @@ import '../../global.css';
 
 interface EmployeesProps {
   onNavigate: (page: 'dashboard' | 'siteManagement' | 'walkieTalkie' | 'activityLogs' | 'companyList' | 'employee' | 'settings') => void;
+  pendingUsersCount?: number;
 }
 
-export default function Employees({ onNavigate }: EmployeesProps) {
+export default function Employees({ onNavigate, pendingUsersCount }: EmployeesProps) {
   // UI-only states for visibility
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   const [isNotificationOpen, setIsNotificationOpen] = useState(false);

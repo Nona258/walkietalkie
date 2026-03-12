@@ -34,12 +34,13 @@ export const acceptEula = async (userId: string): Promise<boolean> => {
   try {
     const { error } = await supabase
       .from('eula_acceptance')
-      .upsert(
-        [{ user_id: userId, accepted_at: new Date().toISOString() }],
-        { onConflict: 'user_id', ignoreDuplicates: false }
-      );
+      .insert([{ user_id: userId, accepted_at: new Date().toISOString() }]);
 
     if (error) {
+      // 23505 = unique_violation: user already accepted EULA, treat as success
+      if (error.code === '23505') {
+        return true;
+      }
       console.error('Error accepting EULA:', error);
       return false;
     }
