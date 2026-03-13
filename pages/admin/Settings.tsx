@@ -20,92 +20,149 @@ export default function Settings({ onNavigate }: SettingsProps) {
 
   return (
     <View className="flex-1 bg-stone-50">
-      <ScrollView className="flex-1 bg-stone-50">
-        <View className="bg-white px-5 pt-4 pb-3 border-b border-stone-200">
+      <ScrollView className="flex-1 bg-stone-50" showsVerticalScrollIndicator={false}>
+        {/* Header */}
+        <View className="bg-white px-6 pt-5 pb-4 border-b border-stone-100">
           <View className="flex-row items-center justify-between">
             <View className="flex-row items-center flex-1">
               <TouchableOpacity className="lg:hidden w-9 h-9 items-center justify-center mr-3" onPress={() => setIsDrawerOpen(true)}>
-                <Ionicons name="menu" size={24} color="#44403c" />
+                <Ionicons name="menu" size={22} color="#44403c" />
               </TouchableOpacity>
               <View className="flex-1">
-                <Text className="text-lg lg:text-2xl font-bold text-stone-900">Account Settings</Text>
-                <Text className="text-stone-500 text-xs lg:text-sm mt-0.5">Welcome back, Administrator</Text>
+                <Text className="text-xl font-bold text-stone-900 tracking-tight">Settings</Text>
+                <Text className="text-stone-400 text-xs mt-0.5 font-medium">Manage your account</Text>
               </View>
             </View>
-            
-            <View className="flex-row items-center gap-2.5">
-              <TouchableOpacity className="w-9 h-9 bg-stone-100 rounded-full items-center justify-center" onPress={() => setIsNotificationOpen(true)}>
-                <View className="w-2 h-2 bg-red-500 rounded-full absolute top-1.5 right-1.5" />
-                <Ionicons name="notifications-outline" size={18} color="#57534e" />
+            <View className="flex-row items-center gap-2">
+              <TouchableOpacity className="w-9 h-9 bg-stone-50 border border-stone-100 rounded-lg items-center justify-center" onPress={() => setIsNotificationOpen(true)}>
+                <View className="w-2 h-2 bg-red-400 rounded-full absolute top-1.5 right-1.5" />
+                <Ionicons name="notifications-outline" size={17} color="#78716c" />
               </TouchableOpacity>
-              
-              <View className="w-9 h-9 bg-emerald-100 rounded-full items-center justify-center">
-                <Text className="text-emerald-700 font-semibold text-xs">{initials}</Text>
-              </View>
-              <View className="hidden lg:flex ml-2">
-                <Text className="text-sm font-semibold text-stone-900">{fullName}</Text>
-                <Text className="text-xs text-stone-500">Super Admin</Text>
+              <View className="flex-row items-center gap-2 bg-stone-50 border border-stone-100 rounded-lg px-2.5 py-1.5">
+                <View className="w-6 h-6 bg-emerald-500 rounded-md items-center justify-center">
+                  <Text className="text-white font-bold text-xs">{initials}</Text>
+                </View>
+                <View className="hidden lg:flex">
+                  <Text className="text-xs font-semibold text-stone-800">{fullName}</Text>
+                  <Text className="text-xs text-stone-400 leading-none">Super Admin</Text>
+                </View>
               </View>
             </View>
           </View>
         </View>
 
-        <View className="px-5 lg:px-8 pt-3 lg:pt-4 pb-6">
-          <View className="bg-white rounded-2xl border border-stone-200 overflow-hidden max-w-2xl">
-            <View className="px-4 lg:px-5 pt-3 lg:pt-4 pb-2.5 border-b border-stone-100">
-              <Text className="text-base font-bold text-stone-900 mb-0.5">Account Settings</Text>
-              <Text className="text-stone-500 text-xs">Manage your admin account</Text>
+        <View className="px-6 py-5">
+          <View
+            className="bg-white rounded-xl border border-stone-100 overflow-hidden max-w-lg"
+            style={{ shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.05, shadowRadius: 4 }}
+          >
+            {/* Card Header */}
+            <View className="px-6 pt-5 pb-4 border-b border-stone-100">
+              <Text className="text-sm font-bold text-stone-900">Profile Information</Text>
+              <Text className="text-xs text-stone-400 mt-0.5">Update your display name and email address</Text>
             </View>
 
-            <View className="px-4 lg:px-5 py-3 lg:py-4">
-              <View className="mb-4">
-                <View className="flex-row items-center">
-                  <View className="w-14 h-14 lg:w-16 lg:h-16 bg-emerald-100 rounded-2xl items-center justify-center mr-3">
-                    <Text className="text-emerald-700 font-bold text-lg lg:text-xl">{initials}</Text>
-                  </View>
-                  {isEditMode && (
-                    <TouchableOpacity className="bg-white border border-emerald-600 px-3 py-1.5 rounded-lg">
-                      <Text className="text-emerald-600 font-semibold text-xs">Change Photo</Text>
-                    </TouchableOpacity>
-                  )}
+            <View className="px-6 py-5">
+              {/* Avatar Row */}
+              <View className="flex-row items-center gap-4 mb-6 pb-5 border-b border-stone-50">
+                <View className="w-14 h-14 bg-emerald-500 rounded-xl items-center justify-center" style={{ shadowColor: '#10b981', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.25, shadowRadius: 8 }}>
+                  <Text className="text-white font-bold text-lg">{initials}</Text>
                 </View>
+                <View className="flex-1">
+                  <Text className="text-sm font-semibold text-stone-900">{fullName}</Text>
+                  <Text className="text-xs text-stone-400 mt-0.5">Super Administrator</Text>
+                </View>
+                {isEditMode && (
+                  <TouchableOpacity className="bg-stone-50 border border-stone-100 px-3 py-2 rounded-lg flex-row items-center gap-1">
+                    <Ionicons name="camera-outline" size={13} color="#78716c" />
+                    <Text className="text-stone-600 font-semibold text-xs">Change</Text>
+                  </TouchableOpacity>
+                )}
               </View>
 
-              <View className="mb-3">
-                <Text className="text-xs font-medium text-stone-700 mb-1.5">Full Name</Text>
+              {/* Full Name */}
+              <View className="mb-4">
+                <Text className="text-xs font-semibold text-stone-500 mb-1.5 uppercase tracking-wide">Full Name</Text>
                 <TextInput
-                  className={`bg-white border ${isEditMode ? 'border-stone-300' : 'border-stone-200 bg-stone-50'} rounded-lg px-3 py-2 text-stone-900 text-sm`}
+                  className={`border rounded-lg px-3 py-2.5 text-stone-900 text-sm ${isEditMode ? 'bg-white border-stone-200' : 'bg-stone-50 border-stone-100'}`}
                   value={fullName}
                   onChangeText={setFullName}
                   editable={isEditMode}
+                  placeholderTextColor="#a8a29e"
                 />
               </View>
 
-              <View className="mb-4">
-                <Text className="text-xs font-medium text-stone-700 mb-1.5">Email Address</Text>
+              {/* Email */}
+              <View className="mb-5">
+                <Text className="text-xs font-semibold text-stone-500 mb-1.5 uppercase tracking-wide">Email Address</Text>
                 <TextInput
-                  className={`bg-white border ${isEditMode ? 'border-stone-300' : 'border-stone-200 bg-stone-50'} rounded-lg px-3 py-2 text-stone-900 text-sm`}
+                  className={`border rounded-lg px-3 py-2.5 text-stone-900 text-sm ${isEditMode ? 'bg-white border-stone-200' : 'bg-stone-50 border-stone-100'}`}
                   value={email}
                   onChangeText={setEmail}
                   editable={isEditMode}
+                  placeholderTextColor="#a8a29e"
                 />
               </View>
 
+              {/* Action Buttons */}
               {isEditMode ? (
-                <View className="flex-row gap-2.5">
-                  <TouchableOpacity className="flex-1 bg-stone-100 py-2 rounded-lg" onPress={() => setIsEditMode(false)}>
-                    <Text className="text-center text-stone-700 font-semibold text-sm">Cancel</Text>
+                <View className="flex-row gap-3">
+                  <TouchableOpacity
+                    className="flex-1 bg-stone-50 border border-stone-100 py-2.5 rounded-lg items-center"
+                    onPress={() => setIsEditMode(false)}
+                  >
+                    <Text className="text-stone-600 font-semibold text-sm">Cancel</Text>
                   </TouchableOpacity>
-                  <TouchableOpacity className="flex-1 bg-emerald-600 py-2 rounded-lg" onPress={() => setIsEditMode(false)}>
-                    <Text className="text-center text-white font-semibold text-sm">Save Changes</Text>
+                  <TouchableOpacity
+                    className="flex-1 bg-emerald-500 py-2.5 rounded-lg items-center"
+                    style={{ shadowColor: '#10b981', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.25, shadowRadius: 4 }}
+                    onPress={() => setIsEditMode(false)}
+                  >
+                    <Text className="text-white font-semibold text-sm">Save Changes</Text>
                   </TouchableOpacity>
                 </View>
               ) : (
-                <TouchableOpacity className="bg-emerald-600 py-2 px-4 rounded-lg self-start flex-row items-center" onPress={() => setIsEditMode(true)}>
-                  <Ionicons name="create-outline" size={16} color="white" />
-                  <Text className="text-white font-semibold text-sm ml-1.5">Edit Profile</Text>
+                <TouchableOpacity
+                  className="flex-row items-center gap-1.5 bg-stone-50 border border-stone-100 py-2.5 px-4 rounded-lg self-start"
+                  onPress={() => setIsEditMode(true)}
+                >
+                  <Ionicons name="create-outline" size={14} color="#78716c" />
+                  <Text className="text-stone-700 font-semibold text-sm">Edit Profile</Text>
                 </TouchableOpacity>
               )}
+            </View>
+          </View>
+
+          {/* Danger Zone */}
+          <View
+            className="bg-white rounded-xl border border-stone-100 overflow-hidden max-w-lg mt-4"
+            style={{ shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.05, shadowRadius: 4 }}
+          >
+            <View className="px-6 pt-5 pb-4 border-b border-stone-100">
+              <Text className="text-sm font-bold text-stone-900">Security</Text>
+              <Text className="text-xs text-stone-400 mt-0.5">Manage your account security</Text>
+            </View>
+            <View className="px-6 py-5">
+              <TouchableOpacity className="flex-row items-center gap-3 py-3 border-b border-stone-50">
+                <View className="w-8 h-8 bg-stone-50 rounded-lg items-center justify-center">
+                  <Ionicons name="lock-closed-outline" size={15} color="#78716c" />
+                </View>
+                <View className="flex-1">
+                  <Text className="text-sm font-medium text-stone-800">Change Password</Text>
+                  <Text className="text-xs text-stone-400">Update your account password</Text>
+                </View>
+                <Ionicons name="chevron-forward" size={15} color="#d6d3d1" />
+              </TouchableOpacity>
+              <TouchableOpacity className="flex-row items-center gap-3 py-3">
+                <View className="w-8 h-8 bg-red-50 rounded-lg items-center justify-center">
+                  <Ionicons name="log-out-outline" size={15} color="#ef4444" />
+                </View>
+                <View className="flex-1">
+                  <Text className="text-sm font-medium text-red-500">Sign Out</Text>
+                  <Text className="text-xs text-stone-400">Sign out of your account</Text>
+                </View>
+                <Ionicons name="chevron-forward" size={15} color="#d6d3d1" />
+              </TouchableOpacity>
             </View>
           </View>
         </View>
@@ -113,14 +170,22 @@ export default function Settings({ onNavigate }: SettingsProps) {
 
       {/* Notification Modal */}
       <Modal visible={isNotificationOpen} transparent animationType="fade">
-        <Pressable className="flex-1 bg-black/20 justify-center items-center" onPress={() => setIsNotificationOpen(false)}>
-          <View className="w-80 bg-white rounded-2xl p-6 items-center">
-            <Ionicons name="notifications-outline" size={32} color="#10b981" className="mb-3" />
-            <Text className="font-bold text-lg text-stone-800 mb-2">Notifications</Text>
-            <Text className="text-stone-500 text-center mb-4">You have no new notifications.</Text>
-            <TouchableOpacity className="bg-emerald-600 rounded-lg py-2 px-6" onPress={() => setIsNotificationOpen(false)}>
-              <Text className="text-white font-bold">Close</Text>
-            </TouchableOpacity>
+        <Pressable className="flex-1 bg-black/30 justify-center items-center px-5" onPress={() => setIsNotificationOpen(false)}>
+          <View className="bg-white w-full max-w-xs rounded-2xl overflow-hidden" style={{ shadowColor: '#000', shadowOffset: { width: 0, height: 20 }, shadowOpacity: 0.15, shadowRadius: 40 }}>
+            <View className="px-6 pt-6 pb-4 items-center border-b border-stone-100">
+              <View className="w-12 h-12 bg-emerald-50 rounded-xl items-center justify-center mb-3">
+                <Ionicons name="notifications" size={22} color="#10b981" />
+              </View>
+              <Text className="font-bold text-stone-900 text-base">Notifications</Text>
+            </View>
+            <View className="px-6 py-5 items-center">
+              <Text className="text-stone-400 text-sm text-center">You have no new notifications.</Text>
+            </View>
+            <View className="px-6 pb-6">
+              <TouchableOpacity className="bg-emerald-500 w-full py-3 rounded-lg items-center" onPress={() => setIsNotificationOpen(false)}>
+                <Text className="text-white font-semibold text-sm">Dismiss</Text>
+              </TouchableOpacity>
+            </View>
           </View>
         </Pressable>
       </Modal>
@@ -128,15 +193,15 @@ export default function Settings({ onNavigate }: SettingsProps) {
       {/* Mobile Drawer */}
       <Modal visible={isDrawerOpen} transparent animationType="fade">
         <View className="flex-1 flex-row">
-          <View className="w-72 bg-white h-full shadow-2xl">
-            <View className="bg-emerald-50 px-6 pt-12 pb-6 border-b border-emerald-100">
-                <Text className="text-base font-bold text-stone-900">Admin Portal</Text>
+          <View className="w-64 bg-white h-full" style={{ shadowColor: '#000', shadowOffset: { width: 4, height: 0 }, shadowOpacity: 0.1, shadowRadius: 16 }}>
+            <View className="px-5 pt-12 pb-5 border-b border-stone-100">
+              <Text className="text-sm font-bold text-stone-900">Admin Portal</Text>
             </View>
-            <ScrollView className="flex-1 px-4 py-4">
-                <Text className="p-4 text-stone-400 text-xs">Mobile Menu Content</Text>
+            <ScrollView className="flex-1 px-3 py-3">
+              <Text className="p-4 text-stone-400 text-xs">Navigation items appear here</Text>
             </ScrollView>
           </View>
-          <Pressable className="flex-1 bg-black/40" onPress={() => setIsDrawerOpen(false)} />
+          <Pressable className="flex-1 bg-black/30" onPress={() => setIsDrawerOpen(false)} />
         </View>
       </Modal>
     </View>

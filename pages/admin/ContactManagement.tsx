@@ -731,8 +731,15 @@ export default function ContactManagement({ onNavigate }: ContactManagementProps
                 };
               });
 
-              // Autoplay is handled by the global subscription in Dashboard.tsx
-              // so the correct contact-panel context can play without duplication.
+              // Autoplay incoming voice messages that arrive while the contact
+              // is NOT currently open (the per-contact subscription handles it
+              // when the conversation panel is already visible).
+              if (isVoice && !senderIsMe) {
+                const isContactOpen = selectedContactRef.current && String(selectedContactRef.current.id) === finalContactId;
+                if (!isContactOpen && autoPlayVoiceRef.current) {
+                  autoPlayVoiceRef.current(newMsg.id, newMsg.file_url);
+                }
+              }
             } catch (e) {
               console.warn('Failed to update last message preview:', e);
             }
@@ -872,7 +879,10 @@ export default function ContactManagement({ onNavigate }: ContactManagementProps
                 if (stableAdminId) {
                   supabase.from('messages').update({ is_read: true }).eq('id', newRow.id).then(() => {});
                 }
-                // Autoplay is handled by the global subscription in Dashboard.tsx.
+                // Autoplay incoming voice messages (employee → admin direction only)
+                if (newRow.file_url && autoPlayVoiceRef.current) {
+                  autoPlayVoiceRef.current(newRow.id, newRow.file_url);
+                }
               }
             )
             .subscribe();
@@ -1373,167 +1383,256 @@ export default function ContactManagement({ onNavigate }: ContactManagementProps
   });
 
   return (
-    <View className="flex-1 flex-row bg-stone-50">
-      {/* Main content */}
-      <View className="flex-1 bg-stone-50">
-        <View className="bg-white px-5 pt-4 pb-3 border-b border-stone-200">
-          <View className="flex-row items-center justify-between">
-            <View className="flex-row items-center flex-1">
-              <TouchableOpacity className="lg:hidden w-9 h-9 items-center justify-center mr-3" onPress={() => setIsDrawerOpen(true)}>
-                <Ionicons name="menu" size={24} color="#44403c" />
-              </TouchableOpacity>
-              <View className="flex-1">
-                <Text className="text-lg lg:text-2xl font-bold text-stone-900">Contact Management</Text>
-                <Text className="text-stone-500 text-xs lg:text-sm mt-0.5">Welcome back, Administrator</Text>
+    <View className="flex-1 bg-gray-50">
+      <View className="flex-1 flex-row">
+
+        {/* ─── LEFT: Contacts Panel ─── */}
+        <View className={`${!showContactList ? 'hidden lg:flex' : 'flex'} flex-1 lg:flex-none lg:w-80 bg-white border-r border-gray-100 flex-col`}>
+
+          {/* Panel header */}
+          <View className="bg-white px-4 pt-5 pb-3 border-b border-gray-100">
+            <View className="flex-row items-center justify-between mb-3">
+              <View className="flex-row items-center gap-2">
+                <TouchableOpacity
+                  className="lg:hidden w-8 h-8 items-center justify-center rounded-xl bg-gray-100"
+                  onPress={() => setIsDrawerOpen(true)}
+                >
+                  <Ionicons name="menu" size={20} color="#374151" />
+                </TouchableOpacity>
+                <Text className="font-bold text-gray-900 text-lg">Messages</Text>
+                <View className="bg-emerald-100 px-2 py-0.5 rounded-full">
+                  <Text className="text-emerald-700 text-xs font-bold">{contacts.length}</Text>
+                </View>
+              </View>
+              <View className="flex-row items-center gap-1.5">
+                <TouchableOpacity
+                  className="w-8 h-8 bg-emerald-50 border border-emerald-100 rounded-xl items-center justify-center"
+                  onPress={openContactsModal}
+                >
+                  <Ionicons name="person-add-outline" size={16} color="#10b981" />
+                </TouchableOpacity>
+                <TouchableOpacity
+                  className="w-8 h-8 bg-emerald-50 border border-emerald-100 rounded-xl items-center justify-center"
+                  onPress={openCreateGroupModal}
+                >
+                  <Ionicons name="people-outline" size={16} color="#10b981" />
+                </TouchableOpacity>
+                <TouchableOpacity
+                  className="relative w-8 h-8 bg-gray-100 rounded-xl items-center justify-center"
+                  onPress={() => setIsNotificationOpen(true)}
+                >
+                  <Ionicons name="notifications-outline" size={16} color="#6b7280" />
+                  <View className="absolute top-1 right-1 w-1.5 h-1.5 bg-red-500 rounded-full" />
+                </TouchableOpacity>
               </View>
             </View>
-            <View className="flex-row items-center gap-2.5">
-              <TouchableOpacity className="w-9 h-9 bg-stone-100 rounded-full items-center justify-center" onPress={() => setIsNotificationOpen(true)}>
-                <View className="w-2 h-2 bg-red-500 rounded-full absolute top-1.5 right-1.5" />
-                <Ionicons name="notifications-outline" size={18} color="#57534e" />
-              </TouchableOpacity>
-              <View className="w-9 h-9 bg-emerald-100 rounded-full items-center justify-center">
-                <Text className="text-emerald-700 font-semibold text-xs">AD</Text>
-              </View>
+            {/* Search bar */}
+            <View className="flex-row items-center bg-gray-100 rounded-xl px-3 py-2.5">
+              <Ionicons name="search" size={15} color="#9ca3af" />
+              <TextInput
+                className="flex-1 ml-2 text-sm text-gray-800"
+                placeholder="Search contacts..."
+                placeholderTextColor="#9ca3af"
+                value={searchQuery}
+                onChangeText={setSearchQuery}
+              />
+              {searchQuery.length > 0 && (
+                <TouchableOpacity onPress={() => setSearchQuery('')}>
+                  <Ionicons name="close-circle" size={15} color="#9ca3af" />
+                </TouchableOpacity>
+              )}
             </View>
           </View>
+
+          {/* Contact list */}
+          <ScrollView className="flex-1" showsVerticalScrollIndicator={false}>
+            {filteredContacts.length === 0 ? (
+              <View className="items-center py-14 px-6">
+                <View className="w-14 h-14 bg-gray-100 rounded-2xl items-center justify-center mb-3">
+                  <Ionicons name="people-outline" size={26} color="#9ca3af" />
+                </View>
+                <Text className="text-gray-700 font-semibold text-sm text-center">No contacts found</Text>
+                <Text className="text-gray-400 text-xs text-center mt-1 leading-5">
+                  {searchQuery ? 'Try a different search term' : 'Add contacts or create a group to get started'}
+                </Text>
+              </View>
+            ) : (
+              <>
+                {/* Groups section */}
+                {filteredContacts.some(c => c.isGroup) && (
+                  <View>
+                    <View className="px-4 pt-4 pb-1.5">
+                      <Text className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Groups</Text>
+                    </View>
+                    {filteredContacts.filter(c => c.isGroup).map(contact => {
+                      const isSelected = selectedContact?.id === contact.id;
+                      return (
+                        <TouchableOpacity
+                          key={contact.id}
+                          className={`flex-row items-center px-3 py-2.5 mx-2 mb-0.5 rounded-xl ${isSelected ? 'bg-emerald-50' : ''}`}
+                          onPress={() => {
+                            setSelectedContact(contact);
+                            setShowContactList(false);
+                          }}
+                        >
+                          <View className="relative mr-3 shrink-0">
+                            <View
+                              className="w-11 h-11 rounded-2xl items-center justify-center"
+                              style={{ backgroundColor: contact.color }}
+                            >
+                              <Ionicons name="people" size={18} color="#1f2937" />
+                            </View>
+                          </View>
+                          <View className="flex-1 min-w-0">
+                            <Text className={`text-sm font-semibold ${isSelected ? 'text-emerald-700' : 'text-gray-900'}`} numberOfLines={1}>
+                              {contact.name}
+                            </Text>
+                            <Text className="text-xs text-emerald-500 mt-0.5 font-medium">Group Channel</Text>
+                          </View>
+                          {isSelected && <Ionicons name="chevron-forward" size={14} color="#10b981" />}
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </View>
+                )}
+
+                {/* Direct messages section */}
+                {filteredContacts.some(c => !c.isGroup) && (
+                  <View>
+                    <View className="px-4 pt-4 pb-1.5">
+                      <Text className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Direct Messages</Text>
+                    </View>
+                    {filteredContacts.filter(c => !c.isGroup).map(contact => {
+                      const lastMsg = lastMessagesMap[String(contact.id)];
+                      const isSelected = selectedContact?.id === contact.id;
+                      const hasUnread = (lastMsg?.unreadCount ?? 0) > 0;
+                      return (
+                        <TouchableOpacity
+                          key={contact.id}
+                          className={`flex-row items-center px-3 py-2.5 mx-2 mb-0.5 rounded-xl ${isSelected ? 'bg-emerald-50' : ''}`}
+                          onPress={() => {
+                            setSelectedContact(contact);
+                            setShowContactList(false);
+                            setLastMessagesMap(prev => {
+                              const existing = prev[String(contact.id)];
+                              if (!existing || existing.unreadCount === 0) return prev;
+                              return { ...prev, [String(contact.id)]: { ...existing, unreadCount: 0 } };
+                            });
+                          }}
+                        >
+                          <View className="relative mr-3 shrink-0">
+                            <View
+                              className="w-11 h-11 rounded-full items-center justify-center"
+                              style={{ backgroundColor: contact.color }}
+                            >
+                              <Text className="text-sm font-bold text-gray-800">{contact.initials}</Text>
+                            </View>
+                            {contact.online && (
+                              <View className="absolute bottom-0 right-0 w-3 h-3 bg-emerald-500 rounded-full border-2 border-white" />
+                            )}
+                          </View>
+                          <View className="flex-1 min-w-0">
+                            <View className="flex-row items-center justify-between">
+                              <Text
+                                className={`text-sm flex-1 mr-2 ${hasUnread ? 'font-bold text-gray-900' : 'font-semibold text-gray-800'}`}
+                                numberOfLines={1}
+                              >
+                                {contact.name}
+                              </Text>
+                              {lastMsg && (
+                                <Text className={`text-[10px] shrink-0 ${hasUnread ? 'font-bold text-emerald-600' : 'text-gray-400'}`}>
+                                  {lastMsg.time}
+                                </Text>
+                              )}
+                            </View>
+                            <View className="flex-row items-center justify-between mt-0.5">
+                              {lastMsg ? (
+                                <Text
+                                  className={`text-xs flex-1 mr-2 ${hasUnread ? 'font-semibold text-gray-700' : 'text-gray-400'}`}
+                                  numberOfLines={1}
+                                >
+                                  {lastMsg.text}
+                                </Text>
+                              ) : (
+                                <Text className="text-xs text-gray-400">
+                                  {contact.online ? '● Online' : contact.location}
+                                </Text>
+                              )}
+                              {hasUnread && (
+                                <View className="bg-emerald-500 rounded-full min-w-[18px] h-[18px] px-1 items-center justify-center">
+                                  <Text className="text-white text-[9px] font-bold">
+                                    {lastMsg!.unreadCount > 9 ? '9+' : lastMsg!.unreadCount}
+                                  </Text>
+                                </View>
+                              )}
+                            </View>
+                          </View>
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </View>
+                )}
+              </>
+            )}
+          </ScrollView>
         </View>
 
-        {/* Main two-panel layout */}
-        <View className="flex-1 flex-row">
-          {/* Contacts Panel */}
-          <View className={`${!showContactList ? 'hidden lg:flex' : 'flex'} flex-1 lg:flex-none lg:w-96 bg-white border-r border-stone-200`}>
-            <View className="px-5 pt-4 pb-3 border-b border-stone-100">
-              <View className="flex-row items-center justify-between mb-3">
-                <Text className="text-base font-bold text-stone-900">Contacts</Text>
-                <View className="flex-row items-center gap-2">
-                  <TouchableOpacity
-                    className="w-8 h-8 bg-stone-100 rounded-full items-center justify-center"
-                    onPress={openContactsModal}
-                  >
-                    <Ionicons name="person-add" size={16} color="#57534e" />
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    className="w-8 h-8 bg-stone-100 rounded-full items-center justify-center"
-                    onPress={openCreateGroupModal}
-                  >
-                    <Ionicons name="people" size={16} color="#57534e" />
-                  </TouchableOpacity>
-                </View>
-              </View>
-              <View className="flex-row items-center bg-stone-50 rounded-lg px-3 py-2 border border-stone-200">
-                <Ionicons name="search" size={16} color="#a8a29e" />
-                <TextInput
-                  className="flex-1 ml-2 text-sm"
-                  placeholder="Search contacts..."
-                  placeholderTextColor="#a8a29e"
-                  value={searchQuery}
-                  onChangeText={setSearchQuery}
-                />
-              </View>
-            </View>
-
-            <ScrollView className="flex-1">
-              {filteredContacts.map(contact => {
-                const lastMsg = lastMessagesMap[String(contact.id)];
-                return (
-                  <TouchableOpacity
-                    key={contact.id}
-                    className={`flex-row items-center px-5 py-3 border-b border-stone-50 ${selectedContact?.id === contact.id ? 'bg-emerald-50' : ''}`}
-                    onPress={() => {
-                      setSelectedContact(contact);
-                      setShowContactList(false);
-                      // Clear unread badge when chat is opened
-                      setLastMessagesMap(prev => {
-                        const existing = prev[String(contact.id)];
-                        if (!existing || existing.unreadCount === 0) return prev;
-                        return { ...prev, [String(contact.id)]: { ...existing, unreadCount: 0 } };
-                      });
-                    }}
-                  >
-                    <View className="relative mr-3 shrink-0">
-                      <View
-                        className="w-12 h-12 rounded-full items-center justify-center"
-                        style={{ backgroundColor: contact.color }}
-                      >
-                        <Text className="text-stone-800 font-semibold">{contact.initials}</Text>
-                      </View>
-                      {contact.online && (
-                        <View className="absolute bottom-0 right-0 w-3.5 h-3.5 bg-emerald-500 rounded-full border-2 border-white" />
-                      )}
-                    </View>
-                    <View className="flex-1 min-w-0">
-                      <View className="flex-row items-center justify-between">
-                        <Text className="text-sm font-bold text-stone-900 flex-1 mr-2" numberOfLines={1}>{contact.name}</Text>
-                        {lastMsg && (
-                          <Text className={`text-[10px] shrink-0 ${lastMsg.unreadCount > 0 ? 'text-black font-bold' : 'text-stone-400'}`}>
-                            {lastMsg.time}
-                          </Text>
-                        )}
-                      </View>
-                      <Text className="text-xs text-stone-500 mt-0.5" numberOfLines={1}>{contact.location}</Text>
-                      {lastMsg ? (
-                        <View className="flex-row items-center justify-between mt-0.5">
-                          <Text className={`text-xs flex-1 mr-2 ${lastMsg.unreadCount > 0 ? 'text-black font-bold' : 'text-stone-400'}`} numberOfLines={1}>
-                            {lastMsg.text}
-                          </Text>
-                          {lastMsg.unreadCount > 0 && (
-                            <View className="bg-red-500 rounded-full h-4 w-4 items-center justify-center">
-                              <Text className="text-white text-[9px] font-bold">{lastMsg.unreadCount > 9 ? '9+' : lastMsg.unreadCount}</Text>
-                            </View>
-                          )}
-                        </View>
-                      ) : (
-                        <Text className="text-xs text-stone-300 mt-0.5">No messages yet</Text>
-                      )}
-                    </View>
-                  </TouchableOpacity>
-                );
-              })}
-
-              {filteredContacts.length === 0 && (
-                <View className="px-5 py-6">
-                  <Text className="text-xs text-stone-500">No contacts found. Use the + button to add one.</Text>
-                </View>
-              )}
-            </ScrollView>
-          </View>
-
-          {/* Chat Panel */}
-          <View className={`${showContactList ? 'hidden lg:flex' : 'flex'} flex-1 bg-stone-50`}>
+        {/* ─── RIGHT: Chat Panel ─── */}
+        <View className={`${showContactList ? 'hidden lg:flex' : 'flex'} flex-1 flex-col bg-slate-50`}>
             {selectedContact ? (
               <>
-                <View className="bg-white px-5 py-3 border-b border-stone-200 flex-row items-center">
+                {/* Chat Header */}
+                <View className="bg-white border-b border-gray-100 px-5 py-3.5 flex-row items-center shadow-sm">
                   <TouchableOpacity
-                    className="lg:hidden mr-3"
+                    className="lg:hidden mr-3 w-8 h-8 items-center justify-center rounded-xl bg-gray-100"
                     onPress={() => setShowContactList(true)}
                   >
-                    <Ionicons name="chevron-back" size={24} color="#78716c" />
+                    <Ionicons name="chevron-back" size={18} color="#374151" />
                   </TouchableOpacity>
                   <View
-                    className="w-10 h-10 rounded-full items-center justify-center mr-3"
+                    className="w-10 h-10 rounded-full items-center justify-center mr-3 shrink-0"
                     style={{ backgroundColor: selectedContact.color }}
                   >
-                    <Text className="font-bold">{selectedContact.initials}</Text>
+                    {selectedContact.isGroup
+                      ? <Ionicons name="people" size={18} color="#1f2937" />
+                      : <Text className="font-bold text-gray-800 text-sm">{selectedContact.initials}</Text>
+                    }
                   </View>
-                  <View>
-                    <Text className="font-bold text-stone-900">{selectedContact.name}</Text>
-                    <Text className="text-xs text-emerald-600">
-                      {selectedContact.isGroup ? 'Group channel' : 'Direct channel'}
-                    </Text>
+                  <View className="flex-1">
+                    <Text className="font-bold text-gray-900 text-base leading-tight">{selectedContact.name}</Text>
+                    <View className="flex-row items-center gap-1.5 mt-0.5">
+                      {selectedContact.isGroup ? (
+                        <>
+                          <Ionicons name="radio-outline" size={11} color="#10b981" />
+                          <Text className="text-xs text-emerald-600 font-medium">Group Channel</Text>
+                        </>
+                      ) : selectedContact.online ? (
+                        <>
+                          <View className="w-1.5 h-1.5 bg-emerald-500 rounded-full" />
+                          <Text className="text-xs text-emerald-600 font-medium">Online</Text>
+                        </>
+                      ) : (
+                        <>
+                          <View className="w-1.5 h-1.5 bg-gray-300 rounded-full" />
+                          <Text className="text-xs text-gray-400">{selectedContact.location}</Text>
+                        </>
+                      )}
+                    </View>
                   </View>
                 </View>
 
+                {/* Messages Area */}
                 <ScrollView
                   ref={chatScrollRef}
-                  className="flex-1 px-5 py-4"
+                  className="flex-1 px-4 py-3"
+                  showsVerticalScrollIndicator={false}
                   onContentSizeChange={() => chatScrollRef.current?.scrollToEnd({ animated: false })}
                 >
                   {messagesList.map((message, index) => {
+                    const isMe = message.sender === 'Me';
                     const rawTs = message._rawTs || new Date().toISOString();
                     const showTimestamp = expandedMessageId === message.id;
 
-                    // Date separator
                     const prevMsg = index === 0 ? null : messagesList[index - 1];
                     const prevRawTs = prevMsg ? (prevMsg._rawTs || prevMsg.time) : null;
                     const toDay = (ts: string) => ts.slice(0, 10);
@@ -1551,251 +1650,286 @@ export default function ContactManagement({ onNavigate }: ContactManagementProps
                     return (
                       <View key={message.id}>
                         {showDateSep && (
-                          <View className="items-center my-3">
-                            <View className="bg-stone-100 px-3 py-1 rounded-full">
-                              <Text className="text-[10px] text-stone-500 font-semibold">{dateLabel}</Text>
+                          <View className="items-center my-4">
+                            <View className="bg-gray-200 px-4 py-0.5 rounded-full">
+                              <Text className="text-[10px] text-gray-500 font-semibold">{dateLabel}</Text>
                             </View>
                           </View>
                         )}
-                        <View
-                          className={`mb-2 flex-row ${message.sender === 'Me' ? 'justify-end' : 'justify-start'}`}
-                        >
-                          <View className="max-w-[80%]">
+                        <View className={`mb-3 flex-row ${isMe ? 'justify-end' : 'justify-start'} items-end`}>
+                          {!isMe && (
+                            <View
+                              className="w-7 h-7 rounded-full items-center justify-center mr-2 shrink-0"
+                              style={{ backgroundColor: selectedContact.color }}
+                            >
+                              <Text className="text-[9px] font-bold text-gray-800">{selectedContact.initials}</Text>
+                            </View>
+                          )}
+                          <View className="max-w-[72%]">
                             {message.isVoice ? (
                               <TouchableOpacity
-                                className="bg-emerald-50 border border-emerald-200 px-3 py-2 rounded-2xl flex-row items-center"
+                                className={`px-3.5 py-2.5 flex-row items-center gap-2 ${
+                                  isMe
+                                    ? 'bg-emerald-500 rounded-2xl rounded-br-sm'
+                                    : 'bg-white border border-gray-200 rounded-2xl rounded-bl-sm shadow-sm'
+                                }`}
                                 onPress={() => {
                                   handlePlayVoice(message);
                                   setExpandedMessageId(prev => prev === message.id ? null : message.id);
                                 }}
                               >
-                                <Ionicons
-                                  name={currentlyPlayingId === message.id ? 'pause' : 'play'}
-                                  size={16}
-                                  color="#10b981"
-                                />
-                                <Ionicons
-                                  name="mic"
-                                  size={16}
-                                  color="#10b981"
-                                  style={{ marginLeft: 8, marginRight: 4 }}
-                                />
-                                <Text className="text-xs text-stone-800">
-                                  {message.duration || formatRecordingTime(recordingTime) || 'Voice message'}
+                                <View className={`w-7 h-7 rounded-full items-center justify-center ${isMe ? 'bg-emerald-400' : 'bg-emerald-50'}`}>
+                                  <Ionicons
+                                    name={currentlyPlayingId === message.id ? 'pause' : 'play'}
+                                    size={13}
+                                    color={isMe ? 'white' : '#10b981'}
+                                  />
+                                </View>
+                                <Ionicons name="mic" size={13} color={isMe ? 'rgba(255,255,255,0.75)' : '#10b981'} />
+                                <Text className={`text-xs font-medium ${isMe ? 'text-white' : 'text-gray-700'}`}>
+                                  {message.duration || formatRecordingTime(recordingTime) || 'Voice'}
                                 </Text>
                               </TouchableOpacity>
                             ) : (
                               <TouchableOpacity
                                 activeOpacity={0.8}
                                 onPress={() => setExpandedMessageId(prev => prev === message.id ? null : message.id)}
-                                className="bg-white px-3 py-2 rounded-2xl border border-stone-200"
+                                className={`px-3.5 py-2.5 ${
+                                  isMe
+                                    ? 'bg-emerald-500 rounded-2xl rounded-br-sm'
+                                    : 'bg-white border border-gray-200 rounded-2xl rounded-bl-sm shadow-sm'
+                                }`}
                               >
-                                <Text className="text-sm text-stone-800">{message.text}</Text>
+                                <Text className={`text-sm leading-5 ${isMe ? 'text-white' : 'text-gray-800'}`}>
+                                  {message.text}
+                                </Text>
                               </TouchableOpacity>
                             )}
-                            {showTimestamp && message.sender !== 'Me' && (
-                              <View className="flex-row items-center gap-1 mt-1 justify-start">
-                                <Text className="text-[10px] text-stone-400">
-                                  {message.time}
-                                </Text>
-                              </View>
-                            )}
-                            {message.sender === 'Me' && (
-                              <View className="flex-row items-center gap-1 mt-1 justify-end">
-                                <Text className={`text-[10px] font-semibold ${
-                                  message.status === 'read' ? 'text-emerald-500' : 'text-stone-400'
-                                }`}>
+                            <View className={`mt-0.5 flex-row items-center ${isMe ? 'justify-end' : 'justify-start'}`}>
+                              {isMe ? (
+                                <Text className="text-[10px] text-gray-400">
                                   {(() => {
                                     if (message.status === 'sending' || message.status === 'Sending') return 'Sending...';
                                     const diffMs = now.getTime() - new Date(rawTs).getTime();
                                     const mins = Math.floor(diffMs / 60000);
                                     if (message.status === 'read' || message.status === 'Read') return 'Seen';
                                     if (mins < 1) return 'Delivered';
-                                    if (mins === 1) return 'Delivered 1 minute ago';
-                                    return `Delivered ${mins} minutes ago`;
+                                    if (mins === 1) return '1 min ago';
+                                    return `${mins}m ago`;
                                   })()}
                                 </Text>
-                              </View>
-                            )}
+                              ) : showTimestamp && (
+                                <Text className="text-[10px] text-gray-400">{message.time}</Text>
+                              )}
+                            </View>
                           </View>
+                          {isMe && <View className="w-7 h-7 ml-2 shrink-0" />}
                         </View>
                       </View>
                     );
                   })}
 
                   {messagesList.length === 0 && (
-                    <View className="flex-1 items-center justify-center mt-10">
-                      <Text className="text-stone-400 text-xs">No messages yet. Start the conversation!</Text>
+                    <View className="flex-1 items-center justify-center py-16">
+                      <View className="w-16 h-16 bg-emerald-50 border border-emerald-100 rounded-3xl items-center justify-center mb-3">
+                        <Ionicons name="chatbubbles-outline" size={28} color="#10b981" />
+                      </View>
+                      <Text className="text-gray-700 font-semibold text-sm">No messages yet</Text>
+                      <Text className="text-gray-400 text-xs mt-1">Start the conversation below</Text>
                     </View>
                   )}
                 </ScrollView>
 
-                <View className="bg-white p-4 border-t border-stone-200">
-                  <View className="flex-row items-center bg-stone-50 rounded-xl px-4 py-2 border border-stone-200">
-                    <TextInput
-                      className="flex-1 h-10 text-sm"
-                      placeholder="Type a message..."
-                      placeholderTextColor="#a8a29e"
-                      value={transcript}
-                      onChangeText={setTranscript}
-                      onSubmitEditing={() => {
-                        const trimmed = transcript.trim();
-                        if (trimmed.length > 0) {
-                          sendMessage(trimmed);
-                        }
-                      }}
-                    />
+                {/* Message Input */}
+                <View className="bg-white border-t border-gray-100 px-4 pt-3 pb-4">
+                  {isRecording && (
+                    <View className="flex-row items-center justify-center gap-2 mb-2 py-1.5 bg-red-50 rounded-xl border border-red-100">
+                      <View className="w-2 h-2 bg-red-500 rounded-full" />
+                      <Text className="text-red-500 text-xs font-semibold">Recording · {formatRecordingTime(recordingTime)}</Text>
+                    </View>
+                  )}
+                  <View className="flex-row items-center gap-2">
+                    <View className="flex-1 flex-row items-center bg-gray-100 rounded-2xl px-4 py-2.5">
+                      <TextInput
+                        className="flex-1 text-sm text-gray-800"
+                        placeholder="Type a message..."
+                        placeholderTextColor="#9ca3af"
+                        value={transcript}
+                        onChangeText={setTranscript}
+                        onSubmitEditing={() => {
+                          const trimmed = transcript.trim();
+                          if (trimmed.length > 0) sendMessage(trimmed);
+                        }}
+                      />
+                    </View>
                     <TouchableOpacity
-                      className="mx-2"
+                      className={`w-10 h-10 rounded-full items-center justify-center ${isRecording ? 'bg-red-500' : 'bg-gray-200'}`}
                       onPressIn={startRecording}
                       onPressOut={stopRecording}
                     >
-                      <Ionicons
-                        name="mic"
-                        size={24}
-                        color={isRecording ? '#ef4444' : '#10b981'}
-                      />
+                      <Ionicons name="mic" size={18} color={isRecording ? 'white' : '#6b7280'} />
                     </TouchableOpacity>
                     <TouchableOpacity
+                      className={`w-10 h-10 rounded-full items-center justify-center ${transcript.trim() ? 'bg-emerald-500' : 'bg-gray-200'}`}
                       onPress={() => {
                         const trimmed = transcript.trim();
-                        if (trimmed.length > 0) {
-                          sendMessage(trimmed);
-                        }
+                        if (trimmed.length > 0) sendMessage(trimmed);
                       }}
                     >
-                      <Ionicons name="send" size={22} color="#10b981" />
+                      <Ionicons name="send" size={16} color={transcript.trim() ? 'white' : '#9ca3af'} />
                     </TouchableOpacity>
                   </View>
-                  {isRecording && (
-                    <Text className="text-[11px] text-red-500 mt-1 text-right">
-                      Recording... {formatRecordingTime(recordingTime)}
-                    </Text>
-                  )}
                 </View>
               </>
             ) : (
-              <View className="flex-1 items-center justify-center">
-                <Text className="text-stone-500 text-sm">Select a contact to start chatting</Text>
+              /* Welcome / empty state */
+              <View className="flex-1 items-center justify-center bg-gray-50">
+                <View className="items-center px-10">
+                  <View className="w-20 h-20 bg-emerald-50 border border-emerald-100 rounded-3xl items-center justify-center mb-4">
+                    <Ionicons name="chatbubbles-outline" size={36} color="#10b981" />
+                  </View>
+                  <Text className="text-gray-900 font-bold text-lg text-center mb-2">Contact Management</Text>
+                  <Text className="text-gray-400 text-sm text-center leading-6">
+                    Select a contact to start chatting, or use the buttons in the panel to add contacts and create groups.
+                  </Text>
+                </View>
               </View>
             )}
           </View>
         </View>
-      </View>
 
-      {/* Notifications Modal */}
+      {/* ─── NOTIFICATIONS MODAL ─── */}
       <Modal visible={isNotificationOpen} transparent animationType="fade">
         <Pressable
-          className="flex-1 bg-black/20 items-center justify-center"
+          className="flex-1 bg-black/30 items-center justify-center"
           onPress={() => setIsNotificationOpen(false)}
         >
-          <View className="w-80 bg-white rounded-2xl p-6 items-center">
-            <Text className="font-bold text-lg mb-2">Notifications</Text>
-            <Text className="text-stone-500 mb-4">No new notifications</Text>
-            <TouchableOpacity
-              className="bg-emerald-500 px-6 py-2 rounded-lg"
-              onPress={() => setIsNotificationOpen(false)}
-            >
-              <Text className="text-white font-bold">Close</Text>
-            </TouchableOpacity>
-          </View>
+          <Pressable onPress={e => e.stopPropagation()}>
+            <View className="w-80 bg-white rounded-2xl overflow-hidden shadow-xl">
+              <View className="bg-emerald-500 px-5 py-4 flex-row items-center gap-2">
+                <Ionicons name="notifications-outline" size={18} color="white" />
+                <Text className="font-bold text-white text-base">Notifications</Text>
+              </View>
+              <View className="items-center py-8 px-6">
+                <Ionicons name="notifications-off-outline" size={40} color="#d1d5db" />
+                <Text className="text-gray-400 text-sm mt-3 text-center">No new notifications</Text>
+              </View>
+              <View className="px-5 pb-5">
+                <TouchableOpacity
+                  className="bg-gray-100 py-2.5 rounded-xl items-center"
+                  onPress={() => setIsNotificationOpen(false)}
+                >
+                  <Text className="text-gray-700 font-semibold text-sm">Dismiss</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </Pressable>
         </Pressable>
       </Modal>
 
-      {/* Create Group Modal — 2-step wizard */}
+      {/* ─── CREATE GROUP MODAL ─── */}
       <Modal visible={showCreateGroupModal} transparent animationType="fade">
         <Pressable
-          className="flex-1 bg-black/20 items-center justify-center p-4"
+          className="flex-1 bg-black/30 items-center justify-center p-4"
           onPress={() => setShowCreateGroupModal(false)}
         >
           <Pressable onPress={e => e.stopPropagation()}>
-            <View className="w-96 bg-white rounded-2xl p-6">
+            <View className="w-96 bg-white rounded-2xl overflow-hidden shadow-xl">
 
-              {/* Header (match Add Contacts modal) */}
-              <View className="flex-row items-center justify-between mb-4">
-                <View>
-                  <Text className="font-bold text-lg">
-                    {groupStep === 1 ? 'Create Group' : 'Select Leader'}
-                  </Text>
-                  <Text className="text-xs text-stone-500 mt-0.5">
-                    {groupStep === 1 ? 'Step 1 of 2 — Name & site' : 'Step 2 of 2 — Group leader'}
-                  </Text>
+              {/* Modal Header */}
+              <View className="bg-emerald-500 px-5 py-4">
+                <View className="flex-row items-center justify-between">
+                  <View>
+                    <Text className="font-bold text-white text-base">
+                      {groupStep === 1 ? 'Create Group' : 'Assign Group Leader'}
+                    </Text>
+                    <Text className="text-emerald-100 text-xs mt-0.5">
+                      {groupStep === 1 ? 'Step 1 of 2 — Group name & site' : 'Step 2 of 2 — Pick a leader'}
+                    </Text>
+                  </View>
+                  <TouchableOpacity
+                    className="w-8 h-8 bg-white/20 rounded-xl items-center justify-center"
+                    onPress={() => {
+                      setShowCreateGroupModal(false);
+                      setGroupName('');
+                      setSelectedMembers([]);
+                      setSelectedSiteId(null);
+                      setLeaderSearch('');
+                      setSiteSearch('');
+                      setGroupLeaderId(null);
+                      setGroupStep(1);
+                    }}
+                  >
+                    <Ionicons name="close" size={18} color="white" />
+                  </TouchableOpacity>
                 </View>
-                <TouchableOpacity
-                  onPress={() => {
-                    setShowCreateGroupModal(false);
-                    setGroupName('');
-                    setSelectedMembers([]);
-                    setSelectedSiteId(null);
-                    setLeaderSearch('');
-                    setSiteSearch('');
-                    setGroupLeaderId(null);
-                    setGroupStep(1);
-                  }}
-                >
-                  <Ionicons name="close" size={22} color="#6b7280" />
-                </TouchableOpacity>
+                {/* Step progress bar */}
+                <View className="flex-row gap-1.5 mt-3">
+                  <View className="flex-1 h-1 bg-white rounded-full" />
+                  <View className={`flex-1 h-1 rounded-full ${groupStep === 2 ? 'bg-white' : 'bg-white/30'}`} />
+                </View>
               </View>
+
+              <View className="p-5">
 
               {/* ── STEP 1: Group Name + Site ── */}
               {groupStep === 1 && (
                 <>
                   <View className="mb-3">
+                    <Text className="text-xs font-semibold text-gray-500 mb-1.5 uppercase tracking-wide">Group Name</Text>
                     <TextInput
-                      className="border border-stone-300 rounded-lg px-3 py-2 text-sm"
-                      placeholder="Group name (e.g. Alpha Site Team)"
-                      placeholderTextColor="#a8a29e"
+                      className="border border-gray-200 rounded-xl px-4 py-2.5 text-sm bg-gray-50 text-gray-900"
+                      placeholder="e.g. Alpha Site Team"
+                      placeholderTextColor="#9ca3af"
                       value={groupName}
                       onChangeText={setGroupName}
                     />
                   </View>
 
-                  <View className="mb-3">
-                    <TextInput
-                      className="border border-stone-300 rounded-lg px-3 py-2 text-sm"
-                      placeholder="Search sites..."
-                      placeholderTextColor="#a8a29e"
+                  <View className="mb-2">
+                    <Text className="text-xs font-semibold text-gray-500 mb-1.5 uppercase tracking-wide">Assign Site</Text>
+                    <View className="flex-row items-center bg-gray-50 border border-gray-200 rounded-xl px-3 py-2.5 mb-2">
+                      <Ionicons name="search" size={14} color="#9ca3af" />
+                      <TextInput
+                      className="flex-1 ml-2 text-sm text-gray-800"
+                      placeholder="Search available sites..."
+                      placeholderTextColor="#9ca3af"
                       value={siteSearch}
                       onChangeText={setSiteSearch}
                     />
+                    </View>
                   </View>
 
-                  <ScrollView className="max-h-56 mb-4" showsVerticalScrollIndicator>
+                  <ScrollView className="max-h-52 mb-4" showsVerticalScrollIndicator={false}>
                     {isLoadingSites ? (
-                      <Text className="text-xs text-stone-500 text-center py-4">Loading sites...</Text>
+                      <Text className="text-xs text-gray-400 text-center py-4">Loading sites...</Text>
                     ) : filteredSitesForModal.length === 0 ? (
-                      <Text className="text-xs text-stone-500 text-center py-4">No sites found</Text>
+                      <View className="items-center py-6">
+                        <Ionicons name="location-outline" size={28} color="#d1d5db" />
+                        <Text className="text-xs text-gray-400 mt-2">No available sites found</Text>
+                      </View>
                     ) : (
                       filteredSitesForModal.map(site => {
                         const isSelected = selectedSiteId === site.id;
                         return (
                           <TouchableOpacity
                             key={site.id}
-                            className={`flex-row items-center justify-between p-2 mb-1 rounded-lg border ${
-                              isSelected ? 'bg-emerald-50 border-emerald-200' : 'bg-stone-50 border-stone-200'
+                            className={`flex-row items-center p-3 mb-1.5 rounded-xl border ${
+                              isSelected ? 'bg-emerald-50 border-emerald-200' : 'bg-gray-50 border-gray-200'
                             }`}
                             onPress={() => setSelectedSiteId(prev => (prev === site.id ? null : site.id))}
                           >
-                            <View className="flex-row items-center flex-1">
-                              <View className={`w-9 h-9 rounded-full items-center justify-center mr-3 ${
-                                isSelected ? 'bg-emerald-100' : 'bg-stone-200'
-                              }`}>
-                                <Ionicons name="location-outline" size={16} color={isSelected ? '#10b981' : '#57534e'} />
-                              </View>
-                              <View className="flex-1">
-                                <Text className="text-sm font-semibold text-stone-900" numberOfLines={1}>
-                                  {site.name}
-                                </Text>
-                                <Text className="text-[11px] text-stone-500" numberOfLines={1}>
-                                  {site.status || '—'}
-                                </Text>
-                              </View>
+                            <View className={`w-9 h-9 rounded-xl items-center justify-center mr-3 ${isSelected ? 'bg-emerald-100' : 'bg-gray-200'}`}>
+                              <Ionicons name="location-outline" size={16} color={isSelected ? '#10b981' : '#6b7280'} />
                             </View>
-                            {isSelected ? (
-                              <Ionicons name="checkmark-circle" size={20} color="#10b981" />
-                            ) : (
-                              <View className="w-5 h-5 rounded-full border-2 border-stone-300" />
-                            )}
+                            <View className="flex-1">
+                              <Text className="text-sm font-semibold text-gray-900" numberOfLines={1}>{site.name}</Text>
+                              <Text className="text-xs text-gray-400 mt-0.5" numberOfLines={1}>{site.status || '—'}</Text>
+                            </View>
+                            {isSelected
+                              ? <Ionicons name="checkmark-circle" size={20} color="#10b981" />
+                              : <View className="w-5 h-5 rounded-full border-2 border-gray-300" />
+                            }
                           </TouchableOpacity>
                         );
                       })
@@ -1804,7 +1938,7 @@ export default function ContactManagement({ onNavigate }: ContactManagementProps
 
                   <View className="flex-row gap-2">
                     <TouchableOpacity
-                      className="flex-1 px-4 py-2 rounded-lg border border-stone-300"
+                      className="flex-1 py-2.5 rounded-xl border border-gray-200 items-center"
                       onPress={() => {
                         setShowCreateGroupModal(false);
                         setGroupName('');
@@ -1813,21 +1947,18 @@ export default function ContactManagement({ onNavigate }: ContactManagementProps
                         setGroupStep(1);
                       }}
                     >
-                      <Text className="text-stone-700 font-semibold text-center">Cancel</Text>
+                      <Text className="text-gray-600 font-semibold text-sm">Cancel</Text>
                     </TouchableOpacity>
 
                     <TouchableOpacity
-                      className={`flex-1 px-4 py-2 rounded-lg ${
+                      className={`flex-1 py-2.5 rounded-xl items-center ${
                         groupName.trim() && selectedSiteId ? 'bg-emerald-500' : 'bg-stone-200'
                       }`}
                       disabled={!groupName.trim() || !selectedSiteId}
                       onPress={() => setGroupStep(2)}
                     >
-                      <Text className={`font-semibold text-center ${
-                        groupName.trim() && selectedSiteId ? 'text-white' : 'text-stone-500'
-                      }`}
-                      >
-                        Next
+                      <Text className={`font-semibold text-sm ${groupName.trim() && selectedSiteId ? 'text-white' : 'text-gray-400'}`}>
+                        Continue →
                       </Text>
                     </TouchableOpacity>
                   </View>
@@ -1838,50 +1969,54 @@ export default function ContactManagement({ onNavigate }: ContactManagementProps
               {groupStep === 2 && (
                 <>
                   <View className="mb-3">
-                    <TextInput
-                      className="border border-stone-300 rounded-lg px-3 py-2 text-sm"
-                      placeholder="Search employees by name, email, or role"
-                      placeholderTextColor="#a8a29e"
-                      value={leaderSearch}
-                      onChangeText={setLeaderSearch}
-                    />
+                    <View className="flex-row items-center bg-gray-50 border border-gray-200 rounded-xl px-3 py-2.5">
+                      <Ionicons name="search" size={14} color="#9ca3af" />
+                      <TextInput
+                        className="flex-1 ml-2 text-sm text-gray-800"
+                        placeholder="Search employees..."
+                        placeholderTextColor="#9ca3af"
+                        value={leaderSearch}
+                        onChangeText={setLeaderSearch}
+                      />
+                    </View>
                   </View>
 
-                  <ScrollView className="max-h-56 mb-4" showsVerticalScrollIndicator>
+                  <ScrollView className="max-h-52 mb-4" showsVerticalScrollIndicator={false}>
                     {isLoadingUsers ? (
-                      <Text className="text-xs text-stone-500 text-center py-4">Loading employees...</Text>
+                      <Text className="text-xs text-gray-400 text-center py-4">Loading employees...</Text>
                     ) : filteredLeaders.length === 0 ? (
-                      <Text className="text-xs text-stone-500 text-center py-4">No employees found</Text>
+                      <View className="items-center py-6">
+                        <Ionicons name="person-outline" size={28} color="#d1d5db" />
+                        <Text className="text-xs text-gray-400 mt-2">No available employees</Text>
+                      </View>
                     ) : (
                       filteredLeaders.map(user => {
                         const isLeader = selectedMembers.indexOf(user.id) !== -1;
                         return (
                           <TouchableOpacity
                             key={user.id}
-                            className={`flex-row items-center justify-between p-2 mb-1 rounded-lg border ${
-                              isLeader ? 'bg-emerald-50 border-emerald-200' : 'bg-stone-50 border-stone-200'
+                            className={`flex-row items-center p-3 mb-1.5 rounded-xl border ${
+                              isLeader ? 'bg-emerald-50 border-emerald-200' : 'bg-gray-50 border-gray-200'
                             }`}
                             onPress={() => toggleMemberSelection(user.id)}
                           >
-                            <View className="flex-row items-center flex-1">
-                              <View
-                                className="w-9 h-9 rounded-full items-center justify-center mr-3"
-                                style={{ backgroundColor: user.color }}
-                              >
-                                <Text className="text-xs font-bold text-stone-800">{user.initials}</Text>
-                              </View>
-                              <View className="flex-1">
-                                <Text className="text-sm font-semibold text-stone-900">{user.full_name || 'Unnamed'}</Text>
-                                <Text className="text-[11px] text-stone-500" numberOfLines={1}>{user.email}</Text>
-                              </View>
+                            <View
+                              className="w-9 h-9 rounded-full items-center justify-center mr-3"
+                              style={{ backgroundColor: user.color }}
+                            >
+                              <Text className="text-xs font-bold text-gray-800">{user.initials}</Text>
+                            </View>
+                            <View className="flex-1">
+                              <Text className="text-sm font-semibold text-gray-900">{user.full_name || 'Unnamed'}</Text>
+                              <Text className="text-xs text-gray-400 mt-0.5" numberOfLines={1}>{user.email}</Text>
                             </View>
                             {isLeader ? (
-                              <View className="flex-row items-center rounded-full px-2.5 py-1 gap-1 bg-emerald-100 border border-emerald-200">
-                                <Ionicons name="checkmark" size={11} color="#10b981" />
+                              <View className="flex-row items-center bg-emerald-100 border border-emerald-200 rounded-full px-2.5 py-1 gap-1">
+                                <Ionicons name="star" size={10} color="#10b981" />
                                 <Text className="text-[10px] text-emerald-700 font-bold">Leader</Text>
                               </View>
                             ) : (
-                              <View className="w-5 h-5 rounded-full border-2 border-stone-300" />
+                              <View className="w-5 h-5 rounded-full border-2 border-gray-300" />
                             )}
                           </TouchableOpacity>
                         );
@@ -1891,18 +2026,18 @@ export default function ContactManagement({ onNavigate }: ContactManagementProps
 
                   <View className="flex-row gap-2">
                     <TouchableOpacity
-                      className="flex-1 px-4 py-2 rounded-lg border border-stone-300"
+                      className="flex-1 py-2.5 rounded-xl border border-gray-200 items-center"
                       onPress={() => {
                         setGroupStep(1);
                         setGroupLeaderId(null);
                         setSelectedMembers([]);
                       }}
                     >
-                      <Text className="text-stone-700 font-semibold text-center">Back</Text>
+                      <Text className="text-gray-600 font-semibold text-sm">← Back</Text>
                     </TouchableOpacity>
 
                     <TouchableOpacity
-                      className={`flex-1 px-4 py-2 rounded-lg ${groupLeaderId ? 'bg-emerald-500' : 'bg-stone-200'}`}
+                      className={`flex-1 py-2.5 rounded-xl items-center ${groupLeaderId ? 'bg-emerald-500' : 'bg-gray-100'}`}
                       disabled={!groupLeaderId}
                       onPress={async () => {
                         const name = groupName.trim();
@@ -2006,113 +2141,127 @@ export default function ContactManagement({ onNavigate }: ContactManagementProps
                         }
                       }}
                     >
-                      <Text className={`font-semibold text-center ${groupLeaderId ? 'text-white' : 'text-stone-500'}`}>
-                        Save Group
+                      <Text className={`font-semibold text-sm ${groupLeaderId ? 'text-white' : 'text-gray-400'}`}>
+                        Create Group
                       </Text>
                     </TouchableOpacity>
                   </View>
                 </>
               )}
 
+              </View>
             </View>
           </Pressable>
         </Pressable>
       </Modal>
 
-      {/* Contacts Modal (for adding direct contacts) */}
+      {/* ─── ADD CONTACTS MODAL ─── */}
       <Modal visible={showContactsModal} transparent animationType="fade">
         <Pressable
-          className="flex-1 bg-black/20 items-center justify-center p-4"
+          className="flex-1 bg-black/30 items-center justify-center p-4"
           onPress={() => setShowContactsModal(false)}
         >
           <Pressable onPress={e => e.stopPropagation()}>
-            <View className="w-96 bg-white rounded-2xl p-6 max-h-96">
-              <View className="flex-row items-center justify-between mb-4">
-                <Text className="font-bold text-lg">Add Contacts</Text>
+            <View className="w-96 bg-white rounded-2xl overflow-hidden shadow-xl">
+              {/* Modal Header */}
+              <View className="bg-emerald-500 px-5 py-4 flex-row items-center justify-between">
+                <View className="flex-row items-center gap-2">
+                  <Ionicons name="person-add-outline" size={18} color="white" />
+                  <Text className="font-bold text-white text-base">Add Contact</Text>
+                </View>
                 <TouchableOpacity
+                  className="w-8 h-8 bg-white/20 rounded-xl items-center justify-center"
                   onPress={() => {
                     setShowContactsModal(false);
                     setEmployeeSearch('');
                   }}
                 >
-                  <Ionicons name="close" size={22} color="#6b7280" />
+                  <Ionicons name="close" size={17} color="white" />
                 </TouchableOpacity>
               </View>
-              <View className="mb-3">
-                <TextInput
-                  className="border border-stone-300 rounded-lg px-3 py-2 text-sm"
-                  placeholder="Search employees by name, email, or role"
-                  placeholderTextColor="#a8a29e"
-                  value={employeeSearch}
-                  onChangeText={setEmployeeSearch}
-                />
-              </View>
-              <ScrollView className="max-h-56 mb-4">
-                {filteredUsers.map(user => {
-                  const exists = contacts.some(c => c.userId === user.id);
-                  return (
-                    <View
-                      key={user.id}
-                      className="flex-row items-center justify-between p-2 mb-1 rounded-lg bg-stone-50 border border-stone-200"
-                    >
-                      <View className="flex-row items-center flex-1">
-                        <View
-                          className="w-9 h-9 rounded-full items-center justify-center mr-3"
-                          style={{ backgroundColor: user.color }}
-                        >
-                          <Text className="text-xs font-bold text-stone-800">{user.initials}</Text>
-                        </View>
-                        <View className="flex-1">
-                          <Text className="text-sm font-semibold text-stone-900">
-                            {user.full_name || 'Unnamed'}
-                          </Text>
-                          <Text className="text-[11px] text-stone-500">{user.email}</Text>
-                        </View>
-                      </View>
-                      <TouchableOpacity
-                        className={`ml-2 px-3 py-1.5 rounded ${exists ? 'bg-stone-200' : 'bg-emerald-500'}`}
-                        disabled={exists}
-                        onPress={async () => {
-                          try {
-                            await addContact(user.id);
-                            await loadContactsFromDb();
 
-                            await insertActivityLog({
-                              action: `Added Contact: ${user.full_name || user.email}`,
-                              description: 'New contact has been added to the contact list',
-                              location: 'Contact Management',
-                              type: 'contact',
-                              color: '#d1fae5',
-                              icon: 'person-add-outline',
-                            });
+              <View className="p-5">
+                <View className="flex-row items-center bg-gray-50 border border-gray-200 rounded-xl px-3 py-2.5 mb-3">
+                  <Ionicons name="search" size={14} color="#9ca3af" />
+                  <TextInput
+                    className="flex-1 ml-2 text-sm text-gray-800"
+                    placeholder="Search by name, email, or role..."
+                    placeholderTextColor="#9ca3af"
+                    value={employeeSearch}
+                    onChangeText={setEmployeeSearch}
+                  />
+                </View>
 
-                            showSweetAlert({
-                              title: 'Contact Added',
-                              message: `${user.full_name || user.email} has been added to your contacts.`,
-                              type: 'success',
-                            });
-                          } catch (error) {
-                            console.error('Failed to add contact:', error);
-                          }
-                        }}
-                      >
-                        <Text className={`text-xs font-semibold ${exists ? 'text-stone-500' : 'text-white'}`}>
-                          {exists ? 'Added' : 'Add'}
-                        </Text>
-                      </TouchableOpacity>
+                <ScrollView className="max-h-64 mb-3" showsVerticalScrollIndicator={false}>
+                  {filteredUsers.length === 0 ? (
+                    <View className="items-center py-6">
+                      <Ionicons name="person-outline" size={28} color="#d1d5db" />
+                      <Text className="text-xs text-gray-400 mt-2 text-center">No employees found</Text>
                     </View>
-                  );
-                })}
-                {filteredUsers.length === 0 && (
-                  <Text className="text-xs text-stone-500 text-center py-4">No employees found</Text>
-                )}
-              </ScrollView>
-              <TouchableOpacity
-                className="px-4 py-2 rounded-lg border border-stone-300"
-                onPress={() => setShowContactsModal(false)}
-              >
-                <Text className="text-stone-700 font-semibold text-center">Close</Text>
-              </TouchableOpacity>
+                  ) : (
+                    filteredUsers.map(user => {
+                      const exists = contacts.some(c => c.userId === user.id);
+                      return (
+                        <View
+                          key={user.id}
+                          className="flex-row items-center p-3 mb-1.5 rounded-xl bg-gray-50 border border-gray-200"
+                        >
+                          <View
+                            className="w-9 h-9 rounded-full items-center justify-center mr-3 shrink-0"
+                            style={{ backgroundColor: user.color }}
+                          >
+                            <Text className="text-xs font-bold text-gray-800">{user.initials}</Text>
+                          </View>
+                          <View className="flex-1 min-w-0">
+                            <Text className="text-sm font-semibold text-gray-900" numberOfLines={1}>
+                              {user.full_name || 'Unnamed'}
+                            </Text>
+                            <Text className="text-xs text-gray-400 mt-0.5" numberOfLines={1}>{user.email}</Text>
+                          </View>
+                          <TouchableOpacity
+                            className={`ml-2 px-3 py-1.5 rounded-lg ${exists ? 'bg-gray-100' : 'bg-emerald-500'}`}
+                            disabled={exists}
+                            onPress={async () => {
+                              try {
+                                await addContact(user.id);
+                                await loadContactsFromDb();
+
+                                await insertActivityLog({
+                                  action: `Added Contact: ${user.full_name || user.email}`,
+                                  description: 'New contact has been added to the contact list',
+                                  location: 'Contact Management',
+                                  type: 'contact',
+                                  color: '#d1fae5',
+                                  icon: 'person-add-outline',
+                                });
+
+                                showSweetAlert({
+                                  title: 'Contact Added',
+                                  message: `${user.full_name || user.email} has been added to your contacts.`,
+                                  type: 'success',
+                                });
+                              } catch (error) {
+                                console.error('Failed to add contact:', error);
+                              }
+                            }}
+                          >
+                            <Text className={`text-xs font-semibold ${exists ? 'text-gray-500' : 'text-white'}`}>
+                              {exists ? 'Added' : 'Add'}
+                            </Text>
+                          </TouchableOpacity>
+                        </View>
+                      );
+                    })
+                  )}
+                </ScrollView>
+
+                <TouchableOpacity
+                  className="py-2.5 rounded-xl border border-gray-200 items-center"
+                  onPress={() => setShowContactsModal(false)}
+                >
+                  <Text className="text-gray-600 font-semibold text-sm">Close</Text>
+                </TouchableOpacity>
+              </View>
             </View>
           </Pressable>
         </Pressable>

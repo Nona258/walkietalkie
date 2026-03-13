@@ -56,102 +56,153 @@ export default function CompanyList({ onNavigate }: CompanyListProps) {
 
   return (
     <View className="flex-1 bg-stone-50">
-      <ScrollView className="flex-1 bg-stone-50">
-        {/* Top Header */}
-        <View className="bg-white px-5 pt-4 pb-3 border-b border-stone-200">
+      <ScrollView className="flex-1 bg-stone-50" showsVerticalScrollIndicator={false}>
+        {/* Header */}
+        <View className="bg-white px-6 pt-5 pb-4 border-b border-stone-100">
           <View className="flex-row items-center justify-between">
             <View className="flex-row items-center flex-1">
-              <TouchableOpacity className="lg:hidden mr-3" onPress={() => setIsDrawerOpen(true)}>
-                <Ionicons name="menu" size={24} color="#44403c" />
+              <TouchableOpacity className="lg:hidden mr-3 w-9 h-9 items-center justify-center" onPress={() => setIsDrawerOpen(true)}>
+                <Ionicons name="menu" size={22} color="#44403c" />
               </TouchableOpacity>
-              <View>
-                <Text className="text-lg lg:text-2xl font-bold text-stone-900">Company Management</Text>
-                <Text className="text-stone-500 text-xs mt-0.5">Welcome back, Administrator</Text>
+              <View className="flex-1">
+                <Text className="text-xl font-bold text-stone-900 tracking-tight">Companies</Text>
+                <Text className="text-stone-400 text-xs mt-0.5 font-medium">Manage companies and branches</Text>
               </View>
             </View>
-            <TouchableOpacity className="w-9 h-9 bg-stone-100 rounded-full items-center justify-center" onPress={() => setIsNotificationOpen(true)}>
-              <Ionicons name="notifications-outline" size={18} color="#57534e" />
-            </TouchableOpacity>
+            <View className="flex-row items-center gap-2">
+              <TouchableOpacity className="w-9 h-9 bg-stone-50 border border-stone-100 rounded-lg items-center justify-center" onPress={() => setIsNotificationOpen(true)}>
+                <Ionicons name="notifications-outline" size={17} color="#78716c" />
+              </TouchableOpacity>
+              <TouchableOpacity
+                className="flex-row items-center gap-1.5 bg-emerald-500 px-3.5 py-2 rounded-lg"
+                style={{ shadowColor: '#10b981', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.25, shadowRadius: 4 }}
+                onPress={() => setIsAddModalOpen(true)}
+              >
+                <Ionicons name="add" size={16} color="white" />
+                <Text className="text-white font-semibold text-sm">Add Company</Text>
+              </TouchableOpacity>
+            </View>
           </View>
         </View>
 
-        {/* Action Header */}
-        <View className="px-5 lg:px-8 pt-6 pb-3 flex-row items-center justify-between">
-          <View>
-            <Text className="text-lg lg:text-xl font-bold text-stone-900">Company Overview</Text>
-            <Text className="text-stone-500 text-xs">Manage companies and their branches</Text>
+        {/* Summary Bar */}
+        <View className="px-6 py-4 flex-row items-center gap-4">
+          <View className="bg-emerald-50 border border-emerald-100 rounded-lg px-4 py-2.5 flex-row items-center gap-2">
+            <View className="w-6 h-6 bg-emerald-500 rounded-md items-center justify-center">
+              <Ionicons name="business" size={12} color="white" />
+            </View>
+            <Text className="text-sm text-stone-700 font-semibold">{MOCK_COMPANIES.length} Companies</Text>
           </View>
-          <TouchableOpacity 
-            className="bg-emerald-600 px-4 py-2.5 rounded-xl flex-row items-center"
-            onPress={() => setIsAddModalOpen(true)}
-          >
-            <Ionicons name="add" size={18} color="white" />
-            <Text className="text-white font-semibold ml-1">Add Company</Text>
-          </TouchableOpacity>
+          <View className="bg-stone-50 border border-stone-100 rounded-lg px-4 py-2.5 flex-row items-center gap-2">
+            <Ionicons name="git-branch-outline" size={14} color="#a8a29e" />
+            <Text className="text-sm text-stone-500">{MOCK_COMPANIES.reduce((acc, c) => acc + c.branches, 0)} Total Branches</Text>
+          </View>
         </View>
 
-        {/* Company Grid (Static Preview) */}
-        <View className="px-5 lg:px-8 pb-10 flex-row flex-wrap gap-4">
+        {/* Company Grid */}
+        <View className="px-6 pb-8 flex-row flex-wrap gap-4">
           {MOCK_COMPANIES.map((company) => (
             <TouchableOpacity
               key={company.id}
-              className="bg-white rounded-2xl border border-stone-200 p-6 w-full lg:w-[calc(50%-8px)]"
+              className="bg-white rounded-xl border border-stone-100 p-5 w-full lg:w-[48%]"
+              style={{ shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.05, shadowRadius: 4 }}
               onPress={() => handleCompanyPress(company)}
+              activeOpacity={0.8}
             >
-              <View className="flex-row justify-between mb-4">
-                <View className="w-12 h-12 rounded-xl items-center justify-center" style={{ backgroundColor: company.color }}>
-                  <Text className="font-bold text-emerald-700">{company.initials}</Text>
+              {/* Card Header */}
+              <View className="flex-row items-center justify-between mb-4">
+                <View className="flex-row items-center gap-3">
+                  <View className="w-10 h-10 rounded-xl items-center justify-center" style={{ backgroundColor: company.color }}>
+                    <Text className="font-bold text-emerald-700 text-sm">{company.initials}</Text>
+                  </View>
+                  <View>
+                    <Text className="text-sm font-bold text-stone-900">{company.name}</Text>
+                    <View className="bg-stone-50 border border-stone-100 px-2 py-0.5 rounded-md mt-0.5 self-start">
+                      <Text className="text-xs text-stone-500 font-medium">{company.industry}</Text>
+                    </View>
+                  </View>
                 </View>
-                <TouchableOpacity onPress={() => handleDeleteCompany(company.id)}>
-                  <Ionicons name="trash-outline" size={20} color="#dc2626" />
+                <TouchableOpacity
+                  className="w-7 h-7 bg-red-50 rounded-lg items-center justify-center"
+                  onPress={() => handleDeleteCompany(company.id)}
+                >
+                  <Ionicons name="trash-outline" size={13} color="#ef4444" />
                 </TouchableOpacity>
               </View>
-              <Text className="text-lg font-bold text-stone-900">{company.name}</Text>
-              <Text className="text-sm text-stone-500">{company.industry}</Text>
-              <View className="mt-4 pt-4 border-t border-stone-50 flex-row items-center">
-                <Ionicons name="business-outline" size={16} color="#78716c" />
-                <Text className="ml-2 text-stone-600 text-sm">{company.branches} Branches</Text>
+              {/* Stats Row */}
+              <View className="flex-row items-center border-t border-stone-50 pt-3 gap-4">
+                <View className="flex-row items-center gap-1.5">
+                  <Ionicons name="git-branch-outline" size={13} color="#a8a29e" />
+                  <Text className="text-xs text-stone-500 font-medium">{company.branches} Branches</Text>
+                </View>
+                <View className="flex-row items-center gap-1.5">
+                  <Ionicons name="chevron-forward" size={13} color="#10b981" />
+                  <Text className="text-xs text-emerald-600 font-semibold">View Details</Text>
+                </View>
               </View>
             </TouchableOpacity>
           ))}
         </View>
       </ScrollView>
 
-      {/* ---------- Simple Notification Modal Design ---------- */}
+      {/* Notification Modal */}
       <Modal visible={isNotificationOpen} transparent animationType="fade">
-        <Pressable className="flex-1 bg-black/20 items-center justify-center" onPress={() => setIsNotificationOpen(false)}>
-           <View className="w-80 bg-white p-6 rounded-2xl items-center">
-              <Ionicons name="notifications-outline" size={32} color="#10b981" />
-              <Text className="text-lg font-bold mt-4">Notifications</Text>
-              <Text className="text-stone-500 text-center my-4">You have no new notifications.</Text>
-              <TouchableOpacity className="bg-emerald-500 w-full py-3 rounded-xl items-center" onPress={() => setIsNotificationOpen(false)}>
-                <Text className="text-white font-bold">Close</Text>
+        <Pressable className="flex-1 bg-black/30 items-center justify-center px-5" onPress={() => setIsNotificationOpen(false)}>
+          <View className="bg-white w-full max-w-xs rounded-2xl overflow-hidden" style={{ shadowColor: '#000', shadowOffset: { width: 0, height: 20 }, shadowOpacity: 0.15, shadowRadius: 40 }}>
+            <View className="px-6 pt-6 pb-4 items-center border-b border-stone-100">
+              <View className="w-12 h-12 bg-emerald-50 rounded-xl items-center justify-center mb-3">
+                <Ionicons name="notifications" size={22} color="#10b981" />
+              </View>
+              <Text className="font-bold text-stone-900 text-base">Notifications</Text>
+            </View>
+            <View className="px-6 py-5 items-center">
+              <Text className="text-stone-400 text-sm text-center">You have no new notifications.</Text>
+            </View>
+            <View className="px-6 pb-6">
+              <TouchableOpacity className="bg-emerald-500 w-full py-3 rounded-lg items-center" onPress={() => setIsNotificationOpen(false)}>
+                <Text className="text-white font-semibold text-sm">Dismiss</Text>
               </TouchableOpacity>
-           </View>
+            </View>
+          </View>
         </Pressable>
       </Modal>
 
-      {/* ---------- Add Company Modal Design ---------- */}
-      <Modal visible={isAddModalOpen} transparent animationType="slide">
-        <View className="flex-1 bg-black/40 justify-end lg:justify-center lg:items-center">
-          <View className="bg-white w-full lg:w-[500px] rounded-t-3xl lg:rounded-3xl p-6">
-            <Text className="text-xl font-bold mb-6">Add New Company</Text>
-            <View className="gap-4">
+      {/* Add Company Modal */}
+      <Modal visible={isAddModalOpen} transparent animationType="fade">
+        <View className="flex-1 bg-black/40 justify-center items-center px-5">
+          <View className="bg-white w-full max-w-md rounded-2xl overflow-hidden" style={{ shadowColor: '#000', shadowOffset: { width: 0, height: 20 }, shadowOpacity: 0.15, shadowRadius: 40 }}>
+            <View className="px-6 pt-6 pb-4 border-b border-stone-100">
+              <Text className="text-base font-bold text-stone-900">Add New Company</Text>
+              <Text className="text-xs text-stone-400 mt-0.5">Enter the company information below</Text>
+            </View>
+            <View className="px-6 py-5 gap-4">
               <View>
-                <Text className="text-stone-700 font-medium mb-1.5">Company Name</Text>
-                <TextInput className="bg-stone-50 border border-stone-200 p-3 rounded-xl" placeholder="e.g. Acme Corp" value={companyName} onChangeText={setCompanyName} />
+                <Text className="text-xs font-semibold text-stone-600 mb-1.5 uppercase tracking-wide">Company Name</Text>
+                <TextInput
+                  placeholder="e.g. Acme Corp"
+                  placeholderTextColor="#a8a29e"
+                  className="bg-stone-50 border border-stone-100 rounded-lg px-3 py-2.5 text-sm text-stone-900"
+                  value={companyName}
+                  onChangeText={setCompanyName}
+                />
               </View>
               <View>
-                <Text className="text-stone-700 font-medium mb-1.5">Industry</Text>
-                <TextInput className="bg-stone-50 border border-stone-200 p-3 rounded-xl" placeholder="e.g. Technology" value={industry} onChangeText={setIndustry} />
+                <Text className="text-xs font-semibold text-stone-600 mb-1.5 uppercase tracking-wide">Industry</Text>
+                <TextInput
+                  placeholder="e.g. Technology"
+                  placeholderTextColor="#a8a29e"
+                  className="bg-stone-50 border border-stone-100 rounded-lg px-3 py-2.5 text-sm text-stone-900"
+                  value={industry}
+                  onChangeText={setIndustry}
+                />
               </View>
             </View>
-            <View className="flex-row gap-3 mt-8">
-              <TouchableOpacity className="flex-1 p-4 rounded-xl border border-stone-200 items-center" onPress={() => setIsAddModalOpen(false)}>
-                <Text className="font-bold text-stone-600">Cancel</Text>
+            <View className="flex-row gap-3 px-6 pb-6">
+              <TouchableOpacity className="flex-1 py-3 rounded-lg border border-stone-100 items-center bg-stone-50" onPress={() => setIsAddModalOpen(false)}>
+                <Text className="font-semibold text-stone-600 text-sm">Cancel</Text>
               </TouchableOpacity>
-              <TouchableOpacity className="flex-1 p-4 rounded-xl bg-emerald-600 items-center" onPress={handleAddCompany}>
-                <Text className="font-bold text-white">Save Company</Text>
+              <TouchableOpacity className="flex-1 py-3 rounded-lg bg-emerald-500 items-center" style={{ shadowColor: '#10b981', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.25, shadowRadius: 4 }} onPress={handleAddCompany}>
+                <Text className="font-semibold text-white text-sm">Save Company</Text>
               </TouchableOpacity>
             </View>
           </View>

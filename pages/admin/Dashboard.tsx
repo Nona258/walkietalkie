@@ -1077,6 +1077,13 @@ export default function AdminDashboard({ onLogout, onNavigate }: AdminDashboardP
   const [activities, setActivities] = useState<Activity[]>([]);
   const [pendingUsersCount, setPendingUsersCount] = useState(0);
   const [onlineUserHistoryRows, setOnlineUserHistoryRows] = useState<OnlineUserHistoryRow[]>([]);
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data }) => {
+      setCurrentUserId(data?.session?.user?.id ?? null);
+    });
+  }, []);
 
   const normalizePresenceStatus = React.useCallback((raw: unknown) => {
     const s = String(raw || '').toLowerCase();
@@ -1095,6 +1102,7 @@ export default function AdminDashboard({ onLogout, onNavigate }: AdminDashboardP
       users.filter(
         u =>
           u && u.role !== 'admin' &&
+          (currentUserId === null || u.id !== currentUserId) &&
           (normalizePresenceStatus(u.status) === 'online' || normalizePresenceStatus(u.status) === 'lost_connection') &&
           u.latitude !== null && u.latitude !== undefined &&
           u.longitude !== null && u.longitude !== undefined &&
@@ -1393,22 +1401,24 @@ export default function AdminDashboard({ onLogout, onNavigate }: AdminDashboardP
   }, []);
 
   const StatCard = ({ item }: { item: StatCard }) => (
-    <View className="bg-white rounded-2xl p-4 lg:p-6 border border-stone-200 flex-1 min-w-[45%] lg:min-w-[200px]">
-      <View className="flex-row items-center justify-between mb-3">
-        <View 
-          className="w-12 h-12 lg:w-14 lg:h-14 rounded-xl items-center justify-center"
-          style={{ 
-            backgroundColor: item.color + '20',
-          }}
+    <View
+      className="bg-white rounded-xl border border-stone-100 p-4 lg:p-5 flex-1 min-w-[45%] lg:min-w-[200px]"
+      style={{ shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.06, shadowRadius: 4 }}
+    >
+      <View className="flex-row items-start justify-between mb-4">
+        <View
+          className="w-10 h-10 rounded-lg items-center justify-center"
+          style={{ backgroundColor: item.color + '18' }}
         >
-          <Ionicons name={item.icon as any} size={24} color={item.color} />
+          <Ionicons name={item.icon as any} size={20} color={item.color} />
         </View>
-        <View className="bg-stone-50 px-2 py-1 rounded-lg">
-          <Text className="text-stone-600 text-xs font-semibold">+5</Text>
+        <View className="flex-row items-center bg-emerald-50 px-2 py-0.5 rounded-full">
+          <Ionicons name="trending-up" size={10} color="#059669" />
+          <Text className="text-emerald-700 text-xs font-semibold ml-0.5">+5%</Text>
         </View>
       </View>
-      <Text className="text-3xl lg:text-4xl font-bold text-stone-900 mb-1">{item.value}</Text>
-      <Text className="text-stone-500 text-sm lg:text-base">{item.label}</Text>
+      <Text className="text-2xl lg:text-3xl font-bold text-stone-900 mb-1">{item.value}</Text>
+      <Text className="text-stone-400 text-xs font-medium uppercase tracking-wide">{item.label}</Text>
     </View>
   );
 
@@ -1533,66 +1543,100 @@ export default function AdminDashboard({ onLogout, onNavigate }: AdminDashboardP
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
       >
         {/* Header */}
-        <View className="bg-white px-5 pt-4 pb-3 border-b border-stone-200">
+        <View className="bg-white px-6 pt-5 pb-4 border-b border-stone-100">
           <View className="flex-row items-center justify-between">
             <View className="flex-row items-center flex-1">
               <TouchableOpacity className="lg:hidden w-9 h-9 items-center justify-center mr-3">
-                <Ionicons name="menu" size={24} color="#44403c" />
+                <Ionicons name="menu" size={22} color="#44403c" />
               </TouchableOpacity>
               <View className="flex-1">
-                <Text className="text-lg lg:text-2xl font-bold text-stone-900">Dashboard</Text>
-                <Text className="text-stone-500 text-xs lg:text-sm mt-0.5">Welcome back, Administrator</Text>
+                <Text className="text-xl font-bold text-stone-900 tracking-tight">Dashboard</Text>
+                <Text className="text-stone-400 text-xs mt-0.5 font-medium">Overview & analytics</Text>
               </View>
             </View>
-            <View className="flex-row items-center gap-2.5">
-              <TouchableOpacity className="w-9 h-9 bg-stone-100 rounded-full items-center justify-center">
-                <View className="w-2 h-2 bg-red-500 rounded-full absolute top-1.5 right-1.5" />
-                <Ionicons name="notifications-outline" size={18} color="#57534e" />
+            <View className="flex-row items-center gap-2">
+              <TouchableOpacity className="w-9 h-9 bg-stone-50 border border-stone-100 rounded-lg items-center justify-center">
+                <View className="w-2 h-2 bg-red-400 rounded-full absolute top-1.5 right-1.5" />
+                <Ionicons name="notifications-outline" size={17} color="#78716c" />
               </TouchableOpacity>
-              <View className="w-9 h-9 bg-emerald-100 rounded-full items-center justify-center">
-                <Text className="text-emerald-700 font-semibold text-xs">AD</Text>
-              </View>
-              <View className="hidden lg:flex ml-2">
-                <Text className="text-sm font-semibold text-stone-900">Admin User</Text>
-                <Text className="text-xs text-stone-500">Super Admin</Text>
+              <View className="flex-row items-center gap-2 bg-stone-50 border border-stone-100 rounded-lg px-2.5 py-1.5">
+                <View className="w-6 h-6 bg-emerald-500 rounded-md items-center justify-center">
+                  <Text className="text-white font-bold text-xs">AD</Text>
+                </View>
+                <View className="hidden lg:flex">
+                  <Text className="text-xs font-semibold text-stone-800">Admin User</Text>
+                  <Text className="text-xs text-stone-400 leading-none">Super Admin</Text>
+                </View>
               </View>
             </View>
           </View>
         </View>
 
         {/* Stats Grid */}
-        <View className="px-6 py-6">
-          <View className="flex-row flex-wrap gap-4 lg:gap-6">
+        <View className="px-6 pt-6 pb-4">
+          <View className="flex-row flex-wrap gap-3">
             {stats.map((stat, index) => (
-              <View key={index} style={{ width: isWebView ? '23%' : '48%' }}>
+              <View key={index} style={{ width: isWebView ? '23.5%' : '48%' }}>
                 <StatCard item={stat} />
               </View>
             ))}
           </View>
         </View>
 
-        <View className="lg:flex-row lg:gap-6 px-6 pb-6">
+        <View className="lg:flex-row lg:gap-5 px-6 pb-6">
           {/* Left Column */}
-          <View className="flex-1 mb-6 lg:mb-0">
-            <View className="bg-white rounded-2xl border border-stone-200 p-5 lg:p-6 mb-6">
-              <View className="flex-row items-center justify-between mb-4">
-                <Text className="text-lg lg:text-xl font-semibold text-stone-900">Communication Activity</Text>
-                <View className="flex-row items-center bg-stone-50 px-3 py-2 rounded-lg">
-                  <Text className="text-stone-600 text-sm mr-1">Last 7 Days</Text>
-                  <Ionicons name="chevron-down" size={16} color="#57534e" />
+          <View className="flex-1 mb-5 lg:mb-0">
+            {/* Chart Card */}
+            <View
+              className="bg-white rounded-xl border border-stone-100 p-5 mb-5"
+              style={{ shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.05, shadowRadius: 4 }}
+            >
+              <View className="flex-row items-center justify-between mb-5">
+                <View>
+                  <Text className="text-sm font-semibold text-stone-900">Communication Activity</Text>
+                  <Text className="text-xs text-stone-400 mt-0.5">Messages sent per day</Text>
+                </View>
+                <View className="flex-row items-center bg-stone-50 border border-stone-100 px-3 py-1.5 rounded-lg">
+                  <Text className="text-stone-600 text-xs font-medium mr-1">Last 7 Days</Text>
+                  <Ionicons name="chevron-down" size={13} color="#78716c" />
                 </View>
               </View>
-              <View className="flex-row items-end justify-between h-32 lg:h-40 gap-1">
-                {[45, 60, 75, 55, 85, 95, 70].map((h, i) => (
-                  <View key={i} className="flex-1 bg-emerald-100 rounded-t-lg" style={{ height: `${h}%` }} />
+              {/* Bar chart with day labels */}
+              <View className="flex-row items-end justify-between gap-1" style={{ height: 120 }}>
+                {[
+                  { h: 45, day: 'Mon' }, { h: 60, day: 'Tue' }, { h: 75, day: 'Wed' },
+                  { h: 55, day: 'Thu' }, { h: 85, day: 'Fri' }, { h: 95, day: 'Sat' }, { h: 70, day: 'Sun' },
+                ].map((bar, i) => (
+                  <View key={i} className="flex-1 items-center">
+                    <View
+                      className="w-full rounded-t-md"
+                      style={{ height: `${bar.h}%`, backgroundColor: bar.h >= 85 ? '#10b981' : '#d1fae5' }}
+                    />
+                    <Text className="text-stone-400 text-xs mt-1.5 font-medium">{bar.day}</Text>
+                  </View>
                 ))}
               </View>
             </View>
 
-            <View className="bg-white rounded-2xl border border-stone-200 p-5 lg:p-6 mb-6">
-              <Text className="text-lg lg:text-xl font-semibold text-stone-900 mb-4">Live Location Map</Text>
+            {/* Map Card */}
+            <View
+              className="bg-white rounded-xl border border-stone-100 p-5"
+              style={{ shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.05, shadowRadius: 4 }}
+            >
+              <View className="flex-row items-center justify-between mb-4">
+                <View>
+                  <Text className="text-sm font-semibold text-stone-900">Live Location Map</Text>
+                  <Text className="text-xs text-stone-400 mt-0.5">Real-time employee tracking</Text>
+                </View>
+                <View className="flex-row items-center gap-1.5">
+                  <View className="w-2 h-2 rounded-full bg-emerald-500" />
+                  <Text className="text-xs text-stone-500 font-medium">
+                    {onlineUsersForMap.length} online
+                  </Text>
+                </View>
+              </View>
               <LiveLocationMap
-                heightClassName="h-48 lg:h-64"
+                heightClassName="h-48 lg:h-56"
                 sites={sites}
                 onlineUsers={onlineUsersForMap}
                 onlineUserHistory={onlineUserHistoryRows}
@@ -1600,33 +1644,47 @@ export default function AdminDashboard({ onLogout, onNavigate }: AdminDashboardP
             </View>
           </View>
 
-          {/* Right Column */}
-          <View className="lg:w-96">
-            <View className="bg-white rounded-2xl border border-stone-200 p-5 lg:p-6 h-96">
-              <Text className="text-lg lg:text-xl font-semibold text-stone-900 mb-4">Recent Activity</Text>
+          {/* Right Column - Activity Feed */}
+          <View className="lg:w-80">
+            <View
+              className="bg-white rounded-xl border border-stone-100 p-5"
+              style={{ shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.05, shadowRadius: 4, height: 400 }}
+            >
+              <View className="flex-row items-center justify-between mb-4">
+                <View>
+                  <Text className="text-sm font-semibold text-stone-900">Recent Activity</Text>
+                  <Text className="text-xs text-stone-400 mt-0.5">Latest system events</Text>
+                </View>
+                <View className="bg-emerald-50 px-2.5 py-1 rounded-full">
+                  <Text className="text-emerald-700 text-xs font-semibold">{activities.length} events</Text>
+                </View>
+              </View>
               {activities.length === 0 ? (
-                <Text className="text-stone-500 text-sm">No activities yet.</Text>
+                <View className="flex-1 items-center justify-center">
+                  <View className="w-12 h-12 bg-stone-50 rounded-xl items-center justify-center mb-3">
+                    <Ionicons name="clipboard-outline" size={22} color="#d6d3d1" />
+                  </View>
+                  <Text className="text-stone-400 text-sm font-medium">No activities yet</Text>
+                </View>
               ) : (
-                <ScrollView className="flex-1" nestedScrollEnabled showsVerticalScrollIndicator>
+                <ScrollView className="flex-1" nestedScrollEnabled showsVerticalScrollIndicator={false}>
                   {activities.map((activity, idx) => (
-                    <View key={activity.id} className={`${idx !== activities.length - 1 ? 'mb-4' : ''}`}>
-                      <View className="flex-row items-start">
-                        <View
-                          className="w-10 h-10 rounded-xl items-center justify-center mr-3"
-                          style={{ backgroundColor: activity.color || '#ecfdf5' }}
-                        >
-                          <Ionicons name={(activity.icon || 'notifications-outline') as any} size={18} color="#10b981" />
-                        </View>
-                        <View className="flex-1">
-                          <Text className="text-stone-900 font-medium mb-1">{activity.action}</Text>
-                          {activity.description ? (
-                            <Text className="text-stone-500 text-sm">{activity.description}</Text>
-                          ) : null}
-                        </View>
-                        <Text className="text-stone-400 text-xs ml-2 mt-1">
-                          {activity.time ? new Date(activity.time).toLocaleString() : ''}
-                        </Text>
+                    <View key={activity.id} className={`flex-row items-start ${idx !== activities.length - 1 ? 'mb-3 pb-3 border-b border-stone-50' : ''}`}>
+                      <View
+                        className="w-8 h-8 rounded-lg items-center justify-center mr-3 mt-0.5"
+                        style={{ backgroundColor: activity.color || '#ecfdf5' }}
+                      >
+                        <Ionicons name={(activity.icon || 'notifications-outline') as any} size={14} color="#10b981" />
                       </View>
+                      <View className="flex-1">
+                        <Text className="text-stone-800 text-xs font-semibold mb-0.5">{activity.action}</Text>
+                        {activity.description ? (
+                          <Text className="text-stone-400 text-xs leading-relaxed" numberOfLines={2}>{activity.description}</Text>
+                        ) : null}
+                      </View>
+                      <Text className="text-stone-300 text-xs ml-2 mt-0.5 font-medium">
+                        {activity.time ? new Date(activity.time).toLocaleDateString() : ''}
+                      </Text>
                     </View>
                   ))}
                 </ScrollView>
