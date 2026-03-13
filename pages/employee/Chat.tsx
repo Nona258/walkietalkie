@@ -10,6 +10,8 @@ interface Contact {
   initials: string;
   status: 'online' | 'offline' | 'busy';
   avatar_color: string;
+  isGroup?: boolean;
+  groupId?: string;
 }
 
 interface Message {
@@ -85,6 +87,9 @@ const getDeliveryLabel = (rawTs: string, status: string, isRead: boolean | undef
 // ───────────────────────────────────────────────────────────────────────────────────────────────
 
 export default function Chat({ selectedContact, onBackPress, currentUserId }: ChatProps) {
+  const isGroupChat = !!selectedContact?.isGroup;
+  const activeGroupId = isGroupChat ? (selectedContact.groupId || selectedContact.id) : null;
+
   const [messages, setMessages] = useState<Message[]>([]);
   const [messageText, setMessageText] = useState('');
   const [showMediaMenu, setShowMediaMenu] = useState(false);
@@ -138,10 +143,11 @@ export default function Chat({ selectedContact, onBackPress, currentUserId }: Ch
     }
   }, []);
 
-  // Fetch messages for conversation with selected contact
+  // Fetch messages for the active chat (DM or group)
   useEffect(() => {
-    if (!activeChatUserId || !selectedContact?.id) {
+    if (!activeChatUserId || !selectedContact?.id || (isGroupChat && !activeGroupId)) {
       setMessages([]);
+      setConversationId(null);
       setLoadingMessages(false);
       if (messagesSubscriptionRef.current) {
         messagesSubscriptionRef.current.unsubscribe();
@@ -149,16 +155,20 @@ export default function Chat({ selectedContact, onBackPress, currentUserId }: Ch
       }
       return;
     }
-    
-    // Unsubscribe any previous subscription before loading new conversation
+
+    // Unsubscribe any previous subscription before loading new chat
     if (messagesSubscriptionRef.current) {
       messagesSubscriptionRef.current.unsubscribe();
       messagesSubscriptionRef.current = null;
     }
 
-    fetchConversationMessages();
-    // Note: setupRealtimeSubscription is called inside fetchConversationMessages
-    // once the conversationId is known, to avoid stale-state race condition.
+    if (isGroupChat && activeGroupId) {
+      fetchGroupMessages(activeGroupId);
+    } else {
+      fetchConversationMessages();
+      // Note: setupRealtimeSubscription is called inside fetchConversationMessages
+      // once the conversationId is known, to avoid stale-state race condition.
+    }
 
     return () => {
       if (messagesSubscriptionRef.current) {
@@ -166,7 +176,7 @@ export default function Chat({ selectedContact, onBackPress, currentUserId }: Ch
         messagesSubscriptionRef.current = null;
       }
     };
-  }, [selectedContact?.id, activeChatUserId]);
+  }, [selectedContact?.id, isGroupChat, activeGroupId, activeChatUserId]);
 
   const fetchConversationMessages = async () => {
     try {
@@ -254,6 +264,156 @@ export default function Chat({ selectedContact, onBackPress, currentUserId }: Ch
       setMessages([]);
     } finally {
       setLoadingMessages(false);
+    }
+  };
+
+  const fetchGroupMessages = async (groupId: string) => {
+    try {
+      setLoadingMessages(true);
+      setConversationId(null);
+
+      // Ensure we have the current user id before proceeding
+      let meId = activeChatUserId;
+      if (!meId) {
+        const { data } = await supabase.auth.getUser();
+        meId = data?.user?.id ?? null;
+        if (meId) setActiveChatUserId(meId);
+      }
+
+      if (!meId) {
+        setMessages([]);
+        setLoadingMessages(false);
+        return;
+      }
+
+      setupGroupRealtimeSubscription(groupId);
+
+      const { data: rows, error } = await supabase
+        .from('messages')
+        .select('*')
+        .eq('group_id', groupId)
+        .order('created_at', { ascending: true });
+
+      if (error) {
+        console.error('Error fetching group messages:', error);
+        setMessages([]);
+        setLoadingMessages(false);
+        return;
+      }
+
+      const formatted: Message[] = (rows || []).map((msg: any) => {
+        const isOwn = msg.sender_id === meId;
+        const created = msg.created_at ? new Date(msg.created_at) : new Date();
+        const isVoice = !!(msg.file_url && msg.file_url.length > 0);
+        const durationMs = typeof msg.duration_ms === 'number' ? msg.duration_ms : null;
+        const durationSec = durationMs !== null ? Math.round(durationMs / 1000) : null;
+        return {
+          id: String(msg.id),
+          sender: isOwn ? 'You' : 'Member',
+          content: msg.transcription || (isVoice ? 'Voice message' : ''),
+          timestamp: created.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+          _rawTs: msg.created_at || new Date().toISOString(),
+          isOwn,
+          status: 'sent',
+          type: isVoice ? 'voice' : 'text',
+          isVoice,
+          audioUrl: isVoice ? msg.file_url : undefined,
+          duration: durationSec !== null ? formatDuration(durationSec) : undefined,
+        };
+      });
+
+      setMessages(formatted);
+      setTimeout(() => scrollViewRef.current?.scrollToEnd({ animated: false }), 100);
+    } catch (e) {
+      console.error('Error fetching group messages:', e);
+      setMessages([]);
+    } finally {
+      setLoadingMessages(false);
+    }
+  };
+
+  const setupGroupRealtimeSubscription = (groupId: string) => {
+    if (!groupId) return;
+
+    // Avoid duplicate subscriptions
+    if (messagesSubscriptionRef.current) {
+      messagesSubscriptionRef.current.unsubscribe();
+      messagesSubscriptionRef.current = null;
+    }
+
+    try {
+      messagesSubscriptionRef.current = supabase
+        .channel(`messages:group:${groupId}`)
+        .on(
+          'postgres_changes',
+          {
+            event: 'INSERT',
+            schema: 'public',
+            table: 'messages',
+            filter: `group_id=eq.${groupId}`,
+          },
+          async (payload) => {
+            const newMsg = payload.new as any;
+            const meId = activeChatUserIdRef.current;
+            const isOwn = !!meId && newMsg.sender_id === meId;
+            if (isOwn) return;
+
+            const created = newMsg.created_at ? new Date(newMsg.created_at) : new Date();
+
+            const looksLikeVoice = !!(newMsg.file_url && newMsg.file_url.length > 0) ||
+              typeof newMsg.duration_ms === 'number';
+
+            let audioUrl: string | undefined = looksLikeVoice
+              ? (newMsg.file_url || undefined)
+              : undefined;
+            let durationMs: number | null = typeof newMsg.duration_ms === 'number'
+              ? newMsg.duration_ms
+              : null;
+
+            if (looksLikeVoice) {
+              try {
+                const { data: fullRow } = await supabase
+                  .from('messages')
+                  .select('file_url, duration_ms')
+                  .eq('id', newMsg.id)
+                  .single();
+                if (fullRow) {
+                  audioUrl = fullRow.file_url || undefined;
+                  durationMs = typeof fullRow.duration_ms === 'number'
+                    ? fullRow.duration_ms
+                    : durationMs;
+                }
+              } catch (fetchErr) {
+                console.warn('Could not re-fetch group voice message row:', fetchErr);
+              }
+            }
+
+            const isVoice = !!audioUrl;
+            const durationSec = durationMs !== null ? Math.round(durationMs / 1000) : null;
+            const formattedMsg: Message = {
+              id: String(newMsg.id),
+              sender: 'Member',
+              content: newMsg.transcription || (isVoice ? 'Voice message' : ''),
+              timestamp: created.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+              _rawTs: newMsg.created_at || new Date().toISOString(),
+              isOwn: false,
+              status: 'sent',
+              type: isVoice ? 'voice' : 'text',
+              isVoice,
+              audioUrl,
+              duration: durationSec !== null ? formatDuration(durationSec) : undefined,
+            };
+
+            setMessages((prevMessages) => {
+              const msgExists = prevMessages.some((m) => m.id === formattedMsg.id);
+              if (!msgExists) return [...prevMessages, formattedMsg];
+              return prevMessages;
+            });
+          }
+        )
+        .subscribe();
+    } catch (error) {
+      console.error('Error setting up group realtime subscription:', error);
     }
   };
 
@@ -380,20 +540,25 @@ export default function Chat({ selectedContact, onBackPress, currentUserId }: Ch
   // Set up typing broadcast channel when both IDs are known
   useEffect(() => {
     if (!activeChatUserId || !selectedContact?.id) return;
+    if (isGroupChat && !activeGroupId) return;
 
-    const channelName = `typing:${[activeChatUserId, selectedContact.id].sort().join(':')}`;
+    const channelName = isGroupChat
+      ? `typing:group:${activeGroupId}`
+      : `typing:${[activeChatUserId, selectedContact.id].sort().join(':')}`;
     const channel = supabase.channel(channelName);
     typingChannelRef.current = channel;
 
     channel
       .on('broadcast', { event: 'typing' }, (payload: any) => {
-        // Only react to events from the other user
-        if (payload?.payload?.userId === selectedContact.id) {
-          setIsTyping(true);
-          // Clear after 3 s of no new typing event
-          if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
-          typingTimeoutRef.current = setTimeout(() => setIsTyping(false), 3000);
-        }
+        const fromUserId = payload?.payload?.userId;
+        if (!fromUserId) return;
+        // DM: only react to the other user. Group: react to anyone else.
+        if (!isGroupChat && fromUserId !== selectedContact.id) return;
+        if (isGroupChat && fromUserId === activeChatUserId) return;
+        setIsTyping(true);
+        // Clear after 3 s of no new typing event
+        if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
+        typingTimeoutRef.current = setTimeout(() => setIsTyping(false), 3000);
       })
       .subscribe();
 
@@ -402,7 +567,7 @@ export default function Chat({ selectedContact, onBackPress, currentUserId }: Ch
       channel.unsubscribe();
       typingChannelRef.current = null;
     };
-  }, [activeChatUserId, selectedContact?.id]);
+  }, [activeChatUserId, selectedContact?.id, isGroupChat, activeGroupId]);
 
   // Handler that updates text and broadcasts typing event
   const handleTypingInput = (text: string) => {
@@ -417,6 +582,7 @@ export default function Chat({ selectedContact, onBackPress, currentUserId }: Ch
 
   // Mark unread messages as read when viewed — update both local state and DB
   useEffect(() => {
+    if (isGroupChat) return;
     const unreadIds = messages
       .filter(msg => !msg.isOwn && msg.isRead === false)
       .map(msg => msg.id);
@@ -441,13 +607,20 @@ export default function Chat({ selectedContact, onBackPress, currentUserId }: Ch
         });
     }, 500);
     return () => clearTimeout(timer);
-  }, [messages, conversationId, activeChatUserId]);
+  }, [messages, conversationId, activeChatUserId, isGroupChat]);
 
   // ── Voice recording ──────────────────────────────────────────────────────
   const startRecording = () => {
-    if (!conversationId) {
-      Alert.alert('Not ready', 'Conversation not ready yet. Please wait a moment.');
-      return;
+    if (isGroupChat) {
+      if (!activeGroupId) {
+        Alert.alert('Not ready', 'Group chat not ready yet. Please wait a moment.');
+        return;
+      }
+    } else {
+      if (!conversationId) {
+        Alert.alert('Not ready', 'Conversation not ready yet. Please wait a moment.');
+        return;
+      }
     }
     pendingStopRef.current = false;
     setIsRecording(true);
@@ -559,21 +732,43 @@ export default function Chat({ selectedContact, onBackPress, currentUserId }: Ch
         setMessages(prev => [...prev, tempMsg]);
         setTimeout(() => scrollViewRef.current?.scrollToEnd({ animated: true }), 100);
 
-        if (!conversationId || !activeChatUserId) {
+        if (!activeChatUserId) {
+          setMessages(msgs => msgs.filter(m => m.id !== tempId));
+          return;
+        }
+
+        const insertPayload: any = isGroupChat
+          ? {
+              conversation_id: null,
+              group_id: activeGroupId,
+              sender_id: activeChatUserId,
+              // receiver_id is kept non-null to satisfy existing schema; group delivery uses group_id filter.
+              receiver_id: activeChatUserId,
+              file_url: dataUrl,
+              duration_ms: parseDurationToMs(duration),
+              created_at: new Date().toISOString(),
+            }
+          : {
+              conversation_id: conversationId,
+              sender_id: activeChatUserId,
+              receiver_id: selectedContact.id,
+              file_url: dataUrl,
+              duration_ms: parseDurationToMs(duration),
+              created_at: new Date().toISOString(),
+            };
+
+        if (isGroupChat && !activeGroupId) {
+          setMessages(msgs => msgs.filter(m => m.id !== tempId));
+          return;
+        }
+        if (!isGroupChat && !conversationId) {
           setMessages(msgs => msgs.filter(m => m.id !== tempId));
           return;
         }
 
         const { data, error } = await supabase
           .from('messages')
-          .insert([{
-            conversation_id: conversationId,
-            sender_id: activeChatUserId,
-            receiver_id: selectedContact.id,
-            file_url: dataUrl,
-            duration_ms: parseDurationToMs(duration),
-            created_at: new Date().toISOString(),
-          }])
+          .insert([insertPayload])
           .select()
           .single();
 
@@ -677,25 +872,41 @@ export default function Chat({ selectedContact, onBackPress, currentUserId }: Ch
     setMessageText('');
 
     try {
-      // Ensure conversation exists
-      if (!conversationId) {
-        console.error('No conversation ID available');
-        setMessages(msgs => msgs.filter(m => m.id !== tempId));
-        return;
+      if (isGroupChat) {
+        if (!activeGroupId) {
+          console.error('No group ID available');
+          setMessages(msgs => msgs.filter(m => m.id !== tempId));
+          return;
+        }
+      } else {
+        if (!conversationId) {
+          console.error('No conversation ID available');
+          setMessages(msgs => msgs.filter(m => m.id !== tempId));
+          return;
+        }
       }
-      
-      // Save to Supabase
-      const { data, error } = await supabase
-        .from('messages')
-        .insert([
-          {
+
+      const insertPayload: any = isGroupChat
+        ? {
+            conversation_id: null,
+            group_id: activeGroupId,
+            sender_id: activeChatUserId,
+            receiver_id: activeChatUserId,
+            transcription: messageContent,
+            created_at: new Date().toISOString(),
+          }
+        : {
             conversation_id: conversationId,
             sender_id: activeChatUserId,
             receiver_id: selectedContact.id,
             transcription: messageContent,
             created_at: new Date().toISOString(),
-          }
-        ])
+          };
+
+      // Save to Supabase
+      const { data, error } = await supabase
+        .from('messages')
+        .insert([insertPayload])
         .select()
         .single();
 
@@ -746,25 +957,31 @@ export default function Chat({ selectedContact, onBackPress, currentUserId }: Ch
             <View className="flex-row items-center gap-2 mt-1">
               <View
                 className={`h-2 w-2 rounded-full ${
-                  selectedContact.status === 'online'
+                  isGroupChat
                     ? 'bg-green-500'
-                    : selectedContact.status === 'busy'
-                      ? 'bg-yellow-500'
-                      : 'bg-gray-300'
+                    : selectedContact.status === 'online'
+                      ? 'bg-green-500'
+                      : selectedContact.status === 'busy'
+                        ? 'bg-yellow-500'
+                        : 'bg-gray-300'
                 }`}
               />
               <Text className={`text-xs font-semibold ${
-                selectedContact.status === 'online'
+                isGroupChat
                   ? 'text-green-600'
-                  : selectedContact.status === 'busy'
-                    ? 'text-yellow-600'
-                    : 'text-gray-500'
+                  : selectedContact.status === 'online'
+                    ? 'text-green-600'
+                    : selectedContact.status === 'busy'
+                      ? 'text-yellow-600'
+                      : 'text-gray-500'
               }`}>
-                {selectedContact.status === 'online'
-                  ? 'Active now'
-                  : selectedContact.status === 'busy'
-                    ? 'Busy'
-                    : 'Offline'}
+                {isGroupChat
+                  ? 'Team chat'
+                  : selectedContact.status === 'online'
+                    ? 'Active now'
+                    : selectedContact.status === 'busy'
+                      ? 'Busy'
+                      : 'Offline'}
               </Text>
             </View>
           </View>
@@ -806,10 +1023,12 @@ export default function Chat({ selectedContact, onBackPress, currentUserId }: Ch
               let lastSeenIndex = -1;
               // Only the last own unread (delivered) message shows "Delivered"
               let lastDeliveredIndex = -1;
-              messages.forEach((m, i) => {
-                if (m.isOwn && m.isRead) lastSeenIndex = i;
-                if (m.isOwn && !m.isRead && m.status !== 'sending') lastDeliveredIndex = i;
-              });
+              if (!isGroupChat) {
+                messages.forEach((m, i) => {
+                  if (m.isOwn && m.isRead) lastSeenIndex = i;
+                  if (m.isOwn && !m.isRead && m.status !== 'sending') lastDeliveredIndex = i;
+                });
+              }
               return messages.map((message, index) => {
                 const rawTs: string = (message as any)._rawTs || new Date().toISOString();
                 const dayKey = dateDayKey(rawTs);
@@ -928,7 +1147,7 @@ export default function Chat({ selectedContact, onBackPress, currentUserId }: Ch
                           </Text>
                         </View>
                       )}
-                      {message.isOwn && message.status &&
+                      {!isGroupChat && message.isOwn && message.status &&
                         (message.status === 'sending' ||
                           index === lastSeenIndex ||
                           index === lastDeliveredIndex) && (

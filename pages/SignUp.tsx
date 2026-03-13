@@ -112,7 +112,54 @@ export default function SignUp({ onNavigateToSignIn, onSignUpSuccess }: SignUpPr
         throw insertError;
       }
 
-      // Show EULA modal after successful signup (user stays signed in)
+      // Approval gate: unapproved users should NOT see EULA/dashboard yet
+      try {
+        const { data: dbUser, error: dbUserError } = await supabase
+          .from('users')
+          .select('role, is_approved')
+          .eq('id', data.user.id)
+          .single();
+        if (dbUserError) throw dbUserError;
+
+        const role = dbUser?.role || data.user.user_metadata?.role || 'employee';
+        const isAdmin = role === 'admin';
+        const isApproved = isAdmin || dbUser?.is_approved === true;
+
+        if (!isApproved) {
+          await signOutUser(data.user.id);
+          setAlertConfig({
+            title: 'Approval Pending',
+            message:
+              'Your account is still pending approval from the administrator. Please check back later.',
+            type: 'info',
+            confirmText: 'Go to Sign In',
+            onConfirm: () => {
+              setAlertVisible(false);
+              onNavigateToSignIn();
+            },
+          });
+          setAlertVisible(true);
+          return;
+        }
+      } catch (err: any) {
+        console.error('Failed to check approval status after signup:', err);
+        await signOutUser(data.user.id);
+        setAlertConfig({
+          title: 'Approval Pending',
+          message:
+            'Your account is still pending approval from the administrator. Please check back later.',
+          type: 'info',
+          confirmText: 'Go to Sign In',
+          onConfirm: () => {
+            setAlertVisible(false);
+            onNavigateToSignIn();
+          },
+        });
+        setAlertVisible(true);
+        return;
+      }
+
+      // Approved users can proceed to EULA
       setSignedUpUser(data.user);
       setShowEulaModal(true);
     } catch (err: any) {
