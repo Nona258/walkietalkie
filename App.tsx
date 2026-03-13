@@ -45,19 +45,40 @@ export default function App() {
         const { data } = await supabase.auth.getSession();
         if (data?.session?.user) {
           const sessionUser = data.session.user;
-          // Mark user as online
-          supabase.from('users').update({ status: 'online' }).eq('id', sessionUser.id).then(() => {});
-
-          // Fetch role from the database first (more reliable than user_metadata)
+          // Fetch role/approval from the database first (more reliable than user_metadata)
           let role = sessionUser.user_metadata?.role || 'employee';
+          let isApproved = role === 'admin';
           try {
-            const { data: dbUser } = await supabase
+            const { data: dbUser, error: dbUserError } = await supabase
               .from('users')
-              .select('role')
+              .select('role, is_approved')
               .eq('id', sessionUser.id)
               .single();
+            if (dbUserError) throw dbUserError;
             if (dbUser?.role) role = dbUser.role;
-          } catch (_) {}
+            isApproved = role === 'admin' || dbUser?.is_approved === true;
+          } catch (err) {
+            // If we can't verify approval, fail closed for non-admins.
+            console.error('Error checking approval/role:', err);
+            if (role !== 'admin') {
+              await supabase.auth.signOut();
+              setUser(null);
+              setUserRole('employee');
+              setCurrentPage('signin');
+              return;
+            }
+          }
+
+          if (!isApproved) {
+            await supabase.auth.signOut();
+            setUser(null);
+            setUserRole('employee');
+            setCurrentPage('signin');
+            return;
+          }
+
+          // Mark user as online (only after approval gate)
+          supabase.from('users').update({ status: 'online' }).eq('id', sessionUser.id).then(() => {});
 
           setUser(sessionUser);
           setUserRole(role);
@@ -332,9 +353,35 @@ export default function App() {
             setIsInSignupFlow(false);
             setCurrentPage('signin');
           }}
-          onSignUpSuccess={(signedUpUser) => {
+          onSignUpSuccess={async (signedUpUser) => {
             setUser(signedUpUser);
-            const role = signedUpUser.user_metadata?.role || 'employee';
+
+            // Fetch role/approval from DB (fail closed for non-admins)
+            let role = signedUpUser.user_metadata?.role || 'employee';
+            let isApproved = role === 'admin';
+            try {
+              const { data: dbUser, error: dbUserError } = await supabase
+                .from('users')
+                .select('role, is_approved')
+                .eq('id', signedUpUser.id)
+                .single();
+              if (dbUserError) throw dbUserError;
+              if (dbUser?.role) role = dbUser.role;
+              isApproved = role === 'admin' || dbUser?.is_approved === true;
+            } catch (err) {
+              console.error('Error checking approval/role after signup:', err);
+              if (role !== 'admin') isApproved = false;
+            }
+
+            if (!isApproved) {
+              await signOutUser(signedUpUser?.id);
+              setUser(null);
+              setUserRole('employee');
+              setIsInSignupFlow(false);
+              setCurrentPage('signin');
+              return;
+            }
+
             setUserRole(role);
             setIsInSignupFlow(false);
             setCurrentPage('dashboard');

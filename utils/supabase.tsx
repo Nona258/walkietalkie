@@ -157,3 +157,39 @@ export async function removeContact(contactUserId: string) {
 	if (error) throw error;
 }
 
+// Get pending (unapproved) users for admin approval
+export async function getPendingUsers() {
+	const { data, error } = await supabase
+		.from('users')
+		.select('*')
+		.eq('is_approved', false)
+		.neq('role', 'admin')
+		.order('created_at', { ascending: false });
+	if (error) throw error;
+	return data;
+}
+
+// Approve a user by ID
+export async function approveUser(userId: string) {
+	const { data, error } = await supabase
+		.from('users')
+		.update({ is_approved: true })
+		.eq('id', userId)
+		.select()
+		.single();
+	if (error) throw error;
+	return data;
+}
+
+// Delete a user by ID (removes from users table)
+export async function deleteUserAccount(userId: string) {
+	const { error } = await supabase
+		.from('users')
+		.delete()
+		.eq('id', userId);
+	if (error) throw error;
+	
+	// Note: Auth user deletion requires admin access. 
+	// Admins should manually delete from auth.users in Supabase dashboard if needed,
+	// or use a server-side function with admin privileges.
+}

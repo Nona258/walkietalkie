@@ -1,9 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, TouchableOpacity, ScrollView, TextInput, Alert, StatusBar } from 'react-native';
+import { View, Text, TouchableOpacity, ScrollView, TextInput, Alert, StatusBar, Modal } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import  supabase  from '../../utils/supabase';
+import supabase from '../../utils/supabase';
+import SiteDetails from './SiteDetails';
 
-interface Site {
+export interface Site {
   id: string;
   name: string;
   companyName: string | null;
@@ -12,6 +13,10 @@ interface Site {
   longitude: number | null;
   status: 'active' | 'inactive';
   securityLevel: 'high' | 'medium' | 'low';
+  startTime?: string | null;
+  endTime?: string | null;
+  dateAccomplished?: string | null;
+  membersCount?: number | null;
   staffCount: number;
 }
 
@@ -76,21 +81,27 @@ export default function Sites({ onMapPress, onSiteMapPress }: SitesProps) {
 
   const handleSitePress = (site: Site) => {
     setSelectedSite(site);
-    Alert.alert(
-      site.name,
-      `Company: ${site.companyName || 'N/A'}\nBranch: ${site.branchName || 'N/A'}\nCoordinates: ${formatCoordinates(site.latitude, site.longitude)}`,
-      [{ text: 'Close', onPress: () => setSelectedSite(null) }]
-    );
-  };
-
-  const formatCoordinates = (lat: number | null, lng: number | null): string => {
-    if (lat == null || lng == null) return 'Location not set';
-    return `Site (${lat.toFixed(4)}, ${lng.toFixed(4)})`;
   };
 
   return (
     <View className="flex-1 bg-white">
       <StatusBar barStyle="light-content" />
+
+      {/* Details Modal */}
+      <Modal
+        visible={!!selectedSite}
+        animationType="slide"
+        onRequestClose={() => setSelectedSite(null)}
+      >
+        <SiteDetails
+          site={selectedSite}
+          onBack={() => setSelectedSite(null)}
+          onViewOnMap={() => {
+            setSelectedSite(null);
+            onMapPress?.();
+          }}
+        />
+      </Modal>
       
       {/* Header Section */}
       <View className="bg-white px-6 py-6 pt-12 border-b border-green-100">

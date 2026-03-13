@@ -7,6 +7,7 @@ import {
   KeyboardAvoidingView,
   Platform,
   ActivityIndicator,
+  Modal,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import supabase from '../utils/supabase';
@@ -26,6 +27,7 @@ export default function SignIn({ onNavigateToSignUp, onSignInSuccess }: SignInPr
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [showEulaModal, setShowEulaModal] = useState(false);
+  const [showApprovalPendingModal, setShowApprovalPendingModal] = useState(false);
   const [eulaLoading, setEulaLoading] = useState(false);
   const [signedInUser, setSignedInUser] = useState<any>(null);
 
@@ -58,6 +60,36 @@ export default function SignIn({ onNavigateToSignUp, onSignInSuccess }: SignInPr
       }
 
       if (data?.user) {
+        // Check if user is approved (admins are automatically approved)
+        const metadataRole = data.user.user_metadata?.role;
+        const { data: userData, error: userError } = await supabase
+          .from('users')
+          .select('role, is_approved')
+          .eq('id', data.user.id)
+          .single();
+
+        const role = userData?.role || metadataRole || 'employee';
+        const isAdmin = role === 'admin';
+
+        // If we cannot verify approval from DB, fail closed for non-admins.
+        if (userError || !userData) {
+          if (!isAdmin) {
+            console.error('Failed to check approval status:', userError);
+            setSignedInUser(data.user);
+            setShowApprovalPendingModal(true);
+            await supabase.auth.signOut();
+            return;
+          }
+        }
+
+        const isApproved = isAdmin || userData?.is_approved === true;
+        if (!isApproved) {
+          setSignedInUser(data.user);
+          setShowApprovalPendingModal(true);
+          await supabase.auth.signOut();
+          return;
+        }
+
         // Check if user has accepted EULA
         try {
           const eulaAccepted = await hasAcceptedEula(data.user.id);
@@ -231,6 +263,34 @@ export default function SignIn({ onNavigateToSignUp, onSignInSuccess }: SignInPr
         onDecline={handleEulaDecline}
         loading={eulaLoading}
       />
+
+      {/* Approval Pending Modal */}
+      <Modal visible={showApprovalPendingModal} transparent animationType="fade">
+        <View className="flex-1 bg-black/50 justify-center items-center px-6">
+          <View className="bg-white rounded-2xl w-full max-w-sm p-8 items-center">
+            <View className="mb-4">
+              <Ionicons name="time-outline" size={56} color="#f59e0b" />
+            </View>
+            <Text className="text-2xl font-bold text-stone-900 text-center mb-3">
+              Approval Pending
+            </Text>
+            <Text className="text-stone-600 text-center mb-6 leading-6">
+              Your account is still pending approval from the administrator. Please check back later.
+            </Text>
+            <View className="w-full bg-yellow-50 border border-yellow-200 rounded-xl px-4 py-3 mb-6">
+              <Text className="text-yellow-800 text-xs font-semibold text-center">
+                ⏱️ You will be able to access the app once your account is approved
+              </Text>
+            </View>
+            <TouchableOpacity
+              className="bg-[#10b981] rounded-xl w-full py-3 items-center"
+              onPress={() => setShowApprovalPendingModal(false)}
+            >
+              <Text className="text-white font-bold">OK</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }

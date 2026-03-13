@@ -19,6 +19,8 @@ interface Contact {
   // additional fields for search
   email: string;
   phone_number?: string;
+  isGroup?: boolean;
+  groupId?: string;
 }
 
 interface ContactsProps {
@@ -130,6 +132,45 @@ export default function Contacts({ onContactSelected, currentUserId }: ContactsP
 
       console.log('Fetching contacts for user:', activeChatUserId);
 
+      // Load the current user's group (team chat), if any.
+      // This is shown as a special contact and will open a group chat.
+      let myGroupContact: Contact | null = null;
+      try {
+        const { data: meRow, error: meErr } = await supabase
+          .from('users')
+          .select('group_id')
+          .eq('id', activeChatUserId)
+          .maybeSingle();
+        if (!meErr && meRow?.group_id) {
+          const { data: groupRow, error: groupErr } = await supabase
+            .from('groups')
+            .select('id,name')
+            .eq('id', meRow.group_id)
+            .maybeSingle();
+          if (!groupErr && groupRow?.id) {
+            const groupName = groupRow.name || 'Team';
+            myGroupContact = {
+              id: String(groupRow.id),
+              name: groupName,
+              role: 'Team',
+              initials: getInitials(groupName),
+              status: 'offline',
+              avatar_color: getAvatarColor(String(groupRow.id)),
+              email: '',
+              phone_number: undefined,
+              isGroup: true,
+              groupId: String(groupRow.id),
+              lastMessage: undefined,
+              lastMessageTime: undefined,
+              lastMessageTimestamp: undefined,
+              unreadCount: 0,
+            };
+          }
+        }
+      } catch (e) {
+        console.warn('Failed to load my group:', (e as any)?.message || String(e));
+      }
+
       // 1. Fetch contacts from the `contacts` table (explicitly added contacts)
       const { data: contactRows, error: contactsError } = await supabase
         .from('contacts')
@@ -172,7 +213,7 @@ export default function Contacts({ onContactSelected, currentUserId }: ContactsP
       // If no contacts or conversations, show empty list
       if (contactUserIds.size === 0) {
         console.log('No contacts or conversations found');
-        setContacts([]);
+        setContacts(myGroupContact ? [myGroupContact] : []);
         setLoading(false);
         setRefreshing(false);
         return;
@@ -310,9 +351,9 @@ export default function Contacts({ onContactSelected, currentUserId }: ContactsP
             }
           })
         );
-        setContacts(contactsWithMessages);
+        setContacts(myGroupContact ? [myGroupContact, ...contactsWithMessages] : contactsWithMessages);
       } else {
-        setContacts(formattedContacts);
+        setContacts(myGroupContact ? [myGroupContact, ...formattedContacts] : formattedContacts);
       }
     } catch (error) {
       console.error('Error fetching contacts:', error);
@@ -356,10 +397,17 @@ export default function Contacts({ onContactSelected, currentUserId }: ContactsP
     const subscription = supabase
       .channel('public:users')
       .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'users' }, payload => {
-        // When a user updates their status, silently refresh contacts (no loading spinner)
-        if (payload.new.id !== activeChatUserId) {
-          fetchContacts(true);
+        // When a user updates their status, silently refresh contacts.
+        // Also refresh when *my* group_id changes so Team chat appears immediately.
+        const newRow: any = payload.new;
+        const oldRow: any = payload.old;
+        if (newRow?.id === activeChatUserId) {
+          const oldGroup = oldRow?.group_id ?? null;
+          const newGroup = newRow?.group_id ?? null;
+          if (oldGroup !== newGroup) fetchContacts(true);
+          return;
         }
+        fetchContacts(true);
       })
       .subscribe();
 
@@ -465,7 +513,7 @@ export default function Contacts({ onContactSelected, currentUserId }: ContactsP
     } else if (filterType === 'offline') {
       filtered = filtered.filter(c => c.status === 'offline');
     } else if (filterType === 'teams') {
-      filtered = filtered.filter(c => c.role.toLowerCase() === 'team');
+      filtered = filtered.filter(c => !!c.isGroup);
     } else if (filterType === 'unread') {
       filtered = filtered.filter(c => (c.unreadCount ?? 0) > 0);
     }
