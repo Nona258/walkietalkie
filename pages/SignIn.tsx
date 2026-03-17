@@ -93,7 +93,7 @@ export default function SignIn({ onNavigateToSignUp, onSignInSuccess }: SignInPr
         // Check if user has accepted EULA
         try {
           const eulaAccepted = await hasAcceptedEula(data.user.id);
-          
+
           if (eulaAccepted) {
             // User has accepted EULA, proceed to dashboard
             onSignInSuccess(data.user);
@@ -114,7 +114,7 @@ export default function SignIn({ onNavigateToSignUp, onSignInSuccess }: SignInPr
     } finally {
       setLoading(false);
     }
-  }
+  };
 
   const handleEulaAccept = async () => {
     if (!signedInUser) return;
@@ -122,7 +122,7 @@ export default function SignIn({ onNavigateToSignUp, onSignInSuccess }: SignInPr
     setEulaLoading(true);
     try {
       const success = await acceptEula(signedInUser.id);
-      
+
       if (success) {
         setShowEulaModal(false);
         setSignedInUser(null);
@@ -158,37 +158,40 @@ export default function SignIn({ onNavigateToSignUp, onSignInSuccess }: SignInPr
   };
 
   return (
-    <View className="flex-1 bg-white overflow-hidden">
+    <View className="flex-1 overflow-hidden bg-white">
       {/* Background decorative elements */}
-      <View className="absolute top-20 -left-20 w-48 h-48 rounded-full bg-[#10b981] opacity-10" />
-      <View className="absolute -bottom-32 -left-32 w-80 h-80 rounded-full bg-[#10b981] opacity-10" />
-      <View className="absolute bottom-40 -right-16 w-48 h-48 rounded-full bg-[#10b981] opacity-10" />
+      <View className="absolute -left-20 top-20 h-48 w-48 rounded-full bg-[#10b981] opacity-10" />
+      <View className="absolute -bottom-32 -left-32 h-80 w-80 rounded-full bg-[#10b981] opacity-10" />
+      <View className="absolute -right-16 bottom-40 h-48 w-48 rounded-full bg-[#10b981] opacity-10" />
 
       {/* Decorative rings */}
-      <View className="absolute -bottom-20 -left-20 w-56 h-56 rounded-full border-2 border-[#10b981]/15" />
-      <View className="absolute bottom-48 -right-12 w-32 h-32 rounded-full border border-[#10b981]/20" />
+      <View className="absolute -bottom-20 -left-20 h-56 w-56 rounded-full border-2 border-[#10b981]/15" />
+      <View className="absolute -right-12 bottom-48 h-32 w-32 rounded-full border border-[#10b981]/20" />
 
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        className="flex-1 overflow-hidden"
-      >
-        <View className="justify-center flex-1 px-8 overflow-hidden">
+        className="flex-1 overflow-hidden">
+        <View className="flex-1 justify-center overflow-hidden px-8">
           {/* Logo */}
-          <View className="items-center mb-10">
-            <View className="w-20 h-20 bg-[#10b981] rounded-3xl items-center justify-center mb-6 shadow-lg shadow-[#10b981]/30">
+          <View className="mb-10 items-center">
+            <View className="mb-6 h-20 w-20 items-center justify-center rounded-3xl bg-[#10b981] shadow-lg shadow-[#10b981]/30">
               <Ionicons name="radio" size={38} color="#ffffff" />
             </View>
-            <Text className="text-[#111827] text-3xl font-bold italic tracking-wide">SyncSpeak</Text>
-            <Text className="text-[#6b7280] text-base mt-2 tracking-wide">Connect instantly. Talk freely.</Text>
+            <Text className="text-3xl font-bold italic tracking-wide text-[#111827]">
+              SyncSpeak
+            </Text>
+            <Text className="mt-2 text-base tracking-wide text-[#6b7280]">
+              Connect instantly. Talk freely.
+            </Text>
           </View>
 
           {/* Form */}
           <View className="mt-2">
             {/* Email Input */}
-            <View className="flex-row items-center px-3 py-3 mb-4 bg-white border border-green-300 rounded-xl">
+            <View className="mb-4 flex-row items-center rounded-xl border border-green-300 bg-white px-3 py-3">
               <Ionicons name="mail-outline" size={20} color="#10b981" />
               <TextInput
-                className="flex-1 ml-2 text-base outline-none"
+                className="ml-2 flex-1 text-base outline-none"
                 placeholder="Email address"
                 placeholderTextColor="#9ca3af"
                 keyboardType="email-address"
@@ -199,10 +202,10 @@ export default function SignIn({ onNavigateToSignUp, onSignInSuccess }: SignInPr
             </View>
 
             {/* Password Input */}
-            <View className="flex-row items-center px-3 py-3 mb-3 bg-white border border-green-300 rounded-xl">
+            <View className="mb-3 flex-row items-center rounded-xl border border-green-300 bg-white px-3 py-3">
               <Ionicons name="lock-closed-outline" size={20} color="#10b981" />
               <TextInput
-                className="flex-1 ml-2 text-base outline-none"
+                className="ml-2 flex-1 text-base outline-none"
                 placeholder="Password"
                 placeholderTextColor="#9ca3af"
                 secureTextEntry={!showPassword}
@@ -211,7 +214,7 @@ export default function SignIn({ onNavigateToSignUp, onSignInSuccess }: SignInPr
               />
               <TouchableOpacity onPress={() => setShowPassword(!showPassword)}>
                 <Ionicons
-                  name={showPassword ? "eye-outline" : "eye-off-outline"}
+                  name={showPassword ? 'eye-outline' : 'eye-off-outline'}
                   size={20}
                   color="#9ca3af"
                 />
@@ -220,22 +223,21 @@ export default function SignIn({ onNavigateToSignUp, onSignInSuccess }: SignInPr
 
             {/* Error Message */}
             {error ? (
-              <View className="bg-red-50 rounded-xl px-4 py-3 mt-2">
-                <Text className="text-red-500 text-sm">{error}</Text>
+              <View className="mt-2 rounded-xl bg-red-50 px-4 py-3">
+                <Text className="text-sm text-red-500">{error}</Text>
               </View>
             ) : null}
 
             {/* Forgot Password */}
-            <TouchableOpacity className="self-end mt-2 mb-8">
-              <Text className="text-[#10b981] text-sm font-semibold">Forgot password?</Text>
+            <TouchableOpacity className="mb-8 mt-2 self-end">
+              <Text className="text-sm font-semibold text-[#10b981]">Forgot password?</Text>
             </TouchableOpacity>
 
             {/* Sign In Button */}
             <TouchableOpacity
-              className="bg-[#10b981] rounded-2xl h-14 items-center justify-center mb-6 shadow-lg shadow-[#10b981]/30 active:opacity-90 disabled:opacity-50"
+              className="mb-6 h-14 items-center justify-center rounded-2xl bg-[#10b981] shadow-lg shadow-[#10b981]/30 active:opacity-90 disabled:opacity-50"
               onPress={handleSignIn}
-              disabled={loading}
-            >
+              disabled={loading}>
               {loading ? (
                 <ActivityIndicator color="#ffffff" />
               ) : (
@@ -246,10 +248,10 @@ export default function SignIn({ onNavigateToSignUp, onSignInSuccess }: SignInPr
             </TouchableOpacity>
 
             {/* Sign Up Link */}
-            <View className="flex-row items-center justify-center mt-2">
-              <Text className="text-[#6b7280] text-base">{"Don't have an account?"} </Text>
+            <View className="mt-2 flex-row items-center justify-center">
+              <Text className="text-base text-[#6b7280]">{"Don't have an account?"} </Text>
               <TouchableOpacity onPress={onNavigateToSignUp}>
-                <Text className="text-[#10b981] text-base font-bold">Sign Up</Text>
+                <Text className="text-base font-bold text-[#10b981]">Sign Up</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -266,27 +268,27 @@ export default function SignIn({ onNavigateToSignUp, onSignInSuccess }: SignInPr
 
       {/* Approval Pending Modal */}
       <Modal visible={showApprovalPendingModal} transparent animationType="fade">
-        <View className="flex-1 bg-black/50 justify-center items-center px-6">
-          <View className="bg-white rounded-2xl w-full max-w-sm p-8 items-center">
+        <View className="flex-1 items-center justify-center bg-black/50 px-6">
+          <View className="w-full max-w-sm items-center rounded-2xl bg-white p-8">
             <View className="mb-4">
               <Ionicons name="time-outline" size={56} color="#f59e0b" />
             </View>
-            <Text className="text-2xl font-bold text-stone-900 text-center mb-3">
+            <Text className="mb-3 text-center text-2xl font-bold text-stone-900">
               Approval Pending
             </Text>
-            <Text className="text-stone-600 text-center mb-6 leading-6">
-              Your account is still pending approval from the administrator. Please check back later.
+            <Text className="mb-6 text-center leading-6 text-stone-600">
+              Your account is still pending approval from the administrator. Please check back
+              later.
             </Text>
-            <View className="w-full bg-yellow-50 border border-yellow-200 rounded-xl px-4 py-3 mb-6">
-              <Text className="text-yellow-800 text-xs font-semibold text-center">
+            <View className="mb-6 w-full rounded-xl border border-yellow-200 bg-yellow-50 px-4 py-3">
+              <Text className="text-center text-xs font-semibold text-yellow-800">
                 ⏱️ You will be able to access the app once your account is approved
               </Text>
             </View>
             <TouchableOpacity
-              className="bg-[#10b981] rounded-xl w-full py-3 items-center"
-              onPress={() => setShowApprovalPendingModal(false)}
-            >
-              <Text className="text-white font-bold">OK</Text>
+              className="w-full items-center rounded-xl bg-[#10b981] py-3"
+              onPress={() => setShowApprovalPendingModal(false)}>
+              <Text className="font-bold text-white">OK</Text>
             </TouchableOpacity>
           </View>
         </View>

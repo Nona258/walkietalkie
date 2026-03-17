@@ -78,7 +78,11 @@ export default function App() {
           }
 
           // Mark user as online (only after approval gate)
-          supabase.from('users').update({ status: 'online' }).eq('id', sessionUser.id).then(() => {});
+          supabase
+            .from('users')
+            .update({ status: 'online' })
+            .eq('id', sessionUser.id)
+            .then(() => {});
 
           setUser(sessionUser);
           setUserRole(role);
@@ -127,7 +131,11 @@ export default function App() {
         const { data } = await supabase.auth.getSession();
         const uid = data?.session?.user?.id;
         if (uid) {
-          supabase.from('users').update({ status: 'offline' }).eq('id', uid).then(() => {});
+          supabase
+            .from('users')
+            .update({ status: 'offline' })
+            .eq('id', uid)
+            .then(() => {});
         }
       } catch (_) {}
     };
@@ -148,7 +156,11 @@ export default function App() {
       if (session?.user) {
         setUser(session.user);
         // Mark user online
-        supabase.from('users').update({ status: 'online' }).eq('id', session.user.id).then(() => {});
+        supabase
+          .from('users')
+          .update({ status: 'online' })
+          .eq('id', session.user.id)
+          .then(() => {});
         // Only navigate based on EULA if not in signup flow
         // The signin page will handle EULA modal display
         if (!isInSignupFlow) {
@@ -196,7 +208,8 @@ export default function App() {
   // button press starts recording with zero getUserMedia latency.
   const prewarmMic = () => {
     if (typeof navigator === 'undefined' || !navigator.mediaDevices?.getUserMedia) return;
-    (navigator as any).mediaDevices.getUserMedia({ audio: true })
+    (navigator as any).mediaDevices
+      .getUserMedia({ audio: true })
       .then((stream: MediaStream) => {
         // If the component gained a new pre-warms stream while this one was
         // in-flight, release whichever is older.
@@ -230,15 +243,11 @@ export default function App() {
           'audio/ogg',
           'audio/mp4',
         ];
-        const mimeType = candidates.find(
-          (t) => (window as any).MediaRecorder?.isTypeSupported?.(t)
-        ) || '';
+        const mimeType =
+          candidates.find((t) => (window as any).MediaRecorder?.isTypeSupported?.(t)) || '';
         wtMimeTypeRef.current = mimeType || 'audio/webm';
 
-        const mr = new (window as any).MediaRecorder(
-          stream,
-          mimeType ? { mimeType } : undefined
-        );
+        const mr = new (window as any).MediaRecorder(stream, mimeType ? { mimeType } : undefined);
         mr.ondataavailable = (e: any) => {
           if (e.data && e.data.size > 0) wtAudioChunksRef.current.push(e.data);
         };
@@ -279,7 +288,9 @@ export default function App() {
           reader.readAsDataURL(blob);
         });
 
-        const { data: { user: currentUser } } = await supabase.auth.getUser();
+        const {
+          data: { user: currentUser },
+        } = await supabase.auth.getUser();
         if (!currentUser) return;
 
         // Find the first admin user
@@ -294,14 +305,16 @@ export default function App() {
         const convId = await getOrCreateConversation(currentUser.id, adminId);
         if (!convId) return;
 
-        await supabase.from('messages').insert([{
-          conversation_id: convId,
-          sender_id: currentUser.id,
-          receiver_id: adminId,
-          file_url: dataUrl,
-          duration_ms: durationMs,
-          created_at: new Date().toISOString(),
-        }]);
+        await supabase.from('messages').insert([
+          {
+            conversation_id: convId,
+            sender_id: currentUser.id,
+            receiver_id: adminId,
+            file_url: dataUrl,
+            duration_ms: durationMs,
+            created_at: new Date().toISOString(),
+          },
+        ]);
       } catch (err) {
         console.error('Error sending walkie-talkie message:', err);
       } finally {
@@ -309,8 +322,12 @@ export default function App() {
       }
     };
 
-    try { mr.stop(); } catch (_) {}
-    try { ref.stream.getTracks().forEach((t: any) => t.stop()); } catch (_) {}
+    try {
+      mr.stop();
+    } catch (_) {}
+    try {
+      ref.stream.getTracks().forEach((t: any) => t.stop());
+    } catch (_) {}
     wtMediaRecorderRef.current = null;
     // Pre-warm the mic stream for the next recording press.
     prewarmMic();
@@ -318,7 +335,13 @@ export default function App() {
 
   if (loading) {
     return (
-      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#fff' }}>
+      <View
+        style={{
+          flex: 1,
+          justifyContent: 'center',
+          alignItems: 'center',
+          backgroundColor: '#fff',
+        }}>
         <ActivityIndicator size="large" color="#10b981" />
       </View>
     );
@@ -327,7 +350,7 @@ export default function App() {
   return (
     <View style={{ flex: 1 }}>
       {currentPage === 'signin' ? (
-        <SignIn 
+        <SignIn
           onNavigateToSignUp={() => {
             setIsInSignupFlow(true);
             setCurrentPage('signup');
@@ -348,7 +371,7 @@ export default function App() {
           }}
         />
       ) : currentPage === 'signup' ? (
-        <SignUp 
+        <SignUp
           onNavigateToSignIn={() => {
             setIsInSignupFlow(false);
             setCurrentPage('signin');
@@ -390,7 +413,7 @@ export default function App() {
       ) : (
         <View style={{ flex: 1 }}>
           {userRole === 'admin' ? (
-            <AdminDashboard 
+            <AdminDashboard
               onLogout={async () => {
                 await signOutUser(user?.id);
                 setUser(null);
@@ -401,19 +424,25 @@ export default function App() {
           ) : activeTab === 'contacts' ? (
             <Contacts onContactSelected={setSelectedContact} />
           ) : activeTab === 'sites' ? (
-            <Sites onMapPress={() => setActiveTab('map')} onSiteMapPress={(site) => {
-              setSelectedSite(site);
-              setActiveTab('map');
-            }} />
+            <Sites
+              onMapPress={() => setActiveTab('map')}
+              onSiteMapPress={(site) => {
+                setSelectedSite(site);
+                setActiveTab('map');
+              }}
+            />
           ) : activeTab === 'map' ? (
-            <Map onBack={() => {
-              setSelectedSite(null);
-              setActiveTab('sites');
-            }} selectedSite={selectedSite} />
+            <Map
+              onBack={() => {
+                setSelectedSite(null);
+                setActiveTab('sites');
+              }}
+              selectedSite={selectedSite}
+            />
           ) : activeTab === 'logs' ? (
             <Logs />
           ) : activeTab === 'settings' ? (
-              <Settings 
+            <Settings
               onLogout={async () => {
                 await signOutUser(user?.id);
                 setUser(null);
@@ -424,11 +453,9 @@ export default function App() {
               onNavigateToEditProfile={() => setActiveTab('edit-profile')}
             />
           ) : activeTab === 'edit-profile' ? (
-            <EditProfile 
-              onBackToSettings={() => setActiveTab('settings')}
-            />
+            <EditProfile onBackToSettings={() => setActiveTab('settings')} />
           ) : (
-            <Dashboard 
+            <Dashboard
               onLogout={async () => {
                 await signOutUser(user?.id);
                 setUser(null);
@@ -438,7 +465,18 @@ export default function App() {
               onNavigateToSettings={() => setActiveTab('settings')}
             />
           )}
-          {userRole !== 'admin' && !selectedContact && activeTab !== 'settings' && activeTab !== 'edit-profile' && activeTab !== 'map' && <Navbar activeTab={activeTab} onTabChange={setActiveTab} onMicPress={toggleWalkieTalkie} isRecording={isRecording} />}
+          {userRole !== 'admin' &&
+            !selectedContact &&
+            activeTab !== 'settings' &&
+            activeTab !== 'edit-profile' &&
+            activeTab !== 'map' && (
+              <Navbar
+                activeTab={activeTab}
+                onTabChange={setActiveTab}
+                onMicPress={toggleWalkieTalkie}
+                isRecording={isRecording}
+              />
+            )}
         </View>
       )}
       <StatusBar style="dark" />

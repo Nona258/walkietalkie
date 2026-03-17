@@ -1,4 +1,3 @@
-
 import React from 'react';
 import { View, Text, Platform, TouchableOpacity } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
@@ -31,18 +30,17 @@ export default function SiteLocationMap({
           <View style={{ position: 'absolute', top: 12, left: 12, zIndex: 20, elevation: 20 }}>
             <TouchableOpacity
               onPress={onBack}
-              className="w-10 h-10 rounded-full bg-white items-center justify-center border border-green-100"
-            >
+              className="h-10 w-10 items-center justify-center rounded-full border border-green-100 bg-white">
               <Ionicons name="arrow-back" size={22} color="#10b981" />
             </TouchableOpacity>
           </View>
         )}
 
         <View className="flex-1 items-center justify-center">
-          <View className="w-20 h-20 rounded-3xl bg-green-100 items-center justify-center mb-2">
+          <View className="mb-2 h-20 w-20 items-center justify-center rounded-3xl bg-green-100">
             <Ionicons name="map" size={36} color="#10b981" />
           </View>
-          <Text className="text-gray-500 text-xs font-semibold">Location not set</Text>
+          <Text className="text-xs font-semibold text-gray-500">Location not set</Text>
         </View>
       </View>
     );
@@ -51,18 +49,15 @@ export default function SiteLocationMap({
   const mapUrl = `https://www.google.com/maps?q=${latitude},${longitude}&z=16&output=embed`;
 
   const BackOverlay =
-    showBackButton && onBack
-      ? (
-          <View style={{ position: 'absolute', top: 12, left: 12, zIndex: 20, elevation: 20 }}>
-            <TouchableOpacity
-              onPress={onBack}
-              className="w-10 h-10 rounded-full bg-white items-center justify-center border border-green-100"
-            >
-              <Ionicons name="arrow-back" size={22} color="#10b981" />
-            </TouchableOpacity>
-          </View>
-        )
-      : null;
+    showBackButton && onBack ? (
+      <View style={{ position: 'absolute', top: 12, left: 12, zIndex: 20, elevation: 20 }}>
+        <TouchableOpacity
+          onPress={onBack}
+          className="h-10 w-10 items-center justify-center rounded-full border border-green-100 bg-white">
+          <Ionicons name="arrow-back" size={22} color="#10b981" />
+        </TouchableOpacity>
+      </View>
+    ) : null;
 
   if (Platform.OS === 'web') {
     return (
@@ -89,7 +84,7 @@ export default function SiteLocationMap({
       <View className="flex-1 bg-green-50" style={{ position: 'relative' }}>
         {BackOverlay}
         <View className="flex-1 items-center justify-center">
-          <Text className="text-gray-500 text-xs font-semibold">Map not available</Text>
+          <Text className="text-xs font-semibold text-gray-500">Map not available</Text>
         </View>
       </View>
     );

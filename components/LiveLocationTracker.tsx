@@ -13,7 +13,11 @@ type Props = {
 export default function LiveLocationTracker({ enabled, userId }: Props) {
   const locationSubRef = useRef<Location.LocationSubscription | null>(null);
   const webWatchIdRef = useRef<number | null>(null);
-  const lastSentRef = useRef<{ at: number; lat: number | null; lng: number | null }>({ at: 0, lat: null, lng: null });
+  const lastSentRef = useRef<{ at: number; lat: number | null; lng: number | null }>({
+    at: 0,
+    lat: null,
+    lng: null,
+  });
   const lastCoordsRef = useRef<{ lat: number; lng: number } | null>(null);
   const lastConnectivityRef = useRef<boolean | null>(null);
 
@@ -38,7 +42,11 @@ export default function LiveLocationTracker({ enabled, userId }: Props) {
     locationSubRef.current = null;
 
     try {
-      if (webWatchIdRef.current !== null && Platform.OS === 'web' && typeof navigator !== 'undefined') {
+      if (
+        webWatchIdRef.current !== null &&
+        Platform.OS === 'web' &&
+        typeof navigator !== 'undefined'
+      ) {
         // webWatchIdRef may hold either a geolocation.watchPosition id or a setInterval id
         try {
           navigator.geolocation.clearWatch(webWatchIdRef.current as number);
@@ -84,7 +92,9 @@ export default function LiveLocationTracker({ enabled, userId }: Props) {
 
       const elapsed = now - last.at;
       const hasLast = typeof last.lat === 'number' && typeof last.lng === 'number';
-      const movedMeters = hasLast ? distanceMeters(last.lat as number, last.lng as number, lat, lng) : Infinity;
+      const movedMeters = hasLast
+        ? distanceMeters(last.lat as number, last.lng as number, lat, lng)
+        : Infinity;
 
       const shouldSend =
         force ||
@@ -136,7 +146,7 @@ export default function LiveLocationTracker({ enabled, userId }: Props) {
       try {
         // Continuous web tracking (updates as the device reports movement)
         webWatchIdRef.current = navigator.geolocation.watchPosition(
-          pos => {
+          (pos) => {
             const lat = pos.coords.latitude;
             const lng = pos.coords.longitude;
             if (typeof lat === 'number' && typeof lng === 'number') {
@@ -144,7 +154,7 @@ export default function LiveLocationTracker({ enabled, userId }: Props) {
               void syncUserLocation(lat, lng);
             }
           },
-          err => console.warn('geolocation watchPosition error:', err),
+          (err) => console.warn('geolocation watchPosition error:', err),
           { enableHighAccuracy: true, maximumAge: 0, timeout: 20000 }
         );
       } catch (e) {
@@ -190,7 +200,7 @@ export default function LiveLocationTracker({ enabled, userId }: Props) {
 
     void startTracking();
 
-    const sub = AppState.addEventListener('change', state => {
+    const sub = AppState.addEventListener('change', (state) => {
       if (state === 'active') void startTracking();
       else stopTracking();
     });

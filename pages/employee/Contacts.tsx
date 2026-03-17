@@ -1,8 +1,25 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { View, Text, TouchableOpacity, ScrollView, TextInput, Alert, StatusBar, ActivityIndicator, RefreshControl, Modal, FlatList, KeyboardAvoidingView, Platform, Animated, Easing, PanResponder } from 'react-native';
+import {
+  View,
+  Text,
+  TouchableOpacity,
+  ScrollView,
+  TextInput,
+  Alert,
+  StatusBar,
+  ActivityIndicator,
+  RefreshControl,
+  Modal,
+  FlatList,
+  KeyboardAvoidingView,
+  Platform,
+  Animated,
+  Easing,
+  PanResponder,
+} from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Ionicons } from '@expo/vector-icons';
-import  supabase, { searchUsers, addContact }  from '../../utils/supabase'; // adjust path to your supabase client
+import supabase, { searchUsers, addContact } from '../../utils/supabase'; // adjust path to your supabase client
 import Chat from './Chat';
 
 interface Contact {
@@ -20,7 +37,7 @@ interface Contact {
   email: string;
   phone_number?: string;
   isGroup?: boolean;
-  groupId?: string;
+  siteId?: string;
 }
 
 interface ContactsProps {
@@ -41,7 +58,7 @@ const getAvatarColor = (id: string): string => {
 const getInitials = (name: string): string => {
   return name
     .split(' ')
-    .map(part => part[0])
+    .map((part) => part[0])
     .join('')
     .toUpperCase()
     .slice(0, 2);
@@ -63,6 +80,7 @@ export default function Contacts({ onContactSelected, currentUserId }: ContactsP
   const [searchResults, setSearchResults] = useState<any[]>([]);
   const [addingId, setAddingId] = useState<string | null>(null);
   const [activeChatUserId, setActiveChatUserId] = useState<string | null>(currentUserId || null);
+  const [mySiteId, setMySiteId] = useState<string | null>(null);
   // Track when each contact's chat was last opened (contactId -> ISO timestamp)
   const [lastReadMap, setLastReadMap] = useState<Record<string, string>>({});
   const [lastReadMapLoaded, setLastReadMapLoaded] = useState(false);
@@ -84,8 +102,18 @@ export default function Contacts({ onContactSelected, currentUserId }: ContactsP
       onPanResponderRelease: (_, { dy, vy }) => {
         if (dy > 100 || vy > 0.5) {
           Animated.parallel([
-            Animated.timing(backdropAnim, { toValue: 0, duration: 240, easing: Easing.in(Easing.ease), useNativeDriver: false }),
-            Animated.timing(sheetAnim, { toValue: 600, duration: 260, easing: Easing.in(Easing.ease), useNativeDriver: true }),
+            Animated.timing(backdropAnim, {
+              toValue: 0,
+              duration: 240,
+              easing: Easing.in(Easing.ease),
+              useNativeDriver: false,
+            }),
+            Animated.timing(sheetAnim, {
+              toValue: 600,
+              duration: 260,
+              easing: Easing.in(Easing.ease),
+              useNativeDriver: true,
+            }),
           ]).start(() => {
             setAddModalVisible(false);
             setModalQuery('');
@@ -95,8 +123,17 @@ export default function Contacts({ onContactSelected, currentUserId }: ContactsP
             setAddingId(null);
           });
         } else {
-          Animated.spring(sheetAnim, { toValue: 0, tension: 60, friction: 12, useNativeDriver: true }).start();
-          Animated.timing(backdropAnim, { toValue: 1, duration: 150, useNativeDriver: false }).start();
+          Animated.spring(sheetAnim, {
+            toValue: 0,
+            tension: 60,
+            friction: 12,
+            useNativeDriver: true,
+          }).start();
+          Animated.timing(backdropAnim, {
+            toValue: 1,
+            duration: 150,
+            useNativeDriver: false,
+          }).start();
         }
       },
     })
@@ -121,7 +158,7 @@ export default function Contacts({ onContactSelected, currentUserId }: ContactsP
   const fetchContacts = async (silent = false) => {
     try {
       if (!silent) setLoading(true);
-      
+
       if (!activeChatUserId) {
         console.log('No active chat user ID');
         setContacts([]);
@@ -132,34 +169,37 @@ export default function Contacts({ onContactSelected, currentUserId }: ContactsP
 
       console.log('Fetching contacts for user:', activeChatUserId);
 
-      // Load the current user's group (team chat), if any.
-      // This is shown as a special contact and will open a group chat.
-      let myGroupContact: Contact | null = null;
+      // Load the current user's site (team chat), if any.
+      // This is shown as a special contact and will open a site chat.
+      let mySiteContact: Contact | null = null;
       try {
         const { data: meRow, error: meErr } = await supabase
           .from('users')
-          .select('group_id')
+          .select('site_id')
           .eq('id', activeChatUserId)
           .maybeSingle();
-        if (!meErr && meRow?.group_id) {
-          const { data: groupRow, error: groupErr } = await supabase
-            .from('groups')
+        const nextSiteId = !meErr && meRow?.site_id ? String(meRow.site_id) : null;
+        setMySiteId(nextSiteId);
+        if (nextSiteId) {
+          const { data: siteRow, error: siteErr } = await supabase
+            .from('sites')
             .select('id,name')
-            .eq('id', meRow.group_id)
+            .eq('id', nextSiteId)
             .maybeSingle();
-          if (!groupErr && groupRow?.id) {
-            const groupName = groupRow.name || 'Team';
-            myGroupContact = {
-              id: String(groupRow.id),
-              name: groupName,
+          if (!siteErr && siteRow?.id) {
+            const siteName = siteRow.name || 'Team';
+            const contactId = `site:${String(siteRow.id)}`;
+            mySiteContact = {
+              id: contactId,
+              name: siteName,
               role: 'Team',
-              initials: getInitials(groupName),
+              initials: getInitials(siteName),
               status: 'offline',
-              avatar_color: getAvatarColor(String(groupRow.id)),
+              avatar_color: getAvatarColor(String(siteRow.id)),
               email: '',
               phone_number: undefined,
               isGroup: true,
-              groupId: String(groupRow.id),
+              siteId: String(siteRow.id),
               lastMessage: undefined,
               lastMessageTime: undefined,
               lastMessageTimestamp: undefined,
@@ -168,7 +208,7 @@ export default function Contacts({ onContactSelected, currentUserId }: ContactsP
           }
         }
       } catch (e) {
-        console.warn('Failed to load my group:', (e as any)?.message || String(e));
+        console.warn('Failed to load my site/team chat:', (e as any)?.message || String(e));
       }
 
       // 1. Fetch contacts from the `contacts` table (explicitly added contacts)
@@ -193,8 +233,8 @@ export default function Contacts({ onContactSelected, currentUserId }: ContactsP
       console.log('All conversations fetched:', conversations);
 
       // Filter conversations where current user is involved
-      const myConversations = (conversations || []).filter((conv: any) => 
-        conv.user_one === activeChatUserId || conv.user_two === activeChatUserId
+      const myConversations = (conversations || []).filter(
+        (conv: any) => conv.user_one === activeChatUserId || conv.user_two === activeChatUserId
       );
 
       console.log('My conversations (filtered):', myConversations);
@@ -213,7 +253,7 @@ export default function Contacts({ onContactSelected, currentUserId }: ContactsP
       // If no contacts or conversations, show empty list
       if (contactUserIds.size === 0) {
         console.log('No contacts or conversations found');
-        setContacts(myGroupContact ? [myGroupContact] : []);
+        setContacts(mySiteContact ? [mySiteContact] : []);
         setLoading(false);
         setRefreshing(false);
         return;
@@ -234,7 +274,7 @@ export default function Contacts({ onContactSelected, currentUserId }: ContactsP
       const now = new Date();
       const onlineThreshold = 5 * 60 * 1000; // 5 minutes in ms
 
-      const formattedContacts: Contact[] = (usersData || []).map(user => {
+      const formattedContacts: Contact[] = (usersData || []).map((user) => {
         // Determine online status: prefer explicit `status` column if present
         let status: 'online' | 'offline' | 'busy' = 'offline';
         if (user.status === 'online') {
@@ -281,12 +321,15 @@ export default function Contacts({ onContactSelected, currentUserId }: ContactsP
                 return contact;
               }
 
-              console.log(`Fetching messages for contact ${contact.name}, conversationIds:`, conversationIds);
+              console.log(
+                `Fetching messages for contact ${contact.name}, conversationIds:`,
+                conversationIds
+              );
 
               // Fetch latest message across ALL conversations for this contact
               // (handles the case where admin and employee created different conversation records)
               const allMessageResults = await Promise.all(
-                conversationIds.map(cid =>
+                conversationIds.map((cid) =>
                   supabase
                     .from('messages')
                     .select('*')
@@ -298,8 +341,10 @@ export default function Contacts({ onContactSelected, currentUserId }: ContactsP
 
               // Collect all latest messages and pick the most recent one
               const latestMessages = allMessageResults
-                .flatMap(r => r.data || [])
-                .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+                .flatMap((r) => r.data || [])
+                .sort(
+                  (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+                );
 
               console.log(`Messages for ${contact.name}:`, latestMessages);
 
@@ -316,7 +361,7 @@ export default function Contacts({ onContactSelected, currentUserId }: ContactsP
                   const lastRead = lastReadMap[contact.id] || null;
                   if (lastRead) {
                     const unreadResults = await Promise.all(
-                      conversationIds.map(cid =>
+                      conversationIds.map((cid) =>
                         supabase
                           .from('messages')
                           .select('id')
@@ -325,7 +370,10 @@ export default function Contacts({ onContactSelected, currentUserId }: ContactsP
                           .gt('created_at', lastRead)
                       )
                     );
-                    unreadCount = unreadResults.reduce((sum, r) => sum + (r.data ? r.data.length : 0), 0);
+                    unreadCount = unreadResults.reduce(
+                      (sum, r) => sum + (r.data ? r.data.length : 0),
+                      0
+                    );
                   }
                   // If lastRead is null (chat never opened), unreadCount stays 0.
                   // New unread messages accumulate via the real-time subscription.
@@ -333,11 +381,16 @@ export default function Contacts({ onContactSelected, currentUserId }: ContactsP
                   console.warn('Could not fetch unread count:', unreadErr);
                 }
 
-                console.log(`Showing message for ${contact.name}: ${msgText}, unread: ${unreadCount}`);
+                console.log(
+                  `Showing message for ${contact.name}: ${msgText}, unread: ${unreadCount}`
+                );
                 return {
                   ...contact,
                   lastMessage: msgText,
-                  lastMessageTime: created.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+                  lastMessageTime: created.toLocaleTimeString([], {
+                    hour: '2-digit',
+                    minute: '2-digit',
+                  }),
                   lastMessageTimestamp: lastMsg.created_at,
                   unreadCount,
                 };
@@ -351,9 +404,11 @@ export default function Contacts({ onContactSelected, currentUserId }: ContactsP
             }
           })
         );
-        setContacts(myGroupContact ? [myGroupContact, ...contactsWithMessages] : contactsWithMessages);
+        setContacts(
+          mySiteContact ? [mySiteContact, ...contactsWithMessages] : contactsWithMessages
+        );
       } else {
-        setContacts(myGroupContact ? [myGroupContact, ...formattedContacts] : formattedContacts);
+        setContacts(mySiteContact ? [mySiteContact, ...formattedContacts] : formattedContacts);
       }
     } catch (error) {
       console.error('Error fetching contacts:', error);
@@ -396,15 +451,15 @@ export default function Contacts({ onContactSelected, currentUserId }: ContactsP
     // Optional: Subscribe to realtime updates for online status
     const subscription = supabase
       .channel('public:users')
-      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'users' }, payload => {
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'users' }, (payload) => {
         // When a user updates their status, silently refresh contacts.
-        // Also refresh when *my* group_id changes so Team chat appears immediately.
+        // Also refresh when *my* site_id changes so Team chat appears immediately.
         const newRow: any = payload.new;
         const oldRow: any = payload.old;
         if (newRow?.id === activeChatUserId) {
-          const oldGroup = oldRow?.group_id ?? null;
-          const newGroup = newRow?.group_id ?? null;
-          if (oldGroup !== newGroup) fetchContacts(true);
+          const oldSite = oldRow?.site_id ?? null;
+          const newSite = newRow?.site_id ?? null;
+          if (oldSite !== newSite) fetchContacts(true);
           return;
         }
         fetchContacts(true);
@@ -424,7 +479,32 @@ export default function Contacts({ onContactSelected, currentUserId }: ContactsP
           },
           (payload) => {
             const newMsg = payload.new as any;
-            
+
+            // Handle team messages (site chat): messages.site_id is set, receiver_id can be null
+            if (newMsg.site_id && mySiteId && String(newMsg.site_id) === String(mySiteId)) {
+              if (newMsg.sender_id === activeChatUserId) return;
+              const siteContactId = `site:${String(mySiteId)}`;
+              const created = newMsg.created_at ? new Date(newMsg.created_at) : new Date();
+              const msgText = newMsg.transcription || newMsg.content || '';
+              const msgTime = created.toLocaleTimeString([], {
+                hour: '2-digit',
+                minute: '2-digit',
+              });
+
+              setContacts((prevContacts) =>
+                prevContacts.map((c) => {
+                  if (c.id !== siteContactId) return c;
+                  return {
+                    ...c,
+                    lastMessage: msgText,
+                    lastMessageTime: msgTime,
+                    unreadCount: (c.unreadCount || 0) + 1,
+                  };
+                })
+              );
+              return;
+            }
+
             // Only handle messages received by the current user (not sent)
             if (newMsg.receiver_id !== activeChatUserId) return;
 
@@ -434,7 +514,7 @@ export default function Contacts({ onContactSelected, currentUserId }: ContactsP
             const msgTime = created.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
             setContacts((prevContacts) => {
-              const existing = prevContacts.find(c => c.id === senderUserId);
+              const existing = prevContacts.find((c) => c.id === senderUserId);
 
               if (existing) {
                 // Update existing contact's last message + unread count
@@ -462,7 +542,12 @@ export default function Contacts({ onContactSelected, currentUserId }: ContactsP
                     name: userData.full_name || 'Unknown',
                     role: userData.role || 'Employee',
                     initials: getInitials(userData.full_name || 'Unknown'),
-                    status: userData.status === 'online' ? 'online' : userData.status === 'busy' ? 'busy' : 'offline',
+                    status:
+                      userData.status === 'online'
+                        ? 'online'
+                        : userData.status === 'busy'
+                          ? 'busy'
+                          : 'offline',
                     avatar_color: getAvatarColor(userData.id),
                     email: userData.email,
                     phone_number: userData.phone_number,
@@ -470,9 +555,9 @@ export default function Contacts({ onContactSelected, currentUserId }: ContactsP
                     lastMessageTime: msgTime,
                     unreadCount: 1,
                   };
-                  setContacts(prev => {
+                  setContacts((prev) => {
                     // Guard against double-add if the contact was added between the check and now
-                    if (prev.some(c => c.id === senderUserId)) return prev;
+                    if (prev.some((c) => c.id === senderUserId)) return prev;
                     return [newContact, ...prev];
                   });
                 });
@@ -491,7 +576,7 @@ export default function Contacts({ onContactSelected, currentUserId }: ContactsP
         messagesSubscriptionRef.current = null;
       }
     };
-  }, [activeChatUserId]);
+  }, [activeChatUserId, mySiteId]);
 
   // Apply filters and search whenever contacts, searchText, or filterType changes
   useEffect(() => {
@@ -500,22 +585,23 @@ export default function Contacts({ onContactSelected, currentUserId }: ContactsP
     // Search by name, email, or phone number
     if (searchText.trim()) {
       const term = searchText.toLowerCase();
-      filtered = filtered.filter(contact =>
-        contact.name.toLowerCase().includes(term) ||
-        contact.email.toLowerCase().includes(term) ||
-        (contact.phone_number && contact.phone_number.includes(term))
+      filtered = filtered.filter(
+        (contact) =>
+          contact.name.toLowerCase().includes(term) ||
+          contact.email.toLowerCase().includes(term) ||
+          (contact.phone_number && contact.phone_number.includes(term))
       );
     }
 
     // Apply filter type
     if (filterType === 'online') {
-      filtered = filtered.filter(c => c.status === 'online');
+      filtered = filtered.filter((c) => c.status === 'online');
     } else if (filterType === 'offline') {
-      filtered = filtered.filter(c => c.status === 'offline');
+      filtered = filtered.filter((c) => c.status === 'offline');
     } else if (filterType === 'teams') {
-      filtered = filtered.filter(c => !!c.isGroup);
+      filtered = filtered.filter((c) => !!c.isGroup);
     } else if (filterType === 'unread') {
-      filtered = filtered.filter(c => (c.unreadCount ?? 0) > 0);
+      filtered = filtered.filter((c) => (c.unreadCount ?? 0) > 0);
     }
 
     // Sort by most recent message first; unread contacts float to the top within that order
@@ -525,8 +611,8 @@ export default function Contacts({ onContactSelected, currentUserId }: ContactsP
       return bTime - aTime;
     };
     filtered = [
-      ...filtered.filter(c => (c.unreadCount ?? 0) > 0).sort(byRecency),
-      ...filtered.filter(c => (c.unreadCount ?? 0) === 0).sort(byRecency),
+      ...filtered.filter((c) => (c.unreadCount ?? 0) > 0).sort(byRecency),
+      ...filtered.filter((c) => (c.unreadCount ?? 0) === 0).sort(byRecency),
     ];
 
     setFilteredContacts(filtered);
@@ -552,7 +638,12 @@ export default function Contacts({ onContactSelected, currentUserId }: ContactsP
     sheetAnim.setValue(600);
     setAddModalVisible(true);
     Animated.parallel([
-      Animated.timing(backdropAnim, { toValue: 1, duration: 320, easing: Easing.out(Easing.ease), useNativeDriver: false }),
+      Animated.timing(backdropAnim, {
+        toValue: 1,
+        duration: 320,
+        easing: Easing.out(Easing.ease),
+        useNativeDriver: false,
+      }),
       Animated.spring(sheetAnim, { toValue: 0, tension: 60, friction: 12, useNativeDriver: true }),
     ]).start();
     loadAllModalUsers();
@@ -569,8 +660,18 @@ export default function Contacts({ onContactSelected, currentUserId }: ContactsP
 
   const handleCloseModal = () => {
     Animated.parallel([
-      Animated.timing(backdropAnim, { toValue: 0, duration: 240, easing: Easing.in(Easing.ease), useNativeDriver: false }),
-      Animated.timing(sheetAnim, { toValue: 600, duration: 260, easing: Easing.in(Easing.ease), useNativeDriver: true }),
+      Animated.timing(backdropAnim, {
+        toValue: 0,
+        duration: 240,
+        easing: Easing.in(Easing.ease),
+        useNativeDriver: false,
+      }),
+      Animated.timing(sheetAnim, {
+        toValue: 600,
+        duration: 260,
+        easing: Easing.in(Easing.ease),
+        useNativeDriver: true,
+      }),
     ]).start(() => closeAddModal());
   };
 
@@ -583,10 +684,11 @@ export default function Contacts({ onContactSelected, currentUserId }: ContactsP
       return;
     }
     setSearchResults(
-      allModalUsers.filter(u =>
-        (u.full_name || '').toLowerCase().includes(q) ||
-        (u.email || '').toLowerCase().includes(q) ||
-        (u.phone_number || '').includes(q)
+      allModalUsers.filter(
+        (u) =>
+          (u.full_name || '').toLowerCase().includes(q) ||
+          (u.email || '').toLowerCase().includes(q) ||
+          (u.phone_number || '').includes(q)
       )
     );
   }, [modalQuery, allModalUsers]);
@@ -598,7 +700,7 @@ export default function Contacts({ onContactSelected, currentUserId }: ContactsP
   const handleAddUser = async (userId: string) => {
     if (!userId) return;
     // prevent duplicate
-    if (contacts.find(c => c.id === userId)) {
+    if (contacts.find((c) => c.id === userId)) {
       Alert.alert('Already added', 'This user is already in your contacts');
       return;
     }
@@ -637,18 +739,15 @@ export default function Contacts({ onContactSelected, currentUserId }: ContactsP
   return (
     <View className="flex-1 bg-white">
       <StatusBar barStyle="light-content" />
-      
+
       {/* Header Section */}
-      <View className="bg-white px-6 py-6 pt-12 border-b border-green-100">
-        <View className="flex-row items-center justify-between mb-6">
+      <View className="border-b border-green-100 bg-white px-6 py-6 pt-12">
+        <View className="mb-6 flex-row items-center justify-between">
           <View>
-            <Text className="text-gray-900 text-3xl font-extrabold">Contacts</Text>
-            <Text className="text-green-600 text-xs font-semibold mt-1">Manage your team</Text>
+            <Text className="text-3xl font-extrabold text-gray-900">Contacts</Text>
+            <Text className="mt-1 text-xs font-semibold text-green-600">Manage your team</Text>
           </View>
-          <TouchableOpacity
-            className="relative active:scale-95"
-            onPress={handleAddContact}
-          >
+          <TouchableOpacity className="relative active:scale-95" onPress={handleAddContact}>
             <View className="rounded-full bg-green-500 p-3 shadow-lg shadow-green-300">
               <Ionicons name="person-add" size={22} color="white" />
             </View>
@@ -656,13 +755,14 @@ export default function Contacts({ onContactSelected, currentUserId }: ContactsP
         </View>
 
         {/* Search Bar */}
-        <View className={`flex-row items-center rounded-2xl bg-gray-100 px-4 py-3 border-2 mb-4 ${searchText.length > 0 ? 'border-green-500' : 'border-gray-300'}`}>
+        <View
+          className={`mb-4 flex-row items-center rounded-2xl border-2 bg-gray-100 px-4 py-3 ${searchText.length > 0 ? 'border-green-500' : 'border-gray-300'}`}>
           <Ionicons name="search" size={20} color="#6b7280" />
           <TextInput
             placeholder="Search by name, email, or phone..."
             value={searchText}
             onChangeText={setSearchText}
-            className="flex-1 ml-3 text-gray-900 text-base font-medium"
+            className="ml-3 flex-1 text-base font-medium text-gray-900"
             placeholderTextColor="#9ca3af"
           />
           {searchText.length > 0 && (
@@ -673,7 +773,7 @@ export default function Contacts({ onContactSelected, currentUserId }: ContactsP
         </View>
 
         {/* Filter Buttons */}
-        <View className="flex-row gap-2 -mx-6 px-6">
+        <View className="-mx-6 flex-row gap-2 px-6">
           {[
             { label: 'All', value: 'all', icon: 'people' },
             { label: 'Online', value: 'online', icon: 'radio-button-on' },
@@ -683,20 +783,20 @@ export default function Contacts({ onContactSelected, currentUserId }: ContactsP
             <TouchableOpacity
               key={filter.value}
               onPress={() => setFilterType(filter.value as FilterType)}
-              className={`flex-1 flex-row items-center justify-center gap-1 px-3 py-2 rounded-full border-2 transition-all ${
+              className={`flex-1 flex-row items-center justify-center gap-1 rounded-full border-2 px-3 py-2 transition-all ${
                 filterType === filter.value
-                  ? 'bg-green-500 border-green-500 shadow-md shadow-green-300'
-                  : 'bg-white border-green-200'
-              }`}
-            >
-              <Ionicons 
-                name={filter.icon as any} 
-                size={14} 
-                color={filterType === filter.value ? 'white' : '#10b981'} 
-              />
-              <Text className={`text-xs font-bold ${
-                filterType === filter.value ? 'text-white' : 'text-green-700'
+                  ? 'border-green-500 bg-green-500 shadow-md shadow-green-300'
+                  : 'border-green-200 bg-white'
               }`}>
+              <Ionicons
+                name={filter.icon as any}
+                size={14}
+                color={filterType === filter.value ? 'white' : '#10b981'}
+              />
+              <Text
+                className={`text-xs font-bold ${
+                  filterType === filter.value ? 'text-white' : 'text-green-700'
+                }`}>
                 {filter.label}
               </Text>
             </TouchableOpacity>
@@ -706,20 +806,57 @@ export default function Contacts({ onContactSelected, currentUserId }: ContactsP
 
       {/* Add Contact Modal */}
       <Modal visible={addModalVisible} animationType="none" transparent={true}>
-        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1 }}>
-          <Animated.View style={{ flex: 1, justifyContent: 'flex-end', backgroundColor: backdropAnim.interpolate({ inputRange: [0, 1], outputRange: ['rgba(0,0,0,0)', 'rgba(0,0,0,0.4)'] }) }}>
-
-            <Animated.View style={{ backgroundColor: 'white', borderTopLeftRadius: 24, borderTopRightRadius: 24, maxHeight: '85%', transform: [{ translateY: sheetAnim }] }}>
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          style={{ flex: 1 }}>
+          <Animated.View
+            style={{
+              flex: 1,
+              justifyContent: 'flex-end',
+              backgroundColor: backdropAnim.interpolate({
+                inputRange: [0, 1],
+                outputRange: ['rgba(0,0,0,0)', 'rgba(0,0,0,0.4)'],
+              }),
+            }}>
+            <Animated.View
+              style={{
+                backgroundColor: 'white',
+                borderTopLeftRadius: 24,
+                borderTopRightRadius: 24,
+                maxHeight: '85%',
+                transform: [{ translateY: sheetAnim }],
+              }}>
               {/* Drag handle */}
-              <View {...sheetPanResponder.panHandlers} style={{ alignSelf: 'stretch', alignItems: 'center', paddingTop: 12, paddingBottom: 8 }}>
-                <View style={{ width: 36, height: 4, borderRadius: 2, backgroundColor: '#e5e7eb' }} />
+              <View
+                {...sheetPanResponder.panHandlers}
+                style={{
+                  alignSelf: 'stretch',
+                  alignItems: 'center',
+                  paddingTop: 12,
+                  paddingBottom: 8,
+                }}>
+                <View
+                  style={{ width: 36, height: 4, borderRadius: 2, backgroundColor: '#e5e7eb' }}
+                />
               </View>
 
               {/* Header */}
-              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 20, paddingTop: 12, paddingBottom: 16 }}>
+              <View
+                style={{
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  paddingHorizontal: 20,
+                  paddingTop: 12,
+                  paddingBottom: 16,
+                }}>
                 <View>
-                  <Text style={{ fontSize: 18, fontWeight: '700', color: '#111827' }}>Add Contact</Text>
-                  <Text style={{ fontSize: 12, color: '#9ca3af', marginTop: 2 }}>Search for an employee or admin</Text>
+                  <Text style={{ fontSize: 18, fontWeight: '700', color: '#111827' }}>
+                    Add Contact
+                  </Text>
+                  <Text style={{ fontSize: 12, color: '#9ca3af', marginTop: 2 }}>
+                    Search for an employee or admin
+                  </Text>
                 </View>
               </View>
 
@@ -728,8 +865,22 @@ export default function Contacts({ onContactSelected, currentUserId }: ContactsP
 
               {/* Search bar */}
               <View style={{ paddingHorizontal: 20, paddingTop: 16, paddingBottom: 12 }}>
-                <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: '#f9fafb', borderRadius: 14, borderWidth: 1.5, borderColor: modalQuery.trim() ? '#10b981' : '#e5e7eb', paddingHorizontal: 14, paddingVertical: 10 }}>
-                  <Ionicons name="search" size={16} color={modalQuery.trim() ? '#10b981' : '#9ca3af'} />
+                <View
+                  style={{
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    backgroundColor: '#f9fafb',
+                    borderRadius: 14,
+                    borderWidth: 1.5,
+                    borderColor: modalQuery.trim() ? '#10b981' : '#e5e7eb',
+                    paddingHorizontal: 14,
+                    paddingVertical: 10,
+                  }}>
+                  <Ionicons
+                    name="search"
+                    size={16}
+                    color={modalQuery.trim() ? '#10b981' : '#9ca3af'}
+                  />
                   <TextInput
                     placeholder="Filter by name, email or phone…"
                     value={modalQuery}
@@ -753,13 +904,25 @@ export default function Contacts({ onContactSelected, currentUserId }: ContactsP
                 {searching ? (
                   <View style={{ alignItems: 'center', paddingVertical: 48 }}>
                     <ActivityIndicator size="large" color="#10b981" />
-                    <Text style={{ color: '#9ca3af', marginTop: 12, fontSize: 13 }}>Searching…</Text>
+                    <Text style={{ color: '#9ca3af', marginTop: 12, fontSize: 13 }}>
+                      Searching…
+                    </Text>
                   </View>
-
                 ) : searchResults.length > 0 ? (
                   <>
-                    <Text style={{ color: '#9ca3af', fontSize: 11, fontWeight: '600', paddingHorizontal: 20, paddingBottom: 8, textTransform: 'uppercase', letterSpacing: 0.5 }}>
-                        {modalQuery.trim() ? `${searchResults.length} match${searchResults.length !== 1 ? 'es' : ''}` : `${searchResults.length} user${searchResults.length !== 1 ? 's' : ''}`}
+                    <Text
+                      style={{
+                        color: '#9ca3af',
+                        fontSize: 11,
+                        fontWeight: '600',
+                        paddingHorizontal: 20,
+                        paddingBottom: 8,
+                        textTransform: 'uppercase',
+                        letterSpacing: 0.5,
+                      }}>
+                      {modalQuery.trim()
+                        ? `${searchResults.length} match${searchResults.length !== 1 ? 'es' : ''}`
+                        : `${searchResults.length} user${searchResults.length !== 1 ? 's' : ''}`}
                     </Text>
                     <FlatList
                       data={searchResults}
@@ -772,63 +935,139 @@ export default function Contacts({ onContactSelected, currentUserId }: ContactsP
                         if (item.status === 'online') status = 'online';
                         else if (item.status === 'busy') status = 'busy';
 
-                        const already = contacts.some(c => c.id === item.id);
+                        const already = contacts.some((c) => c.id === item.id);
                         const isCurrentUser = item.id === activeChatUserId;
                         const isAdmin = (item.role || '').toLowerCase() === 'admin';
                         const avatarColor = getAvatarColor(item.id);
                         const initials = getInitials(item.full_name || item.email || 'U');
 
                         return (
-                          <View style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: '#f3f4f6' }}>
+                          <View
+                            style={{
+                              flexDirection: 'row',
+                              alignItems: 'center',
+                              paddingVertical: 10,
+                              borderBottomWidth: 1,
+                              borderBottomColor: '#f3f4f6',
+                            }}>
                             {/* Avatar */}
                             <View style={{ position: 'relative', marginRight: 12 }}>
-                              <View style={{ width: 44, height: 44, borderRadius: 22, backgroundColor: avatarColor, alignItems: 'center', justifyContent: 'center' }}>
-                                <Text style={{ color: 'white', fontWeight: '700', fontSize: 15 }}>{initials}</Text>
+                              <View
+                                style={{
+                                  width: 44,
+                                  height: 44,
+                                  borderRadius: 22,
+                                  backgroundColor: avatarColor,
+                                  alignItems: 'center',
+                                  justifyContent: 'center',
+                                }}>
+                                <Text style={{ color: 'white', fontWeight: '700', fontSize: 15 }}>
+                                  {initials}
+                                </Text>
                               </View>
-                              <View style={{
-                                position: 'absolute', bottom: 0, right: 0,
-                                width: 12, height: 12, borderRadius: 6, borderWidth: 2, borderColor: 'white',
-                                backgroundColor: status === 'online' ? '#10b981' : status === 'busy' ? '#f59e0b' : '#d1d5db',
-                              }} />
+                              <View
+                                style={{
+                                  position: 'absolute',
+                                  bottom: 0,
+                                  right: 0,
+                                  width: 12,
+                                  height: 12,
+                                  borderRadius: 6,
+                                  borderWidth: 2,
+                                  borderColor: 'white',
+                                  backgroundColor:
+                                    status === 'online'
+                                      ? '#10b981'
+                                      : status === 'busy'
+                                        ? '#f59e0b'
+                                        : '#d1d5db',
+                                }}
+                              />
                             </View>
 
                             {/* Info */}
                             <View style={{ flex: 1, minWidth: 0 }}>
-                              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 2 }}>
-                                <Text style={{ fontWeight: '600', color: '#111827', fontSize: 14 }} numberOfLines={1}>
+                              <View
+                                style={{
+                                  flexDirection: 'row',
+                                  alignItems: 'center',
+                                  gap: 6,
+                                  marginBottom: 2,
+                                }}>
+                                <Text
+                                  style={{ fontWeight: '600', color: '#111827', fontSize: 14 }}
+                                  numberOfLines={1}>
                                   {item.full_name || item.email}
                                 </Text>
-                                <View style={{ backgroundColor: isAdmin ? '#ede9fe' : '#dcfce7', borderRadius: 6, paddingHorizontal: 6, paddingVertical: 1 }}>
-                                  <Text style={{ color: isAdmin ? '#7c3aed' : '#16a34a', fontSize: 10, fontWeight: '700' }}>
+                                <View
+                                  style={{
+                                    backgroundColor: isAdmin ? '#ede9fe' : '#dcfce7',
+                                    borderRadius: 6,
+                                    paddingHorizontal: 6,
+                                    paddingVertical: 1,
+                                  }}>
+                                  <Text
+                                    style={{
+                                      color: isAdmin ? '#7c3aed' : '#16a34a',
+                                      fontSize: 10,
+                                      fontWeight: '700',
+                                    }}>
                                     {isAdmin ? 'Admin' : 'Employee'}
                                   </Text>
                                 </View>
                                 {isCurrentUser && (
-                                  <View style={{ backgroundColor: '#dbeafe', borderRadius: 6, paddingHorizontal: 6, paddingVertical: 1 }}>
-                                    <Text style={{ color: '#2563eb', fontSize: 10, fontWeight: '700' }}>You</Text>
+                                  <View
+                                    style={{
+                                      backgroundColor: '#dbeafe',
+                                      borderRadius: 6,
+                                      paddingHorizontal: 6,
+                                      paddingVertical: 1,
+                                    }}>
+                                    <Text
+                                      style={{ color: '#2563eb', fontSize: 10, fontWeight: '700' }}>
+                                      You
+                                    </Text>
                                   </View>
                                 )}
                               </View>
-                              <Text style={{ color: '#9ca3af', fontSize: 12 }} numberOfLines={1}>{item.email}</Text>
+                              <Text style={{ color: '#9ca3af', fontSize: 12 }} numberOfLines={1}>
+                                {item.email}
+                              </Text>
                             </View>
 
                             {/* Action button */}
                             {isCurrentUser ? null : already ? (
-                              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginLeft: 8 }}>
+                              <View
+                                style={{
+                                  flexDirection: 'row',
+                                  alignItems: 'center',
+                                  gap: 4,
+                                  marginLeft: 8,
+                                }}>
                                 <Ionicons name="checkmark-circle" size={16} color="#10b981" />
-                                <Text style={{ color: '#10b981', fontSize: 12, fontWeight: '600' }}>Added</Text>
+                                <Text style={{ color: '#10b981', fontSize: 12, fontWeight: '600' }}>
+                                  Added
+                                </Text>
                               </View>
                             ) : (
                               <TouchableOpacity
                                 disabled={addingId === item.id}
                                 onPress={() => handleAddUser(item.id)}
                                 activeOpacity={0.75}
-                                style={{ marginLeft: 8, backgroundColor: '#10b981', borderRadius: 10, paddingHorizontal: 14, paddingVertical: 8 }}
-                              >
-                                {addingId === item.id
-                                  ? <ActivityIndicator size="small" color="white" />
-                                  : <Text style={{ color: 'white', fontSize: 12, fontWeight: '700' }}>Add</Text>
-                                }
+                                style={{
+                                  marginLeft: 8,
+                                  backgroundColor: '#10b981',
+                                  borderRadius: 10,
+                                  paddingHorizontal: 14,
+                                  paddingVertical: 8,
+                                }}>
+                                {addingId === item.id ? (
+                                  <ActivityIndicator size="small" color="white" />
+                                ) : (
+                                  <Text style={{ color: 'white', fontSize: 12, fontWeight: '700' }}>
+                                    Add
+                                  </Text>
+                                )}
                               </TouchableOpacity>
                             )}
                           </View>
@@ -836,21 +1075,34 @@ export default function Contacts({ onContactSelected, currentUserId }: ContactsP
                       }}
                     />
                   </>
-
                 ) : modalQuery.trim().length > 0 && !searching ? (
                   <View style={{ alignItems: 'center', paddingVertical: 44 }}>
                     <Ionicons name="search-outline" size={36} color="#d1d5db" />
-                    <Text style={{ color: '#374151', fontWeight: '600', fontSize: 15, marginTop: 12 }}>No matches</Text>
-                    <Text style={{ color: '#9ca3af', fontSize: 13, marginTop: 4 }}>Try a different name, email, or phone</Text>
+                    <Text
+                      style={{ color: '#374151', fontWeight: '600', fontSize: 15, marginTop: 12 }}>
+                      No matches
+                    </Text>
+                    <Text style={{ color: '#9ca3af', fontSize: 13, marginTop: 4 }}>
+                      Try a different name, email, or phone
+                    </Text>
                   </View>
-
                 ) : (
                   <View style={{ alignItems: 'center', paddingVertical: 40 }}>
-                    <View style={{ backgroundColor: '#f0fdf4', borderRadius: 16, padding: 16, marginBottom: 12 }}>
+                    <View
+                      style={{
+                        backgroundColor: '#f0fdf4',
+                        borderRadius: 16,
+                        padding: 16,
+                        marginBottom: 12,
+                      }}>
                       <Ionicons name="person-add-outline" size={30} color="#10b981" />
                     </View>
-                    <Text style={{ color: '#374151', fontWeight: '600', fontSize: 15 }}>Find someone to add</Text>
-                    <Text style={{ color: '#9ca3af', fontSize: 13, marginTop: 4 }}>Loading users…</Text>
+                    <Text style={{ color: '#374151', fontWeight: '600', fontSize: 15 }}>
+                      Find someone to add
+                    </Text>
+                    <Text style={{ color: '#9ca3af', fontSize: 13, marginTop: 4 }}>
+                      Loading users…
+                    </Text>
                   </View>
                 )}
               </View>
@@ -862,53 +1114,46 @@ export default function Contacts({ onContactSelected, currentUserId }: ContactsP
         className="flex-1 bg-white"
         showsVerticalScrollIndicator={false}
         contentContainerStyle={{ paddingBottom: 80 }}
-        refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} />
-        }
-      >
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} />}>
         <View className="px-6 py-6">
           {loading && !refreshing ? (
             <View className="items-center justify-center py-16">
               <ActivityIndicator size="large" color="#10b981" />
-              <Text className="text-gray-500 mt-4">Loading contacts...</Text>
+              <Text className="mt-4 text-gray-500">Loading contacts...</Text>
             </View>
           ) : filteredContacts.length > 0 ? (
             filteredContacts.map((contact) => (
               <TouchableOpacity
                 key={contact.id}
-                className="mb-4 flex-row items-center rounded-2xl bg-white px-4 py-4 shadow-sm shadow-green-100 border-2 border-green-100 active:scale-95 active:bg-green-50"
+                className="mb-4 flex-row items-center rounded-2xl border-2 border-green-100 bg-white px-4 py-4 shadow-sm shadow-green-100 active:scale-95 active:bg-green-50"
                 onPress={() => {
                   const now = new Date().toISOString();
                   // Record when this chat was opened (marks all current messages as read)
                   const updatedMap = { ...lastReadMap, [contact.id]: now };
                   setLastReadMap(updatedMap);
                   // Persist to AsyncStorage so unread state survives app restarts
-                  AsyncStorage.setItem(LAST_READ_STORAGE_KEY, JSON.stringify(updatedMap)).catch(() => {});
+                  AsyncStorage.setItem(LAST_READ_STORAGE_KEY, JSON.stringify(updatedMap)).catch(
+                    () => {}
+                  );
                   // Mark contact as read
-                  const updatedContacts = contacts.map(c =>
-                    c.id === contact.id
-                      ? { ...c, unreadCount: 0 }
-                      : c
+                  const updatedContacts = contacts.map((c) =>
+                    c.id === contact.id ? { ...c, unreadCount: 0 } : c
                   );
                   setContacts(updatedContacts);
                   const readContact = { ...contact, unreadCount: 0 };
                   setSelectedContact(readContact);
                   onContactSelected?.(readContact);
-                }}
-              >
+                }}>
                 {/* Avatar */}
                 <View className="relative">
                   <View
                     className="h-14 w-14 items-center justify-center rounded-full shadow-md"
-                    style={{ backgroundColor: contact.avatar_color }}
-                  >
-                    <Text className="font-bold text-white text-base">
-                      {contact.initials}
-                    </Text>
+                    style={{ backgroundColor: contact.avatar_color }}>
+                    <Text className="text-base font-bold text-white">{contact.initials}</Text>
                   </View>
                   {/* Status Indicator */}
                   <View
-                    className={`absolute bottom-0 right-0 h-4 w-4 rounded-full border-3 border-white ${
+                    className={`border-3 absolute bottom-0 right-0 h-4 w-4 rounded-full border-white ${
                       contact.status === 'online'
                         ? 'bg-green-500'
                         : contact.status === 'busy'
@@ -919,28 +1164,35 @@ export default function Contacts({ onContactSelected, currentUserId }: ContactsP
                 </View>
 
                 {/* Contact Info */}
-                <View className="flex-1 ml-4">
-                  <View className="flex-row items-center gap-2 mb-1">
-                    <Text className="font-bold text-gray-900 text-base flex-1">
-                      {contact.name}
-                    </Text>
+                <View className="ml-4 flex-1">
+                  <View className="mb-1 flex-row items-center gap-2">
+                    <Text className="flex-1 text-base font-bold text-gray-900">{contact.name}</Text>
                   </View>
-                  <Text className="text-gray-600 text-xs font-normal mb-2">
-                    {contact.role}
-                  </Text>
+                  <Text className="mb-2 text-xs font-normal text-gray-600">{contact.role}</Text>
                   {contact.lastMessage !== undefined ? (
-                    <View className="flex-row items-center gap-2 mt-1">
-                      <Ionicons name="chatbubble-outline" size={14} color={contact.unreadCount && contact.unreadCount > 0 ? '#10b981' : '#9ca3af'} />
-                      <Text className={`text-xs flex-1 ${contact.unreadCount && contact.unreadCount > 0 ? 'text-gray-900 font-bold' : 'text-gray-500 font-normal'}`} numberOfLines={1}>
+                    <View className="mt-1 flex-row items-center gap-2">
+                      <Ionicons
+                        name="chatbubble-outline"
+                        size={14}
+                        color={
+                          contact.unreadCount && contact.unreadCount > 0 ? '#10b981' : '#9ca3af'
+                        }
+                      />
+                      <Text
+                        className={`flex-1 text-xs ${contact.unreadCount && contact.unreadCount > 0 ? 'font-bold text-gray-900' : 'font-normal text-gray-500'}`}
+                        numberOfLines={1}>
                         {contact.lastMessage || 'Message'}
                       </Text>
                       <View className="flex-row items-center gap-1">
-                        <Text className={`text-xs ${contact.unreadCount && contact.unreadCount > 0 ? 'text-green-600 font-bold' : 'text-gray-400 font-normal'}`}>
+                        <Text
+                          className={`text-xs ${contact.unreadCount && contact.unreadCount > 0 ? 'font-bold text-green-600' : 'font-normal text-gray-400'}`}>
                           {contact.lastMessageTime}
                         </Text>
                         {contact.unreadCount !== undefined && contact.unreadCount > 0 && (
-                          <View className="bg-red-500 rounded-full h-5 w-5 items-center justify-center ml-1">
-                            <Text className="text-white text-xs font-bold">{contact.unreadCount > 9 ? '9+' : contact.unreadCount}</Text>
+                          <View className="ml-1 h-5 w-5 items-center justify-center rounded-full bg-red-500">
+                            <Text className="text-xs font-bold text-white">
+                              {contact.unreadCount > 9 ? '9+' : contact.unreadCount}
+                            </Text>
                           </View>
                         )}
                       </View>
@@ -948,16 +1200,14 @@ export default function Contacts({ onContactSelected, currentUserId }: ContactsP
                   ) : (
                     <View className="flex-row items-center gap-2">
                       <Ionicons name="chatbubble-outline" size={14} color="#d1d5db" />
-                      <Text className="text-gray-400 text-xs">No messages yet</Text>
+                      <Text className="text-xs text-gray-400">No messages yet</Text>
                     </View>
                   )}
                 </View>
 
                 {/* Quick Actions */}
-                <View className="flex-row gap-2 ml-2">
-                  <TouchableOpacity
-                    className="bg-green-50 p-2 rounded-full active:scale-90"
-                  >
+                <View className="ml-2 flex-row gap-2">
+                  <TouchableOpacity className="rounded-full bg-green-50 p-2 active:scale-90">
                     <Ionicons name="chevron-forward" size={16} color="#10b981" />
                   </TouchableOpacity>
                 </View>
@@ -965,11 +1215,13 @@ export default function Contacts({ onContactSelected, currentUserId }: ContactsP
             ))
           ) : (
             <View className="items-center justify-center py-16">
-              <View className="bg-green-50 p-4 rounded-full mb-4">
+              <View className="mb-4 rounded-full bg-green-50 p-4">
                 <Ionicons name="search" size={48} color="#d1d5db" />
               </View>
-              <Text className="text-gray-500 font-semibold text-base">No contacts found</Text>
-              <Text className="text-gray-400 text-sm mt-2">Try adjusting your filters or search</Text>
+              <Text className="text-base font-semibold text-gray-500">No contacts found</Text>
+              <Text className="mt-2 text-sm text-gray-400">
+                Try adjusting your filters or search
+              </Text>
             </View>
           )}
         </View>

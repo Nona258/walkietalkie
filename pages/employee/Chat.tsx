@@ -1,5 +1,13 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { View, Text, TouchableOpacity, ScrollView, TextInput, Alert, ActivityIndicator } from 'react-native';
+import {
+  View,
+  Text,
+  TouchableOpacity,
+  ScrollView,
+  TextInput,
+  Alert,
+  ActivityIndicator,
+} from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import supabase, { getOrCreateConversation } from '../../utils/supabase';
 
@@ -11,7 +19,7 @@ interface Contact {
   status: 'online' | 'offline' | 'busy';
   avatar_color: string;
   isGroup?: boolean;
-  groupId?: string;
+  siteId?: string;
 }
 
 interface Message {
@@ -19,7 +27,7 @@ interface Message {
   sender: string;
   content: string;
   timestamp: string;
-  _rawTs?: string;        // full ISO timestamp for date grouping
+  _rawTs?: string; // full ISO timestamp for date grouping
   isOwn: boolean;
   status?: 'sending' | 'sent' | 'delivered' | 'read';
   type?: 'text' | 'image' | 'media' | 'voice';
@@ -28,8 +36,6 @@ interface Message {
   audioUrl?: string;
   duration?: string;
 }
-
-
 
 interface ChatProps {
   selectedContact: Contact;
@@ -40,8 +46,7 @@ interface ChatProps {
 // ── helpers ──────────────────────────────────────────────────────────────
 const padZero = (n: number) => String(n).padStart(2, '0');
 
-const formatDuration = (seconds: number) =>
-  `${Math.floor(seconds / 60)}:${padZero(seconds % 60)}`;
+const formatDuration = (seconds: number) => `${Math.floor(seconds / 60)}:${padZero(seconds % 60)}`;
 
 const parseDurationToMs = (duration?: string): number | null => {
   if (!duration) return null;
@@ -74,7 +79,12 @@ const dateDayKey = (timestamp: string): string => {
 };
 
 /** Returns the delivery label for own messages */
-const getDeliveryLabel = (rawTs: string, status: string, isRead: boolean | undefined, now: Date): string => {
+const getDeliveryLabel = (
+  rawTs: string,
+  status: string,
+  isRead: boolean | undefined,
+  now: Date
+): string => {
   if (status === 'sending') return 'Sending...';
   if (isRead) return 'Seen';
   const diffMs = now.getTime() - new Date(rawTs).getTime();
@@ -88,7 +98,7 @@ const getDeliveryLabel = (rawTs: string, status: string, isRead: boolean | undef
 
 export default function Chat({ selectedContact, onBackPress, currentUserId }: ChatProps) {
   const isGroupChat = !!selectedContact?.isGroup;
-  const activeGroupId = isGroupChat ? (selectedContact.groupId || selectedContact.id) : null;
+  const activeSiteId = isGroupChat ? selectedContact.siteId || null : null;
 
   const [messages, setMessages] = useState<Message[]>([]);
   const [messageText, setMessageText] = useState('');
@@ -97,9 +107,7 @@ export default function Chat({ selectedContact, onBackPress, currentUserId }: Ch
   const [recordingTime, setRecordingTime] = useState(0);
   const [isTyping, setIsTyping] = useState(false);
   const [loadingMessages, setLoadingMessages] = useState(true);
-  const [activeChatUserId, setActiveChatUserId] = useState<string | null>(
-    currentUserId || null
-  );
+  const [activeChatUserId, setActiveChatUserId] = useState<string | null>(currentUserId || null);
   const [conversationId, setConversationId] = useState<string | null>(null);
   const [currentlyPlayingId, setCurrentlyPlayingId] = useState<string | null>(null);
   // Ticks every 30 s so delivery labels like "Delivered 2 minutes ago" stay up-to-date
@@ -145,7 +153,7 @@ export default function Chat({ selectedContact, onBackPress, currentUserId }: Ch
 
   // Fetch messages for the active chat (DM or group)
   useEffect(() => {
-    if (!activeChatUserId || !selectedContact?.id || (isGroupChat && !activeGroupId)) {
+    if (!activeChatUserId || !selectedContact?.id || (isGroupChat && !activeSiteId)) {
       setMessages([]);
       setConversationId(null);
       setLoadingMessages(false);
@@ -162,8 +170,8 @@ export default function Chat({ selectedContact, onBackPress, currentUserId }: Ch
       messagesSubscriptionRef.current = null;
     }
 
-    if (isGroupChat && activeGroupId) {
-      fetchGroupMessages(activeGroupId);
+    if (isGroupChat && activeSiteId) {
+      fetchSiteMessages(activeSiteId);
     } else {
       fetchConversationMessages();
       // Note: setupRealtimeSubscription is called inside fetchConversationMessages
@@ -176,7 +184,7 @@ export default function Chat({ selectedContact, onBackPress, currentUserId }: Ch
         messagesSubscriptionRef.current = null;
       }
     };
-  }, [selectedContact?.id, isGroupChat, activeGroupId, activeChatUserId]);
+  }, [selectedContact?.id, isGroupChat, activeSiteId, activeChatUserId]);
 
   const fetchConversationMessages = async () => {
     try {
@@ -267,7 +275,7 @@ export default function Chat({ selectedContact, onBackPress, currentUserId }: Ch
     }
   };
 
-  const fetchGroupMessages = async (groupId: string) => {
+  const fetchSiteMessages = async (siteId: string) => {
     try {
       setLoadingMessages(true);
       setConversationId(null);
@@ -286,12 +294,12 @@ export default function Chat({ selectedContact, onBackPress, currentUserId }: Ch
         return;
       }
 
-      setupGroupRealtimeSubscription(groupId);
+      setupSiteRealtimeSubscription(siteId);
 
       const { data: rows, error } = await supabase
         .from('messages')
         .select('*')
-        .eq('group_id', groupId)
+        .eq('site_id', siteId)
         .order('created_at', { ascending: true });
 
       if (error) {
@@ -332,8 +340,8 @@ export default function Chat({ selectedContact, onBackPress, currentUserId }: Ch
     }
   };
 
-  const setupGroupRealtimeSubscription = (groupId: string) => {
-    if (!groupId) return;
+  const setupSiteRealtimeSubscription = (siteId: string) => {
+    if (!siteId) return;
 
     // Avoid duplicate subscriptions
     if (messagesSubscriptionRef.current) {
@@ -343,14 +351,14 @@ export default function Chat({ selectedContact, onBackPress, currentUserId }: Ch
 
     try {
       messagesSubscriptionRef.current = supabase
-        .channel(`messages:group:${groupId}`)
+        .channel(`messages:site:${siteId}`)
         .on(
           'postgres_changes',
           {
             event: 'INSERT',
             schema: 'public',
             table: 'messages',
-            filter: `group_id=eq.${groupId}`,
+            filter: `site_id=eq.${siteId}`,
           },
           async (payload) => {
             const newMsg = payload.new as any;
@@ -360,15 +368,15 @@ export default function Chat({ selectedContact, onBackPress, currentUserId }: Ch
 
             const created = newMsg.created_at ? new Date(newMsg.created_at) : new Date();
 
-            const looksLikeVoice = !!(newMsg.file_url && newMsg.file_url.length > 0) ||
+            const looksLikeVoice =
+              !!(newMsg.file_url && newMsg.file_url.length > 0) ||
               typeof newMsg.duration_ms === 'number';
 
             let audioUrl: string | undefined = looksLikeVoice
-              ? (newMsg.file_url || undefined)
+              ? newMsg.file_url || undefined
               : undefined;
-            let durationMs: number | null = typeof newMsg.duration_ms === 'number'
-              ? newMsg.duration_ms
-              : null;
+            let durationMs: number | null =
+              typeof newMsg.duration_ms === 'number' ? newMsg.duration_ms : null;
 
             if (looksLikeVoice) {
               try {
@@ -379,9 +387,8 @@ export default function Chat({ selectedContact, onBackPress, currentUserId }: Ch
                   .single();
                 if (fullRow) {
                   audioUrl = fullRow.file_url || undefined;
-                  durationMs = typeof fullRow.duration_ms === 'number'
-                    ? fullRow.duration_ms
-                    : durationMs;
+                  durationMs =
+                    typeof fullRow.duration_ms === 'number' ? fullRow.duration_ms : durationMs;
                 }
               } catch (fetchErr) {
                 console.warn('Could not re-fetch group voice message row:', fetchErr);
@@ -455,15 +462,15 @@ export default function Chat({ selectedContact, onBackPress, currentUserId }: Ch
             // we detect voice by the presence of the file_url field on the row OR
             // by duration_ms being set, then re-fetch the full row to get the
             // complete audio data.
-            const looksLikeVoice = !!(newMsg.file_url && newMsg.file_url.length > 0) ||
+            const looksLikeVoice =
+              !!(newMsg.file_url && newMsg.file_url.length > 0) ||
               typeof newMsg.duration_ms === 'number';
 
             let audioUrl: string | undefined = looksLikeVoice
-              ? (newMsg.file_url || undefined)
+              ? newMsg.file_url || undefined
               : undefined;
-            let durationMs: number | null = typeof newMsg.duration_ms === 'number'
-              ? newMsg.duration_ms
-              : null;
+            let durationMs: number | null =
+              typeof newMsg.duration_ms === 'number' ? newMsg.duration_ms : null;
 
             if (looksLikeVoice) {
               // Re-fetch the full row so we always get the complete file_url
@@ -476,9 +483,8 @@ export default function Chat({ selectedContact, onBackPress, currentUserId }: Ch
                   .single();
                 if (fullRow) {
                   audioUrl = fullRow.file_url || undefined;
-                  durationMs = typeof fullRow.duration_ms === 'number'
-                    ? fullRow.duration_ms
-                    : durationMs;
+                  durationMs =
+                    typeof fullRow.duration_ms === 'number' ? fullRow.duration_ms : durationMs;
                 }
               } catch (fetchErr) {
                 console.warn('Could not re-fetch voice message row:', fetchErr);
@@ -524,9 +530,7 @@ export default function Chat({ selectedContact, onBackPress, currentUserId }: Ch
             const updated = payload.new as any;
             if (updated.is_read === true) {
               setMessages((prev) =>
-                prev.map((m) =>
-                  m.id === String(updated.id) ? { ...m, isRead: true } : m
-                )
+                prev.map((m) => (m.id === String(updated.id) ? { ...m, isRead: true } : m))
               );
             }
           }
@@ -540,10 +544,10 @@ export default function Chat({ selectedContact, onBackPress, currentUserId }: Ch
   // Set up typing broadcast channel when both IDs are known
   useEffect(() => {
     if (!activeChatUserId || !selectedContact?.id) return;
-    if (isGroupChat && !activeGroupId) return;
+    if (isGroupChat && !activeSiteId) return;
 
     const channelName = isGroupChat
-      ? `typing:group:${activeGroupId}`
+      ? `typing:site:${activeSiteId}`
       : `typing:${[activeChatUserId, selectedContact.id].sort().join(':')}`;
     const channel = supabase.channel(channelName);
     typingChannelRef.current = channel;
@@ -567,7 +571,7 @@ export default function Chat({ selectedContact, onBackPress, currentUserId }: Ch
       channel.unsubscribe();
       typingChannelRef.current = null;
     };
-  }, [activeChatUserId, selectedContact?.id, isGroupChat, activeGroupId]);
+  }, [activeChatUserId, selectedContact?.id, isGroupChat, activeSiteId]);
 
   // Handler that updates text and broadcasts typing event
   const handleTypingInput = (text: string) => {
@@ -584,16 +588,14 @@ export default function Chat({ selectedContact, onBackPress, currentUserId }: Ch
   useEffect(() => {
     if (isGroupChat) return;
     const unreadIds = messages
-      .filter(msg => !msg.isOwn && msg.isRead === false)
-      .map(msg => msg.id);
+      .filter((msg) => !msg.isOwn && msg.isRead === false)
+      .map((msg) => msg.id);
     if (unreadIds.length === 0 || !conversationId || !activeChatUserId) return;
 
     const timer = setTimeout(() => {
       // Local update
-      setMessages(msgs =>
-        msgs.map(msg =>
-          !msg.isOwn && msg.isRead === false ? { ...msg, isRead: true } : msg
-        )
+      setMessages((msgs) =>
+        msgs.map((msg) => (!msg.isOwn && msg.isRead === false ? { ...msg, isRead: true } : msg))
       );
       // DB update
       supabase
@@ -612,7 +614,7 @@ export default function Chat({ selectedContact, onBackPress, currentUserId }: Ch
   // ── Voice recording ──────────────────────────────────────────────────────
   const startRecording = () => {
     if (isGroupChat) {
-      if (!activeGroupId) {
+      if (!activeSiteId) {
         Alert.alert('Not ready', 'Group chat not ready yet. Please wait a moment.');
         return;
       }
@@ -625,10 +627,7 @@ export default function Chat({ selectedContact, onBackPress, currentUserId }: Ch
     pendingStopRef.current = false;
     setIsRecording(true);
     setRecordingTime(0);
-    recordingIntervalRef.current = setInterval(
-      () => setRecordingTime(prev => prev + 1),
-      1000
-    );
+    recordingIntervalRef.current = setInterval(() => setRecordingTime((prev) => prev + 1), 1000);
 
     (async () => {
       try {
@@ -643,15 +642,11 @@ export default function Chat({ selectedContact, onBackPress, currentUserId }: Ch
           'audio/ogg',
           'audio/mp4',
         ];
-        const mimeType = candidates.find(
-          t => (window as any).MediaRecorder?.isTypeSupported?.(t)
-        ) || '';
+        const mimeType =
+          candidates.find((t) => (window as any).MediaRecorder?.isTypeSupported?.(t)) || '';
         recordingMimeRef.current = mimeType || 'audio/webm';
 
-        const mr = new (window as any).MediaRecorder(
-          stream,
-          mimeType ? { mimeType } : undefined
-        );
+        const mr = new (window as any).MediaRecorder(stream, mimeType ? { mimeType } : undefined);
         mr.ondataavailable = (e: any) => {
           if (e.data && e.data.size > 0) audioChunksRef.current.push(e.data);
         };
@@ -661,8 +656,12 @@ export default function Chat({ selectedContact, onBackPress, currentUserId }: Ch
         // If stopRecording was tapped while mic was starting up, stop immediately
         if (pendingStopRef.current) {
           pendingStopRef.current = false;
-          try { mr.stop(); } catch (_) {}
-          try { stream.getTracks().forEach((t: any) => t.stop()); } catch (_) {}
+          try {
+            mr.stop();
+          } catch (_) {}
+          try {
+            stream.getTracks().forEach((t: any) => t.stop());
+          } catch (_) {}
           mediaRecorderRef.current = null;
           audioChunksRef.current = [];
           if (recordingIntervalRef.current) {
@@ -729,21 +728,20 @@ export default function Chat({ selectedContact, onBackPress, currentUserId }: Ch
           audioUrl: dataUrl,
           duration,
         };
-        setMessages(prev => [...prev, tempMsg]);
+        setMessages((prev) => [...prev, tempMsg]);
         setTimeout(() => scrollViewRef.current?.scrollToEnd({ animated: true }), 100);
 
         if (!activeChatUserId) {
-          setMessages(msgs => msgs.filter(m => m.id !== tempId));
+          setMessages((msgs) => msgs.filter((m) => m.id !== tempId));
           return;
         }
 
         const insertPayload: any = isGroupChat
           ? {
               conversation_id: null,
-              group_id: activeGroupId,
+              site_id: activeSiteId,
               sender_id: activeChatUserId,
-              // receiver_id is kept non-null to satisfy existing schema; group delivery uses group_id filter.
-              receiver_id: activeChatUserId,
+              receiver_id: null,
               file_url: dataUrl,
               duration_ms: parseDurationToMs(duration),
               created_at: new Date().toISOString(),
@@ -757,12 +755,12 @@ export default function Chat({ selectedContact, onBackPress, currentUserId }: Ch
               created_at: new Date().toISOString(),
             };
 
-        if (isGroupChat && !activeGroupId) {
-          setMessages(msgs => msgs.filter(m => m.id !== tempId));
+        if (isGroupChat && !activeSiteId) {
+          setMessages((msgs) => msgs.filter((m) => m.id !== tempId));
           return;
         }
         if (!isGroupChat && !conversationId) {
-          setMessages(msgs => msgs.filter(m => m.id !== tempId));
+          setMessages((msgs) => msgs.filter((m) => m.id !== tempId));
           return;
         }
 
@@ -774,16 +772,14 @@ export default function Chat({ selectedContact, onBackPress, currentUserId }: Ch
 
         if (error) throw error;
 
-        setMessages(msgs =>
-          msgs.map(m =>
+        setMessages((msgs) =>
+          msgs.map((m) =>
             m.id === tempId ? { ...m, id: String(data.id), status: 'sent' as const } : m
           )
         );
         setTimeout(() => {
-          setMessages(msgs =>
-            msgs.map(m =>
-              m.id === String(data.id) ? { ...m, status: 'delivered' as const } : m
-            )
+          setMessages((msgs) =>
+            msgs.map((m) => (m.id === String(data.id) ? { ...m, status: 'delivered' as const } : m))
           );
         }, 500);
       } catch (err) {
@@ -794,8 +790,12 @@ export default function Chat({ selectedContact, onBackPress, currentUserId }: Ch
       }
     };
 
-    try { mr.stop(); } catch (e) {}
-    try { ref.stream.getTracks().forEach((t: any) => t.stop()); } catch (e) {}
+    try {
+      mr.stop();
+    } catch (e) {}
+    try {
+      ref.stream.getTracks().forEach((t: any) => t.stop());
+    } catch (e) {}
     mediaRecorderRef.current = null;
   };
 
@@ -804,7 +804,9 @@ export default function Chat({ selectedContact, onBackPress, currentUserId }: Ch
 
     // Toggle off if already playing this message
     if (currentlyPlayingId === message.id && audioPlayerRef.current) {
-      try { audioPlayerRef.current.pause(); } catch (e) {}
+      try {
+        audioPlayerRef.current.pause();
+      } catch (e) {}
       audioPlayerRef.current = null;
       setCurrentlyPlayingId(null);
       return;
@@ -827,7 +829,7 @@ export default function Chat({ selectedContact, onBackPress, currentUserId }: Ch
       setCurrentlyPlayingId(null);
       audioPlayerRef.current = null;
     };
-    audio.play().catch(e => {
+    audio.play().catch((e) => {
       console.error('Playback failed:', e);
       setCurrentlyPlayingId(null);
     });
@@ -840,7 +842,10 @@ export default function Chat({ selectedContact, onBackPress, currentUserId }: Ch
     return () => {
       clearInterval(ticker);
       if (audioPlayerRef.current) {
-        try { audioPlayerRef.current.pause(); audioPlayerRef.current.src = ''; } catch (e) {}
+        try {
+          audioPlayerRef.current.pause();
+          audioPlayerRef.current.src = '';
+        } catch (e) {}
         audioPlayerRef.current = null;
       }
       if (recordingIntervalRef.current) clearInterval(recordingIntervalRef.current);
@@ -850,10 +855,10 @@ export default function Chat({ selectedContact, onBackPress, currentUserId }: Ch
 
   const handleSendMessage = async () => {
     if (!messageText.trim() || !activeChatUserId) return;
-    
+
     const messageContent = messageText.trim();
     const tempId = Date.now().toString();
-    
+
     // Add to UI optimistically
     const newMessage: Message = {
       id: tempId,
@@ -873,15 +878,15 @@ export default function Chat({ selectedContact, onBackPress, currentUserId }: Ch
 
     try {
       if (isGroupChat) {
-        if (!activeGroupId) {
+        if (!activeSiteId) {
           console.error('No group ID available');
-          setMessages(msgs => msgs.filter(m => m.id !== tempId));
+          setMessages((msgs) => msgs.filter((m) => m.id !== tempId));
           return;
         }
       } else {
         if (!conversationId) {
           console.error('No conversation ID available');
-          setMessages(msgs => msgs.filter(m => m.id !== tempId));
+          setMessages((msgs) => msgs.filter((m) => m.id !== tempId));
           return;
         }
       }
@@ -889,9 +894,9 @@ export default function Chat({ selectedContact, onBackPress, currentUserId }: Ch
       const insertPayload: any = isGroupChat
         ? {
             conversation_id: null,
-            group_id: activeGroupId,
+            site_id: activeSiteId,
             sender_id: activeChatUserId,
-            receiver_id: activeChatUserId,
+            receiver_id: null,
             transcription: messageContent,
             created_at: new Date().toISOString(),
           }
@@ -913,27 +918,23 @@ export default function Chat({ selectedContact, onBackPress, currentUserId }: Ch
       if (error) throw error;
 
       // Update message with real id and mark as sent
-      setMessages(msgs =>
-        msgs.map(m =>
-          m.id === tempId 
-            ? { ...m, id: String(data.id), status: 'sent' as const } 
-            : m
+      setMessages((msgs) =>
+        msgs.map((m) =>
+          m.id === tempId ? { ...m, id: String(data.id), status: 'sent' as const } : m
         )
       );
 
       // Mark as delivered after a short delay
       setTimeout(() => {
-        setMessages(msgs =>
-          msgs.map(m =>
-            m.id === String(data.id) ? { ...m, status: 'delivered' as const } : m
-          )
+        setMessages((msgs) =>
+          msgs.map((m) => (m.id === String(data.id) ? { ...m, status: 'delivered' as const } : m))
         );
       }, 500);
     } catch (error) {
       console.error('Error sending message:', error);
       Alert.alert('Error', 'Failed to send message');
       // Remove the failed message
-      setMessages(msgs => msgs.filter(m => m.id !== tempId));
+      setMessages((msgs) => msgs.filter((m) => m.id !== tempId));
     }
   };
 
@@ -943,18 +944,16 @@ export default function Chat({ selectedContact, onBackPress, currentUserId }: Ch
   return (
     <View className="flex-1 bg-white">
       {/* Chat Header */}
-      <View className="bg-white px-6 py-6 pt-12 border-b border-green-100">
-        <View className="flex-row items-center justify-between mb-4">
+      <View className="border-b border-green-100 bg-white px-6 py-6 pt-12">
+        <View className="mb-4 flex-row items-center justify-between">
           <TouchableOpacity onPress={onBackPress} className="active:scale-90">
-            <View className="bg-green-50 p-2 rounded-full">
+            <View className="rounded-full bg-green-50 p-2">
               <Ionicons name="chevron-back" size={24} color="#10b981" />
             </View>
           </TouchableOpacity>
-          <View className="flex-1 mx-4">
-            <Text className="text-lg font-bold text-gray-900">
-              {selectedContact.name}
-            </Text>
-            <View className="flex-row items-center gap-2 mt-1">
+          <View className="mx-4 flex-1">
+            <Text className="text-lg font-bold text-gray-900">{selectedContact.name}</Text>
+            <View className="mt-1 flex-row items-center gap-2">
               <View
                 className={`h-2 w-2 rounded-full ${
                   isGroupChat
@@ -966,15 +965,16 @@ export default function Chat({ selectedContact, onBackPress, currentUserId }: Ch
                         : 'bg-gray-300'
                 }`}
               />
-              <Text className={`text-xs font-semibold ${
-                isGroupChat
-                  ? 'text-green-600'
-                  : selectedContact.status === 'online'
+              <Text
+                className={`text-xs font-semibold ${
+                  isGroupChat
                     ? 'text-green-600'
-                    : selectedContact.status === 'busy'
-                      ? 'text-yellow-600'
-                      : 'text-gray-500'
-              }`}>
+                    : selectedContact.status === 'online'
+                      ? 'text-green-600'
+                      : selectedContact.status === 'busy'
+                        ? 'text-yellow-600'
+                        : 'text-gray-500'
+                }`}>
                 {isGroupChat
                   ? 'Team chat'
                   : selectedContact.status === 'online'
@@ -986,7 +986,7 @@ export default function Chat({ selectedContact, onBackPress, currentUserId }: Ch
             </View>
           </View>
           <TouchableOpacity className="active:scale-90">
-            <View className="bg-green-50 p-2 rounded-full">
+            <View className="rounded-full bg-green-50 p-2">
               <Ionicons name="information-circle" size={24} color="#10b981" />
             </View>
           </TouchableOpacity>
@@ -999,20 +999,19 @@ export default function Chat({ selectedContact, onBackPress, currentUserId }: Ch
         className="flex-1 bg-white"
         showsVerticalScrollIndicator={false}
         contentContainerStyle={{ paddingVertical: 20, paddingHorizontal: 16 }}
-        onContentSizeChange={() => scrollViewRef.current?.scrollToEnd({ animated: true })}
-      >
+        onContentSizeChange={() => scrollViewRef.current?.scrollToEnd({ animated: true })}>
         {loadingMessages ? (
           <View className="items-center justify-center py-12">
             <ActivityIndicator size="large" color="#10b981" />
-            <Text className="text-gray-500 mt-4 text-sm">Loading messages...</Text>
+            <Text className="mt-4 text-sm text-gray-500">Loading messages...</Text>
           </View>
         ) : messages.length === 0 ? (
           <View className="items-center justify-center py-12">
-            <View className="bg-green-50 p-4 rounded-full mb-4">
+            <View className="mb-4 rounded-full bg-green-50 p-4">
               <Ionicons name="chatbubbles-outline" size={48} color="#d1d5db" />
             </View>
-            <Text className="text-gray-500 font-semibold">No messages yet</Text>
-            <Text className="text-gray-400 text-sm mt-2">Start the conversation!</Text>
+            <Text className="font-semibold text-gray-500">No messages yet</Text>
+            <Text className="mt-2 text-sm text-gray-400">Start the conversation!</Text>
           </View>
         ) : (
           <>
@@ -1038,133 +1037,145 @@ export default function Chat({ selectedContact, onBackPress, currentUserId }: Ch
                 const showTimestamp = expandedMessageId === message.id;
 
                 const shouldShowAvatar =
-                  !message.isOwn &&
-                  (index === messages.length - 1 || messages[index + 1].isOwn);
+                  !message.isOwn && (index === messages.length - 1 || messages[index + 1].isOwn);
                 const isPlaying = currentlyPlayingId === message.id;
 
                 return (
                   <View key={message.id}>
                     {showDateSep && (
-                      <View className="items-center my-4">
-                        <View className="bg-green-100 px-4 py-1.5 rounded-full">
-                          <Text className="text-green-700 text-xs font-bold">
+                      <View className="my-4 items-center">
+                        <View className="rounded-full bg-green-100 px-4 py-1.5">
+                          <Text className="text-xs font-bold text-green-700">
                             {getDateLabel(rawTs)}
                           </Text>
                         </View>
                       </View>
                     )}
-                  <View
-                    className={`mb-3 flex-row ${
-                      message.isOwn ? 'justify-end' : 'justify-start'
-                    }`}
-                  >
-                    {!message.isOwn && shouldShowAvatar && (
-                      <View
-                        className="h-8 w-8 items-center justify-center rounded-full mr-2 shadow-sm"
-                        style={{ backgroundColor: selectedContact.avatar_color }}
-                      >
-                        <Text className="font-bold text-white text-xs">
-                          {selectedContact.initials}
-                        </Text>
-                      </View>
-                    )}
-                    {!message.isOwn && !shouldShowAvatar && <View className="w-10 mr-2" />}
+                    <View
+                      className={`mb-3 flex-row ${
+                        message.isOwn ? 'justify-end' : 'justify-start'
+                      }`}>
+                      {!message.isOwn && shouldShowAvatar && (
+                        <View
+                          className="mr-2 h-8 w-8 items-center justify-center rounded-full shadow-sm"
+                          style={{ backgroundColor: selectedContact.avatar_color }}>
+                          <Text className="text-xs font-bold text-white">
+                            {selectedContact.initials}
+                          </Text>
+                        </View>
+                      )}
+                      {!message.isOwn && !shouldShowAvatar && <View className="mr-2 w-10" />}
 
-                    <View className={`max-w-[75%] ${message.isOwn ? 'items-end' : ''}`}>
-                      {message.isVoice ? (
-                        /* ── Voice message bubble ── */
-                        <TouchableOpacity
-                          onPress={() => {
-                            handlePlayVoice(message);
-                            setExpandedMessageId(prev => prev === message.id ? null : message.id);
-                          }}
-                          className={`flex-row items-center gap-3 rounded-3xl px-4 py-3 shadow-sm ${
-                            message.isOwn
-                              ? 'bg-green-500 shadow-green-200'
-                              : 'bg-green-50 border-2 border-green-100 shadow-green-100'
-                          }`}
-                          style={{ minWidth: 160 }}
-                        >
-                          <View className={`w-8 h-8 rounded-full items-center justify-center ${
-                            message.isOwn ? 'bg-white/20' : 'bg-green-100'
-                          }`}>
-                            <Ionicons
-                              name={isPlaying ? 'pause' : 'play'}
-                              size={16}
-                              color={message.isOwn ? '#ffffff' : '#10b981'}
-                            />
-                          </View>
-                          <View className="flex-1">
-                            <View className="flex-row items-center gap-0.5 mb-1">
-                              {[...Array(12)].map((_, i) => (
-                                <View
-                                  key={i}
-                                  style={{ height: 4 + Math.abs(Math.sin(i * 0.8)) * 14, width: 3, borderRadius: 2 }}
-                                  className={message.isOwn ? 'bg-white/70' : 'bg-green-400'}
-                                />
-                              ))}
+                      <View className={`max-w-[75%] ${message.isOwn ? 'items-end' : ''}`}>
+                        {message.isVoice ? (
+                          /* ── Voice message bubble ── */
+                          <TouchableOpacity
+                            onPress={() => {
+                              handlePlayVoice(message);
+                              setExpandedMessageId((prev) =>
+                                prev === message.id ? null : message.id
+                              );
+                            }}
+                            className={`flex-row items-center gap-3 rounded-3xl px-4 py-3 shadow-sm ${
+                              message.isOwn
+                                ? 'bg-green-500 shadow-green-200'
+                                : 'border-2 border-green-100 bg-green-50 shadow-green-100'
+                            }`}
+                            style={{ minWidth: 160 }}>
+                            <View
+                              className={`h-8 w-8 items-center justify-center rounded-full ${
+                                message.isOwn ? 'bg-white/20' : 'bg-green-100'
+                              }`}>
+                              <Ionicons
+                                name={isPlaying ? 'pause' : 'play'}
+                                size={16}
+                                color={message.isOwn ? '#ffffff' : '#10b981'}
+                              />
                             </View>
-                            <Text className={`text-xs font-semibold ${
-                              message.isOwn ? 'text-white/80' : 'text-green-600'
+                            <View className="flex-1">
+                              <View className="mb-1 flex-row items-center gap-0.5">
+                                {[...Array(12)].map((_, i) => (
+                                  <View
+                                    key={i}
+                                    style={{
+                                      height: 4 + Math.abs(Math.sin(i * 0.8)) * 14,
+                                      width: 3,
+                                      borderRadius: 2,
+                                    }}
+                                    className={message.isOwn ? 'bg-white/70' : 'bg-green-400'}
+                                  />
+                                ))}
+                              </View>
+                              <Text
+                                className={`text-xs font-semibold ${
+                                  message.isOwn ? 'text-white/80' : 'text-green-600'
+                                }`}>
+                                {message.duration || '0:00'}
+                              </Text>
+                            </View>
+                            <Ionicons
+                              name="mic"
+                              size={14}
+                              color={message.isOwn ? '#ffffff80' : '#10b981'}
+                            />
+                          </TouchableOpacity>
+                        ) : (
+                          /* ── Text message bubble ── */
+                          <TouchableOpacity
+                            activeOpacity={0.8}
+                            onPress={() =>
+                              setExpandedMessageId((prev) =>
+                                prev === message.id ? null : message.id
+                              )
+                            }
+                            className={`rounded-3xl px-5 py-3 shadow-sm ${
+                              message.isOwn
+                                ? 'bg-green-500 shadow-green-200'
+                                : 'border-2 border-green-100 bg-green-50 shadow-green-100'
                             }`}>
-                              {message.duration || '0:00'}
+                            <Text
+                              className={`text-base ${
+                                message.isOwn
+                                  ? 'font-semibold text-white'
+                                  : message.isRead === false
+                                    ? 'font-bold text-gray-900'
+                                    : 'font-medium text-gray-900'
+                              }`}>
+                              {message.content}
+                            </Text>
+                          </TouchableOpacity>
+                        )}
+                        {showTimestamp && !message.isOwn && (
+                          <View className="mt-1 flex-row items-center gap-1">
+                            <Text className="text-xs font-semibold text-green-600">
+                              {message.timestamp}
                             </Text>
                           </View>
-                          <Ionicons
-                            name="mic"
-                            size={14}
-                            color={message.isOwn ? '#ffffff80' : '#10b981'}
-                          />
-                        </TouchableOpacity>
-                      ) : (
-                        /* ── Text message bubble ── */
-                        <TouchableOpacity
-                          activeOpacity={0.8}
-                          onPress={() => setExpandedMessageId(prev => prev === message.id ? null : message.id)}
-                          className={`rounded-3xl px-5 py-3 shadow-sm ${
-                            message.isOwn
-                              ? 'bg-green-500 shadow-green-200'
-                              : 'bg-green-50 border-2 border-green-100 shadow-green-100'
-                          }`}
-                        >
-                          <Text
-                            className={`text-base ${
-                              message.isOwn
-                                ? 'text-white font-semibold'
-                                : message.isRead === false
-                                  ? 'text-gray-900 font-bold'
-                                  : 'text-gray-900 font-medium'
-                            }`}
-                          >
-                            {message.content}
-                          </Text>
-                        </TouchableOpacity>
-                      )}
-                      {showTimestamp && !message.isOwn && (
-                        <View className="flex-row items-center gap-1 mt-1">
-                          <Text className="text-xs font-semibold text-green-600">
-                            {message.timestamp}
-                          </Text>
-                        </View>
-                      )}
-                      {!isGroupChat && message.isOwn && message.status &&
-                        (message.status === 'sending' ||
-                          index === lastSeenIndex ||
-                          index === lastDeliveredIndex) && (
-                        <View className="flex-row-reverse items-center gap-1 mt-1">
-                          <Text className={`text-xs font-semibold ${
-                            index === lastSeenIndex
-                              ? 'text-green-500'
-                              : 'text-gray-400'
-                          }`}>
-                            {getDeliveryLabel(rawTs, message.status, index === lastSeenIndex, now)}
-                          </Text>
-                        </View>
-                      )}
+                        )}
+                        {!isGroupChat &&
+                          message.isOwn &&
+                          message.status &&
+                          (message.status === 'sending' ||
+                            index === lastSeenIndex ||
+                            index === lastDeliveredIndex) && (
+                            <View className="mt-1 flex-row-reverse items-center gap-1">
+                              <Text
+                                className={`text-xs font-semibold ${
+                                  index === lastSeenIndex ? 'text-green-500' : 'text-gray-400'
+                                }`}>
+                                {getDeliveryLabel(
+                                  rawTs,
+                                  message.status,
+                                  index === lastSeenIndex,
+                                  now
+                                )}
+                              </Text>
+                            </View>
+                          )}
+                      </View>
                     </View>
                   </View>
-                </View>
-              );
+                );
               });
             })()}
 
@@ -1172,17 +1183,14 @@ export default function Chat({ selectedContact, onBackPress, currentUserId }: Ch
               <View className="mt-4 flex-row items-center gap-2">
                 <View
                   className="h-8 w-8 items-center justify-center rounded-full shadow-sm"
-                  style={{ backgroundColor: selectedContact.avatar_color }}
-                >
-                  <Text className="font-bold text-white text-xs">
-                    {selectedContact.initials}
-                  </Text>
+                  style={{ backgroundColor: selectedContact.avatar_color }}>
+                  <Text className="text-xs font-bold text-white">{selectedContact.initials}</Text>
                 </View>
-                <View className="bg-green-50 border-2 border-green-100 rounded-3xl px-5 py-3 shadow-sm">
+                <View className="rounded-3xl border-2 border-green-100 bg-green-50 px-5 py-3 shadow-sm">
                   <View className="flex-row items-center gap-1.5">
-                    <View className="h-2 w-2 bg-green-500 rounded-full animate-bounce" />
-                    <View className="h-2 w-2 bg-green-500 rounded-full animate-bounce" />
-                    <View className="h-2 w-2 bg-green-500 rounded-full animate-bounce" />
+                    <View className="h-2 w-2 animate-bounce rounded-full bg-green-500" />
+                    <View className="h-2 w-2 animate-bounce rounded-full bg-green-500" />
+                    <View className="h-2 w-2 animate-bounce rounded-full bg-green-500" />
                   </View>
                 </View>
               </View>
@@ -1197,23 +1205,21 @@ export default function Chat({ selectedContact, onBackPress, currentUserId }: Ch
         {showMediaMenu && (
           <View className="mb-4 w-44 flex-col gap-2">
             <TouchableOpacity
-              className="flex-row items-center rounded-2xl bg-green-50 px-4 py-3 border border-green-200 active:scale-95"
-              onPress={handleCaptureImage}
-            >
-              <View className="bg-green-500 p-2 rounded-full mr-3">
+              className="flex-row items-center rounded-2xl border border-green-200 bg-green-50 px-4 py-3 active:scale-95"
+              onPress={handleCaptureImage}>
+              <View className="mr-3 rounded-full bg-green-500 p-2">
                 <Ionicons name="camera" size={18} color="white" />
               </View>
-              <Text className="font-semibold text-gray-900 flex-1">Camera</Text>
+              <Text className="flex-1 font-semibold text-gray-900">Camera</Text>
               <Ionicons name="chevron-forward" size={16} color="#d1d5db" />
             </TouchableOpacity>
             <TouchableOpacity
-              className="flex-row items-center rounded-2xl bg-green-50 px-4 py-3 border border-green-200 active:scale-95"
-              onPress={handleChooseFromGallery}
-            >
-              <View className="bg-green-500 p-2 rounded-full mr-3">
+              className="flex-row items-center rounded-2xl border border-green-200 bg-green-50 px-4 py-3 active:scale-95"
+              onPress={handleChooseFromGallery}>
+              <View className="mr-3 rounded-full bg-green-500 p-2">
                 <Ionicons name="image" size={18} color="white" />
               </View>
-              <Text className="font-semibold text-gray-900 flex-1">Gallery</Text>
+              <Text className="flex-1 font-semibold text-gray-900">Gallery</Text>
               <Ionicons name="chevron-forward" size={16} color="#d1d5db" />
             </TouchableOpacity>
           </View>
@@ -1222,31 +1228,29 @@ export default function Chat({ selectedContact, onBackPress, currentUserId }: Ch
         <View className="flex-row items-center gap-2">
           {/* Add Media Button */}
           <TouchableOpacity
-            className={`h-11 w-11 rounded-full items-center justify-center active:scale-95 border-2 transition-all ${
-              showMediaMenu
-                ? 'bg-red-50 border-red-200'
-                : 'bg-green-50 border-green-200'
+            className={`h-11 w-11 items-center justify-center rounded-full border-2 transition-all active:scale-95 ${
+              showMediaMenu ? 'border-red-200 bg-red-50' : 'border-green-200 bg-green-50'
             }`}
-            onPress={() => setShowMediaMenu(!showMediaMenu)}
-          >
+            onPress={() => setShowMediaMenu(!showMediaMenu)}>
             <Ionicons
-              name={showMediaMenu ? "close" : "add"}
+              name={showMediaMenu ? 'close' : 'add'}
               size={24}
               color={showMediaMenu ? '#dc2626' : '#10b981'}
             />
           </TouchableOpacity>
 
           {/* Text Input Field */}
-          <View className={`flex-1 flex-row items-center rounded-2xl px-4 py-2.5 border-2 transition-all ${
-            messageText.trim()
-              ? 'border-green-500 bg-green-50 shadow-sm shadow-green-200'
-              : 'border-green-200 bg-white'
-          }`}>
+          <View
+            className={`flex-1 flex-row items-center rounded-2xl border-2 px-4 py-2.5 transition-all ${
+              messageText.trim()
+                ? 'border-green-500 bg-green-50 shadow-sm shadow-green-200'
+                : 'border-green-200 bg-white'
+            }`}>
             <TextInput
               placeholder="Type a message..."
               value={messageText}
               onChangeText={handleTypingInput}
-              className="flex-1 text-gray-900 text-base font-medium"
+              className="flex-1 text-base font-medium text-gray-900"
               placeholderTextColor="#d1d5db"
               multiline
               style={{ maxHeight: 100 }}
@@ -1254,13 +1258,8 @@ export default function Chat({ selectedContact, onBackPress, currentUserId }: Ch
             <TouchableOpacity
               className="ml-2 p-1.5 active:scale-90"
               onPress={handleSendMessage}
-              disabled={!messageText.trim()}
-            >
-              <Ionicons
-                name="send"
-                size={20}
-                color={messageText.trim() ? '#10b981' : '#d1d5db'}
-              />
+              disabled={!messageText.trim()}>
+              <Ionicons name="send" size={20} color={messageText.trim() ? '#10b981' : '#d1d5db'} />
             </TouchableOpacity>
           </View>
 
@@ -1268,18 +1267,18 @@ export default function Chat({ selectedContact, onBackPress, currentUserId }: Ch
           {isRecording ? (
             <View className="items-center">
               <TouchableOpacity
-                className="h-11 w-11 rounded-full items-center justify-center border-2 bg-red-50 border-red-400"
-                onPressOut={stopRecording}
-              >
+                className="h-11 w-11 items-center justify-center rounded-full border-2 border-red-400 bg-red-50"
+                onPressOut={stopRecording}>
                 <Ionicons name="mic" size={22} color="#ef4444" />
               </TouchableOpacity>
-              <Text className="text-red-500 text-xs font-bold mt-1">{formatDuration(recordingTime)}</Text>
+              <Text className="mt-1 text-xs font-bold text-red-500">
+                {formatDuration(recordingTime)}
+              </Text>
             </View>
           ) : (
             <TouchableOpacity
-              className="h-11 w-11 rounded-full items-center justify-center active:scale-95 border-2 bg-green-50 border-green-200"
-              onPressIn={startRecording}
-            >
+              className="h-11 w-11 items-center justify-center rounded-full border-2 border-green-200 bg-green-50 active:scale-95"
+              onPressIn={startRecording}>
               <Ionicons name="mic" size={22} color="#10b981" />
             </TouchableOpacity>
           )}

@@ -1,5 +1,15 @@
 import React, { useState } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, Modal, Pressable, TextInput, Alert, Image } from 'react-native';
+import {
+  View,
+  Text,
+  ScrollView,
+  TouchableOpacity,
+  Modal,
+  Pressable,
+  TextInput,
+  Alert,
+  Image,
+} from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import * as ImageManipulator from 'expo-image-manipulator';
@@ -7,7 +17,16 @@ import supabase, { getCurrentUser } from '../../utils/supabase';
 import '../../global.css';
 
 interface SettingsProps {
-  onNavigate: (page: 'dashboard' | 'siteManagement' | 'walkieTalkie' | 'activityLogs' | 'companyList' | 'employee' | 'settings') => void;
+  onNavigate: (
+    page:
+      | 'dashboard'
+      | 'siteManagement'
+      | 'walkieTalkie'
+      | 'activityLogs'
+      | 'companyList'
+      | 'employee'
+      | 'settings'
+  ) => void;
 }
 
 export default function Settings({ onNavigate }: SettingsProps) {
@@ -15,7 +34,7 @@ export default function Settings({ onNavigate }: SettingsProps) {
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   const [isNotificationOpen, setIsNotificationOpen] = useState(false);
   const [isEditMode, setIsEditMode] = useState(false);
-  
+
   // Profile data (will be loaded from authenticated user's `public.users` row)
   const [fullName, setFullName] = useState('');
   const [email, setEmail] = useState('');
@@ -47,7 +66,9 @@ export default function Settings({ onNavigate }: SettingsProps) {
           }
         } else {
           // fallback to auth metadata
-          const { data: { user: fallbackUser } } = await supabase.auth.getUser();
+          const {
+            data: { user: fallbackUser },
+          } = await supabase.auth.getUser();
           setFullName(fallbackUser?.user_metadata?.full_name || 'Admin User');
           setEmail(fallbackUser?.email || '');
           const name = fallbackUser?.user_metadata?.full_name || fallbackUser?.email || 'AD';
@@ -61,7 +82,9 @@ export default function Settings({ onNavigate }: SettingsProps) {
         }
       } catch (err) {
         console.error('Failed to load admin profile:', err);
-        const { data: { user } } = await supabase.auth.getUser();
+        const {
+          data: { user },
+        } = await supabase.auth.getUser();
         setFullName(user?.user_metadata?.full_name || 'Admin User');
         setEmail(user?.email || '');
         const name = user?.user_metadata?.full_name || user?.email || 'AD';
@@ -81,7 +104,10 @@ export default function Settings({ onNavigate }: SettingsProps) {
   const requestImagePickerPermission = async () => {
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (status !== 'granted') {
-      Alert.alert('Permission needed', 'Please allow access to your photo library to upload a profile picture');
+      Alert.alert(
+        'Permission needed',
+        'Please allow access to your photo library to upload a profile picture'
+      );
     }
   };
 
@@ -101,12 +127,18 @@ export default function Settings({ onNavigate }: SettingsProps) {
         const actions: any[] = [];
         if (width > 1200 || height > 1200) {
           const scale = Math.min(1200 / width, 1200 / height);
-          actions.push({ resize: { width: Math.round(width * scale), height: Math.round(height * scale) } });
+          actions.push({
+            resize: { width: Math.round(width * scale), height: Math.round(height * scale) },
+          });
         }
 
-        const manipulated = actions.length > 0
-          ? await ImageManipulator.manipulateAsync(uri, actions, { compress: 0.85, format: ImageManipulator.SaveFormat.JPEG })
-          : { uri };
+        const manipulated =
+          actions.length > 0
+            ? await ImageManipulator.manipulateAsync(uri, actions, {
+                compress: 0.85,
+                format: ImageManipulator.SaveFormat.JPEG,
+              })
+            : { uri };
 
         const fileName = `admin_${Date.now()}.jpg`;
         setImageFileName(fileName);
@@ -135,7 +167,9 @@ export default function Settings({ onNavigate }: SettingsProps) {
         throw error;
       }
 
-      const { data: urlData } = supabase.storage.from('profile_picture').getPublicUrl(imageFileName);
+      const { data: urlData } = supabase.storage
+        .from('profile_picture')
+        .getPublicUrl(imageFileName);
       return urlData?.publicUrl || null;
     } catch (err) {
       console.error('Upload failed:', err);
@@ -201,28 +235,36 @@ export default function Settings({ onNavigate }: SettingsProps) {
   return (
     <View className="flex-1 bg-stone-50">
       <ScrollView className="flex-1 bg-stone-50">
-        <View className="bg-white px-5 pt-4 pb-3 border-b border-stone-200">
+        <View className="border-b border-stone-200 bg-white px-5 pb-3 pt-4">
           <View className="flex-row items-center justify-between">
-            <View className="flex-row items-center flex-1">
-              <TouchableOpacity className="lg:hidden w-9 h-9 items-center justify-center mr-3" onPress={() => setIsDrawerOpen(true)}>
+            <View className="flex-1 flex-row items-center">
+              <TouchableOpacity
+                className="mr-3 h-9 w-9 items-center justify-center lg:hidden"
+                onPress={() => setIsDrawerOpen(true)}>
                 <Ionicons name="menu" size={24} color="#44403c" />
               </TouchableOpacity>
               <View className="flex-1">
-                <Text className="text-lg lg:text-2xl font-bold text-stone-900">Account Settings</Text>
-                <Text className="text-stone-500 text-xs lg:text-sm mt-0.5">Welcome back, Administrator</Text>
+                <Text className="text-lg font-bold text-stone-900 lg:text-2xl">
+                  Account Settings
+                </Text>
+                <Text className="mt-0.5 text-xs text-stone-500 lg:text-sm">
+                  Welcome back, Administrator
+                </Text>
               </View>
             </View>
-            
+
             <View className="flex-row items-center gap-2.5">
-              <TouchableOpacity className="w-9 h-9 bg-stone-100 rounded-full items-center justify-center" onPress={() => setIsNotificationOpen(true)}>
-                <View className="w-2 h-2 bg-red-500 rounded-full absolute top-1.5 right-1.5" />
+              <TouchableOpacity
+                className="h-9 w-9 items-center justify-center rounded-full bg-stone-100"
+                onPress={() => setIsNotificationOpen(true)}>
+                <View className="absolute right-1.5 top-1.5 h-2 w-2 rounded-full bg-red-500" />
                 <Ionicons name="notifications-outline" size={18} color="#57534e" />
               </TouchableOpacity>
-              
-              <View className="w-9 h-9 bg-emerald-100 rounded-full items-center justify-center">
-                <Text className="text-emerald-700 font-semibold text-xs">{initials}</Text>
+
+              <View className="h-9 w-9 items-center justify-center rounded-full bg-emerald-100">
+                <Text className="text-xs font-semibold text-emerald-700">{initials}</Text>
               </View>
-              <View className="hidden lg:flex ml-2">
+              <View className="ml-2 hidden lg:flex">
                 <Text className="text-sm font-semibold text-stone-900">{fullName}</Text>
                 <Text className="text-xs text-stone-500">Super Admin</Text>
               </View>
@@ -230,35 +272,42 @@ export default function Settings({ onNavigate }: SettingsProps) {
           </View>
         </View>
 
-        <View className="px-5 lg:px-8 pt-3 lg:pt-4 pb-6">
-          <View className="bg-white rounded-2xl border border-stone-200 overflow-hidden max-w-2xl">
-            <View className="px-4 lg:px-5 pt-3 lg:pt-4 pb-2.5 border-b border-stone-100">
-              <Text className="text-base font-bold text-stone-900 mb-0.5">Account Settings</Text>
-              <Text className="text-stone-500 text-xs">Manage your admin account</Text>
+        <View className="px-5 pb-6 pt-3 lg:px-8 lg:pt-4">
+          <View className="max-w-2xl overflow-hidden rounded-2xl border border-stone-200 bg-white">
+            <View className="border-b border-stone-100 px-4 pb-2.5 pt-3 lg:px-5 lg:pt-4">
+              <Text className="mb-0.5 text-base font-bold text-stone-900">Account Settings</Text>
+              <Text className="text-xs text-stone-500">Manage your admin account</Text>
             </View>
 
-            <View className="px-4 lg:px-5 py-3 lg:py-4">
+            <View className="px-4 py-3 lg:px-5 lg:py-4">
               <View className="mb-4">
                 <View className="flex-row items-center">
-                  <View className="w-14 h-14 lg:w-16 lg:h-16 bg-emerald-100 rounded-2xl items-center justify-center mr-3 overflow-hidden">
+                  <View className="mr-3 h-14 w-14 items-center justify-center overflow-hidden rounded-2xl bg-emerald-100 lg:h-16 lg:w-16">
                     {profilePicture ? (
-                      <Image source={{ uri: profilePicture }} style={{ width: 64, height: 64, borderRadius: 12 }} />
+                      <Image
+                        source={{ uri: profilePicture }}
+                        style={{ width: 64, height: 64, borderRadius: 12 }}
+                      />
                     ) : (
-                      <Text className="text-emerald-700 font-bold text-lg lg:text-xl">{initials}</Text>
+                      <Text className="text-lg font-bold text-emerald-700 lg:text-xl">
+                        {initials}
+                      </Text>
                     )}
                   </View>
                   {isEditMode && (
-                    <TouchableOpacity className="bg-white border border-emerald-600 px-3 py-1.5 rounded-lg" onPress={pickImage}>
-                      <Text className="text-emerald-600 font-semibold text-xs">Change Photo</Text>
+                    <TouchableOpacity
+                      className="rounded-lg border border-emerald-600 bg-white px-3 py-1.5"
+                      onPress={pickImage}>
+                      <Text className="text-xs font-semibold text-emerald-600">Change Photo</Text>
                     </TouchableOpacity>
                   )}
                 </View>
               </View>
 
               <View className="mb-3">
-                <Text className="text-xs font-medium text-stone-700 mb-1.5">Full Name</Text>
+                <Text className="mb-1.5 text-xs font-medium text-stone-700">Full Name</Text>
                 <TextInput
-                  className={`bg-white border ${isEditMode ? 'border-stone-300' : 'border-stone-200 bg-stone-50'} rounded-lg px-3 py-2 text-stone-900 text-sm`}
+                  className={`border bg-white ${isEditMode ? 'border-stone-300' : 'border-stone-200 bg-stone-50'} rounded-lg px-3 py-2 text-sm text-stone-900`}
                   value={fullName}
                   onChangeText={setFullName}
                   editable={isEditMode}
@@ -266,9 +315,9 @@ export default function Settings({ onNavigate }: SettingsProps) {
               </View>
 
               <View className="mb-4">
-                <Text className="text-xs font-medium text-stone-700 mb-1.5">Email Address</Text>
+                <Text className="mb-1.5 text-xs font-medium text-stone-700">Email Address</Text>
                 <TextInput
-                  className={`bg-white border ${isEditMode ? 'border-stone-300' : 'border-stone-200 bg-stone-50'} rounded-lg px-3 py-2 text-stone-900 text-sm`}
+                  className={`border bg-white ${isEditMode ? 'border-stone-300' : 'border-stone-200 bg-stone-50'} rounded-lg px-3 py-2 text-sm text-stone-900`}
                   value={email}
                   onChangeText={setEmail}
                   editable={isEditMode}
@@ -277,17 +326,25 @@ export default function Settings({ onNavigate }: SettingsProps) {
 
               {isEditMode ? (
                 <View className="flex-row gap-2.5">
-                  <TouchableOpacity className="flex-1 bg-stone-100 py-2 rounded-lg" onPress={() => setIsEditMode(false)}>
-                    <Text className="text-center text-stone-700 font-semibold text-sm">Cancel</Text>
+                  <TouchableOpacity
+                    className="flex-1 rounded-lg bg-stone-100 py-2"
+                    onPress={() => setIsEditMode(false)}>
+                    <Text className="text-center text-sm font-semibold text-stone-700">Cancel</Text>
                   </TouchableOpacity>
-                  <TouchableOpacity className="flex-1 bg-emerald-600 py-2 rounded-lg" onPress={handleSaveChanges}>
-                    <Text className="text-center text-white font-semibold text-sm">Save Changes</Text>
+                  <TouchableOpacity
+                    className="flex-1 rounded-lg bg-emerald-600 py-2"
+                    onPress={handleSaveChanges}>
+                    <Text className="text-center text-sm font-semibold text-white">
+                      Save Changes
+                    </Text>
                   </TouchableOpacity>
                 </View>
               ) : (
-                <TouchableOpacity className="bg-emerald-600 py-2 px-4 rounded-lg self-start flex-row items-center" onPress={() => setIsEditMode(true)}>
+                <TouchableOpacity
+                  className="flex-row items-center self-start rounded-lg bg-emerald-600 px-4 py-2"
+                  onPress={() => setIsEditMode(true)}>
                   <Ionicons name="create-outline" size={16} color="white" />
-                  <Text className="text-white font-semibold text-sm ml-1.5">Edit Profile</Text>
+                  <Text className="ml-1.5 text-sm font-semibold text-white">Edit Profile</Text>
                 </TouchableOpacity>
               )}
             </View>
@@ -297,13 +354,17 @@ export default function Settings({ onNavigate }: SettingsProps) {
 
       {/* Notification Modal */}
       <Modal visible={isNotificationOpen} transparent animationType="fade">
-        <Pressable className="flex-1 bg-black/20 justify-center items-center" onPress={() => setIsNotificationOpen(false)}>
-          <View className="w-80 bg-white rounded-2xl p-6 items-center">
+        <Pressable
+          className="flex-1 items-center justify-center bg-black/20"
+          onPress={() => setIsNotificationOpen(false)}>
+          <View className="w-80 items-center rounded-2xl bg-white p-6">
             <Ionicons name="notifications-outline" size={32} color="#10b981" className="mb-3" />
-            <Text className="font-bold text-lg text-stone-800 mb-2">Notifications</Text>
-            <Text className="text-stone-500 text-center mb-4">You have no new notifications.</Text>
-            <TouchableOpacity className="bg-emerald-600 rounded-lg py-2 px-6" onPress={() => setIsNotificationOpen(false)}>
-              <Text className="text-white font-bold">Close</Text>
+            <Text className="mb-2 text-lg font-bold text-stone-800">Notifications</Text>
+            <Text className="mb-4 text-center text-stone-500">You have no new notifications.</Text>
+            <TouchableOpacity
+              className="rounded-lg bg-emerald-600 px-6 py-2"
+              onPress={() => setIsNotificationOpen(false)}>
+              <Text className="font-bold text-white">Close</Text>
             </TouchableOpacity>
           </View>
         </Pressable>
@@ -312,12 +373,12 @@ export default function Settings({ onNavigate }: SettingsProps) {
       {/* Mobile Drawer */}
       <Modal visible={isDrawerOpen} transparent animationType="fade">
         <View className="flex-1 flex-row">
-          <View className="w-72 bg-white h-full shadow-2xl">
-            <View className="bg-emerald-50 px-6 pt-12 pb-6 border-b border-emerald-100">
-                <Text className="text-base font-bold text-stone-900">Admin Portal</Text>
+          <View className="h-full w-72 bg-white shadow-2xl">
+            <View className="border-b border-emerald-100 bg-emerald-50 px-6 pb-6 pt-12">
+              <Text className="text-base font-bold text-stone-900">Admin Portal</Text>
             </View>
             <ScrollView className="flex-1 px-4 py-4">
-                <Text className="p-4 text-stone-400 text-xs">Mobile Menu Content</Text>
+              <Text className="p-4 text-xs text-stone-400">Mobile Menu Content</Text>
             </ScrollView>
           </View>
           <Pressable className="flex-1 bg-black/40" onPress={() => setIsDrawerOpen(false)} />

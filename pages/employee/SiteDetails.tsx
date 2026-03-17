@@ -1,6 +1,16 @@
-
 import React, { useEffect, useMemo, useState } from 'react';
-import { View, Text, TouchableOpacity, ScrollView, StatusBar, ActivityIndicator, Alert, Modal, TextInput, Image } from 'react-native';
+import {
+  View,
+  Text,
+  TouchableOpacity,
+  ScrollView,
+  StatusBar,
+  ActivityIndicator,
+  Alert,
+  Modal,
+  TextInput,
+  Image,
+} from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import SiteLocationMap from '../../components/SiteLocationMap';
 import supabase from '../../utils/supabase';
@@ -15,13 +25,16 @@ interface SiteDetailsProps {
   onSiteUpdated?: (nextTab?: 'Pending' | 'Finished') => void;
 }
 
-export default function SiteDetails({ site, onBack, onViewOnMap, onSiteUpdated }: SiteDetailsProps) {
-  const [groupLeaderName, setGroupLeaderName] = useState<string | null>(null);
-  const [groupLeaderId, setGroupLeaderId] = useState<string | null>(null);
-  const [groupName, setGroupName] = useState<string | null>(null);
-  const [groupId, setGroupId] = useState<string | null>(null);
+export default function SiteDetails({
+  site,
+  onBack,
+  onViewOnMap,
+  onSiteUpdated,
+}: SiteDetailsProps) {
+  const [leaderName, setLeaderName] = useState<string | null>(null);
+  const [leaderId, setLeaderId] = useState<string | null>(null);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
-  const [currentUserGroupId, setCurrentUserGroupId] = useState<string | null>(null);
+  const [currentUserSiteId, setCurrentUserSiteId] = useState<string | null>(null);
   const [hasAccepted, setHasAccepted] = useState(false);
   const [loadingGroupInfo, setLoadingGroupInfo] = useState(false);
   const [acceptLoading, setAcceptLoading] = useState(false);
@@ -91,26 +104,22 @@ export default function SiteDetails({ site, onBack, onViewOnMap, onSiteUpdated }
       : 'Location not set';
 
   const workforceLabel =
-    site && site.membersCount != null
-      ? `${site.membersCount} Members`
-      : 'No data';
+    site && site.membersCount != null ? `${site.membersCount} Members` : 'No data';
 
   const isFinished = site?.status === 'Finished';
   const isActiveish = site?.status === 'Active' || site?.status === 'Pending';
   const isPending = site?.status === 'Pending';
   const isActive = site?.status === 'Active';
-  const isLeaderForThisSite = !!currentUserId && !!groupLeaderId && currentUserId === groupLeaderId;
+  const isLeaderForThisSite = !!currentUserId && !!leaderId && currentUserId === leaderId;
 
   useEffect(() => {
-    const loadGroupInfo = async () => {
+    const loadTeamInfo = async () => {
       try {
         setLoadingGroupInfo(true);
 
         // Reset per-site derived state to avoid showing stale info while loading.
-        setGroupLeaderName(null);
-        setGroupLeaderId(null);
-        setGroupName(null);
-        setGroupId(null);
+        setLeaderName(null);
+        setLeaderId(null);
         setHasAccepted(false);
 
         if (!site || !site.id) {
@@ -123,25 +132,25 @@ export default function SiteDetails({ site, onBack, onViewOnMap, onSiteUpdated }
         const userId = authData?.user?.id || null;
         setCurrentUserId(userId);
 
-        // Always fetch user's group_id (source of truth for "already accepted")
-        let userGroupId: string | null = null;
+        // Always fetch user's site_id (source of truth for "already accepted")
+        let userSiteId: string | null = null;
         if (userId) {
           const { data: userRow, error: userError } = await supabase
             .from('users')
-            .select('group_id')
+            .select('site_id')
             .eq('id', userId)
             .maybeSingle();
 
-          if (!userError && userRow?.group_id) {
-            userGroupId = String(userRow.group_id);
+          if (!userError && userRow?.site_id) {
+            userSiteId = String(userRow.site_id);
           }
         }
-        setCurrentUserGroupId(userGroupId);
+        setCurrentUserSiteId(userSiteId);
 
-        // Determine whether the current user is a leader of any group.
+        // Determine whether the current user is a leader of any site.
         if (userId) {
           const { data: leaderRows, error: leaderErr } = await supabase
-            .from('groups')
+            .from('sites')
             .select('id')
             .eq('leader_id', userId)
             .limit(1);
@@ -154,62 +163,62 @@ export default function SiteDetails({ site, onBack, onViewOnMap, onSiteUpdated }
           setIsUserLeaderAny(false);
         }
 
-        // Fetch group linked to this site (if any)
-        const { data: groupData, error: groupError } = await supabase
-          .from('groups')
-          .select('id, name, leader_id, leader:leader_id ( full_name ), site_id')
-          .eq('site_id', site.id)
+        // Fetch leader for this site from sites.leader_id
+        const { data: siteRow, error: siteErr } = await supabase
+          .from('sites')
+          .select('leader_id')
+          .eq('id', site.id)
           .maybeSingle();
+        if (siteErr) throw siteErr;
 
-        if (!groupError && groupData) {
-          setGroupId(groupData.id);
-          setGroupName(groupData.name);
-          setGroupLeaderId((groupData as any).leader_id ? String((groupData as any).leader_id) : null);
-          const leaderName = Array.isArray((groupData as any).leader)
-            ? (groupData as any).leader[0]?.full_name
-            : (groupData as any).leader?.full_name;
-          setGroupLeaderName(leaderName || null);
+        const nextLeaderId = siteRow?.leader_id ? String(siteRow.leader_id) : null;
+        setLeaderId(nextLeaderId);
 
-          if (userGroupId && userGroupId === groupData.id) {
-            setHasAccepted(true);
+        if (nextLeaderId) {
+          try {
+            const { data: leaderRow, error: leaderErr } = await supabase
+              .from('users')
+              .select('full_name')
+              .eq('id', nextLeaderId)
+              .maybeSingle();
+            if (!leaderErr) setLeaderName((leaderRow?.full_name as string | null) || null);
+          } catch {
+            // ignore
           }
+        }
+
+        // Determine whether current user already joined this site.
+        // Primary: users.site_id
+        if (userSiteId && String(userSiteId) === String(site.id)) {
+          setHasAccepted(true);
           return;
         }
 
-        // If no group was found by site_id (or it was blocked), but user has a group_id,
-        // fetch that group and verify it belongs to this site so the UI behaves correctly.
-        if (!groupData && userGroupId) {
-          const { data: myGroup, error: myGroupError } = await supabase
-            .from('groups')
-            .select('id, name, site_id, leader_id, leader:leader_id ( full_name )')
-            .eq('id', userGroupId)
-            .maybeSingle();
-
-          if (!myGroupError && myGroup && String((myGroup as any).site_id) === String(site.id)) {
-            setGroupId(myGroup.id);
-            setGroupName(myGroup.name);
-            setGroupLeaderId((myGroup as any).leader_id ? String((myGroup as any).leader_id) : null);
-            const leaderName = Array.isArray((myGroup as any).leader)
-              ? (myGroup as any).leader[0]?.full_name
-              : (myGroup as any).leader?.full_name;
-            setGroupLeaderName(leaderName || null);
-            setHasAccepted(true);
-            return;
+        // Fallback: group_members (best-effort)
+        if (userId) {
+          try {
+            const { data: memberRow, error: memberErr } = await supabase
+              .from('group_members')
+              .select('id')
+              .eq('user_id', userId)
+              .eq('site_id', site.id)
+              .limit(1);
+            if (!memberErr && (memberRow || []).length > 0) {
+              setHasAccepted(true);
+              return;
+            }
+          } catch {
+            // ignore
           }
         }
-
-        if (groupError && (groupError as any).code !== 'PGRST116') {
-          // Ignore "no rows" error, surface others
-          console.warn('Error loading group info:', groupError.message);
-        }
       } catch (err: any) {
-        console.warn('Failed to load group info:', err?.message || String(err));
+        console.warn('Failed to load team info:', err?.message || String(err));
       } finally {
         setLoadingGroupInfo(false);
       }
     };
 
-    loadGroupInfo();
+    loadTeamInfo();
   }, [site]);
 
   useEffect(() => {
@@ -337,11 +346,10 @@ export default function SiteDetails({ site, onBack, onViewOnMap, onSiteUpdated }
       for (let i = 0; i < evidenceAssets.length; i++) {
         const asset = evidenceAssets[i];
 
-        const manipulated = await ImageManipulator.manipulateAsync(
-          asset.uri,
-          [],
-          { compress: 0.85, format: ImageManipulator.SaveFormat.JPEG }
-        );
+        const manipulated = await ImageManipulator.manipulateAsync(asset.uri, [], {
+          compress: 0.85,
+          format: ImageManipulator.SaveFormat.JPEG,
+        });
 
         const response = await fetch(manipulated.uri);
         const blob = await response.blob();
@@ -409,16 +417,16 @@ export default function SiteDetails({ site, onBack, onViewOnMap, onSiteUpdated }
       return;
     }
 
-    // If user already has a group assignment, they should not re-accept.
+    // If user already has a site assignment, they should not re-accept.
     try {
       const { data: userRow } = await supabase
         .from('users')
-        .select('group_id')
+        .select('site_id')
         .eq('id', currentUserId)
         .maybeSingle();
-      if (userRow?.group_id) {
+      if (userRow?.site_id) {
         setHasAccepted(true);
-        setCurrentUserGroupId(String(userRow.group_id));
+        setCurrentUserSiteId(String(userRow.site_id));
         Alert.alert('Already accepted', 'This site is already assigned to you.');
         return;
       }
@@ -430,10 +438,13 @@ export default function SiteDetails({ site, onBack, onViewOnMap, onSiteUpdated }
       setAcceptLoading(true);
 
       // Accept rules:
-      // - For Pending sites: user joins the existing group (must already exist and have a leader)
-      // - For Active sites: not joinable (no group/leader yet)
+      // - For Pending sites: joinable if it already has a leader assigned
+      // - For Active sites: not joinable (no leader yet)
       if (isActive) {
-        Alert.alert('Not available', 'This site is not yet open for joining. Please wait for a leader assignment.');
+        Alert.alert(
+          'Not available',
+          'This site is not yet open for joining. Please wait for a leader assignment.'
+        );
         return;
       }
 
@@ -442,40 +453,36 @@ export default function SiteDetails({ site, onBack, onViewOnMap, onSiteUpdated }
         return;
       }
 
-      const { data: existingGroup, error: existingGroupErr } = await supabase
-        .from('groups')
-        .select('id, name, leader_id, leader:leader_id ( full_name )')
-        .eq('site_id', site.id)
+      // Ensure leader is assigned to this site
+      const { data: siteRow, error: siteErr } = await supabase
+        .from('sites')
+        .select('leader_id')
+        .eq('id', site.id)
         .maybeSingle();
-      if (existingGroupErr) throw existingGroupErr;
-      if (!existingGroup?.id) {
-        Alert.alert('Not available', 'No group is assigned to this site yet.');
-        return;
-      }
+      if (siteErr) throw siteErr;
 
-      const existingLeaderId = (existingGroup as any).leader_id ? String((existingGroup as any).leader_id) : null;
+      const existingLeaderId = siteRow?.leader_id ? String(siteRow.leader_id) : null;
       if (!existingLeaderId) {
         Alert.alert('Not available', 'This site has no leader assigned yet.');
         return;
       }
 
-      const finalGroupId = String(existingGroup.id);
-      setGroupId(finalGroupId);
-      setGroupName((existingGroup as any).name || null);
-      setGroupLeaderId(existingLeaderId);
-      const leaderName = Array.isArray((existingGroup as any).leader)
-        ? (existingGroup as any).leader[0]?.full_name
-        : (existingGroup as any).leader?.full_name;
-      setGroupLeaderName(leaderName || null);
-
-      if (!finalGroupId) {
-        throw new Error('Unable to determine group id for this site');
+      setLeaderId(existingLeaderId);
+      try {
+        const { data: leaderRow } = await supabase
+          .from('users')
+          .select('full_name')
+          .eq('id', existingLeaderId)
+          .maybeSingle();
+        setLeaderName((leaderRow?.full_name as string | null) || null);
+      } catch {
+        // ignore
       }
 
-      // Persist membership: link the current user to the group
+      // Persist membership: link the current user to the site
       const { error: updateUserError } = await supabase
         .from('users')
-        .update({ group_id: finalGroupId })
+        .update({ site_id: site.id })
         .eq('id', currentUserId);
       if (updateUserError) throw updateUserError;
 
@@ -483,7 +490,7 @@ export default function SiteDetails({ site, onBack, onViewOnMap, onSiteUpdated }
       try {
         const { error: gmError } = await supabase
           .from('group_members')
-          .insert([{ group_id: finalGroupId, user_id: currentUserId }]);
+          .insert([{ site_id: site.id, user_id: currentUserId }]);
 
         // Ignore duplicate row error if constraint exists
         if (gmError && (gmError as any).code !== '23505') {
@@ -515,22 +522,22 @@ export default function SiteDetails({ site, onBack, onViewOnMap, onSiteUpdated }
         onRequestClose={() => {
           if (updateSubmitting) return;
           setUpdateVisible(false);
-        }}
-      >
-        <View className="flex-1 bg-black/40 justify-end">
-          <View className="bg-white rounded-t-3xl border-t border-gray-200">
-            <View className="px-6 pt-5 pb-4 border-b border-gray-100 flex-row items-center justify-between">
+        }}>
+        <View className="flex-1 justify-end bg-black/40">
+          <View className="rounded-t-3xl border-t border-gray-200 bg-white">
+            <View className="flex-row items-center justify-between border-b border-gray-100 px-6 pb-4 pt-5">
               <View>
                 <Text className="text-lg font-extrabold text-gray-900">Update Site</Text>
-                <Text className="text-xs text-gray-500 mt-1">Fill the required details to finish this site.</Text>
+                <Text className="mt-1 text-xs text-gray-500">
+                  Fill the required details to finish this site.
+                </Text>
               </View>
               <TouchableOpacity
                 disabled={updateSubmitting}
-                className="w-10 h-10 rounded-2xl bg-gray-100 items-center justify-center"
+                className="h-10 w-10 items-center justify-center rounded-2xl bg-gray-100"
                 onPress={() => {
                   setUpdateVisible(false);
-                }}
-              >
+                }}>
                 <Ionicons name="close" size={18} color="#111827" />
               </TouchableOpacity>
             </View>
@@ -538,51 +545,51 @@ export default function SiteDetails({ site, onBack, onViewOnMap, onSiteUpdated }
             <ScrollView className="px-6 pt-5" showsVerticalScrollIndicator={false} bounces={false}>
               <View className="mb-5">
                 <Text className="text-xs font-semibold text-gray-700">Starlink Serial</Text>
-                <Text className="text-[11px] text-gray-500 mt-1">Required</Text>
+                <Text className="mt-1 text-[11px] text-gray-500">Required</Text>
                 <TextInput
                   value={starlinkSerial}
                   onChangeText={setStarlinkSerial}
                   placeholder="Enter starlink serial"
                   placeholderTextColor="#9ca3af"
                   autoCapitalize="characters"
-                  className="mt-2 rounded-2xl bg-gray-50 px-4 py-3 text-gray-900 font-semibold border border-gray-200"
+                  className="mt-2 rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3 font-semibold text-gray-900"
                 />
                 {!!updateTriedSubmit && !!validation.serialError && (
-                  <Text className="text-xs text-red-600 mt-2">{validation.serialError}</Text>
+                  <Text className="mt-2 text-xs text-red-600">{validation.serialError}</Text>
                 )}
               </View>
 
               <View className="mb-5">
                 <Text className="text-xs font-semibold text-gray-700">Technical Issue</Text>
-                <Text className="text-[11px] text-gray-500 mt-1">Required</Text>
+                <Text className="mt-1 text-[11px] text-gray-500">Required</Text>
                 <TouchableOpacity
                   disabled={updateSubmitting}
                   onPress={() => setTechnicalIssuePickerVisible(true)}
-                  className="mt-2 rounded-2xl bg-gray-50 px-4 py-3 border border-gray-200 flex-row items-center"
-                >
-                  <Text className={`flex-1 font-semibold ${technicalIssue ? 'text-gray-900' : 'text-gray-400'}`}>
+                  className="mt-2 flex-row items-center rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3">
+                  <Text
+                    className={`flex-1 font-semibold ${technicalIssue ? 'text-gray-900' : 'text-gray-400'}`}>
                     {technicalIssue || 'Select technical issue'}
                   </Text>
                   <Ionicons name="chevron-down" size={18} color="#6b7280" />
                 </TouchableOpacity>
                 {!!updateTriedSubmit && !!validation.issueError && (
-                  <Text className="text-xs text-red-600 mt-2">{validation.issueError}</Text>
+                  <Text className="mt-2 text-xs text-red-600">{validation.issueError}</Text>
                 )}
               </View>
 
               <View className="mb-5">
                 <Text className="text-xs font-semibold text-gray-700">Issue Description</Text>
-                <Text className="text-[11px] text-gray-500 mt-1">Required</Text>
+                <Text className="mt-1 text-[11px] text-gray-500">Required</Text>
                 <TextInput
                   value={issueDescription}
                   onChangeText={setIssueDescription}
                   placeholder={issueDescriptionPlaceholder}
                   placeholderTextColor="#9ca3af"
                   multiline
-                  className="mt-2 rounded-2xl bg-gray-50 px-4 py-3 text-gray-900 font-semibold border border-gray-200 min-h-[110px]"
+                  className="mt-2 min-h-[110px] rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3 font-semibold text-gray-900"
                 />
                 {!!updateTriedSubmit && !!validation.descError && (
-                  <Text className="text-xs text-red-600 mt-2">{validation.descError}</Text>
+                  <Text className="mt-2 text-xs text-red-600">{validation.descError}</Text>
                 )}
               </View>
 
@@ -590,41 +597,43 @@ export default function SiteDetails({ site, onBack, onViewOnMap, onSiteUpdated }
                 <View className="flex-row items-center justify-between">
                   <View>
                     <Text className="text-xs font-semibold text-gray-700">Evidence Photos</Text>
-                    <Text className="text-[11px] text-gray-500 mt-1">Required • {evidenceAssets.length} selected</Text>
+                    <Text className="mt-1 text-[11px] text-gray-500">
+                      Required • {evidenceAssets.length} selected
+                    </Text>
                   </View>
                   <TouchableOpacity
                     disabled={updateSubmitting}
                     onPress={pickEvidencePhotos}
-                    className="rounded-2xl bg-green-50 px-3 py-2 border border-green-200"
-                  >
-                    <Text className="text-green-700 font-semibold text-xs">Add Photos</Text>
+                    className="rounded-2xl border border-green-200 bg-green-50 px-3 py-2">
+                    <Text className="text-xs font-semibold text-green-700">Add Photos</Text>
                   </TouchableOpacity>
                 </View>
 
                 {evidenceAssets.length > 0 ? (
-                  <View className="flex-row flex-wrap gap-2 mt-3">
+                  <View className="mt-3 flex-row flex-wrap gap-2">
                     {evidenceAssets.map((asset) => (
                       <View key={asset.uri} className="relative">
                         <Image
                           source={{ uri: asset.uri }}
-                          className="w-20 h-20 rounded-2xl border border-gray-200"
+                          className="h-20 w-20 rounded-2xl border border-gray-200"
                         />
                         <TouchableOpacity
                           disabled={updateSubmitting}
-                          onPress={() => setEvidenceAssets((prev) => prev.filter((a) => a.uri !== asset.uri))}
-                          className="absolute -top-2 -right-2 w-7 h-7 rounded-full bg-white border border-gray-200 items-center justify-center"
-                        >
+                          onPress={() =>
+                            setEvidenceAssets((prev) => prev.filter((a) => a.uri !== asset.uri))
+                          }
+                          className="absolute -right-2 -top-2 h-7 w-7 items-center justify-center rounded-full border border-gray-200 bg-white">
                           <Ionicons name="close" size={14} color="#111827" />
                         </TouchableOpacity>
                       </View>
                     ))}
                   </View>
                 ) : (
-                  <Text className="text-xs text-gray-500 mt-2">No photos selected</Text>
+                  <Text className="mt-2 text-xs text-gray-500">No photos selected</Text>
                 )}
 
                 {!!updateTriedSubmit && !!validation.evidenceError && (
-                  <Text className="text-xs text-red-600 mt-2">{validation.evidenceError}</Text>
+                  <Text className="mt-2 text-xs text-red-600">{validation.evidenceError}</Text>
                 )}
               </View>
             </ScrollView>
@@ -634,13 +643,15 @@ export default function SiteDetails({ site, onBack, onViewOnMap, onSiteUpdated }
                 disabled={updateSubmitting || !validation.isValid}
                 onPress={uploadEvidenceAndFinish}
                 className={`w-full items-center justify-center rounded-2xl px-4 py-3 ${
-                  updateSubmitting || !validation.isValid ? 'bg-gray-300' : 'bg-green-500 active:scale-95'
-                }`}
-              >
+                  updateSubmitting || !validation.isValid
+                    ? 'bg-gray-300'
+                    : 'bg-green-500 active:scale-95'
+                }`}>
                 {updateSubmitting ? (
                   <ActivityIndicator color="#ffffff" />
                 ) : (
-                  <Text className={`text-base font-bold ${updateSubmitting || !validation.isValid ? 'text-gray-600' : 'text-white'}`}>
+                  <Text
+                    className={`text-base font-bold ${updateSubmitting || !validation.isValid ? 'text-gray-600' : 'text-white'}`}>
                     Submit & Finish
                   </Text>
                 )}
@@ -654,16 +665,14 @@ export default function SiteDetails({ site, onBack, onViewOnMap, onSiteUpdated }
         visible={technicalIssuePickerVisible}
         transparent
         animationType="fade"
-        onRequestClose={() => setTechnicalIssuePickerVisible(false)}
-      >
-        <View className="flex-1 bg-black/40 items-center justify-center p-6">
-          <View className="w-full bg-white rounded-3xl border border-gray-200 overflow-hidden">
-            <View className="px-5 py-4 bg-white flex-row items-center justify-between border-b border-gray-100">
+        onRequestClose={() => setTechnicalIssuePickerVisible(false)}>
+        <View className="flex-1 items-center justify-center bg-black/40 p-6">
+          <View className="w-full overflow-hidden rounded-3xl border border-gray-200 bg-white">
+            <View className="flex-row items-center justify-between border-b border-gray-100 bg-white px-5 py-4">
               <Text className="text-base font-extrabold text-gray-900">Select Technical Issue</Text>
               <TouchableOpacity
-                className="w-9 h-9 rounded-2xl bg-gray-100 items-center justify-center"
-                onPress={() => setTechnicalIssuePickerVisible(false)}
-              >
+                className="h-9 w-9 items-center justify-center rounded-2xl bg-gray-100"
+                onPress={() => setTechnicalIssuePickerVisible(false)}>
                 <Ionicons name="close" size={16} color="#111827" />
               </TouchableOpacity>
             </View>
@@ -677,9 +686,11 @@ export default function SiteDetails({ site, onBack, onViewOnMap, onSiteUpdated }
                       setTechnicalIssue(opt);
                       setTechnicalIssuePickerVisible(false);
                     }}
-                    className={`px-5 py-4 flex-row items-center border-b border-gray-100 ${selected ? 'bg-green-50' : 'bg-white'}`}
-                  >
-                    <Text className={`flex-1 font-semibold ${selected ? 'text-green-700' : 'text-gray-900'}`}>{opt}</Text>
+                    className={`flex-row items-center border-b border-gray-100 px-5 py-4 ${selected ? 'bg-green-50' : 'bg-white'}`}>
+                    <Text
+                      className={`flex-1 font-semibold ${selected ? 'text-green-700' : 'text-gray-900'}`}>
+                      {opt}
+                    </Text>
                     {selected ? <Ionicons name="checkmark" size={18} color="#10b981" /> : null}
                   </TouchableOpacity>
                 );
@@ -690,20 +701,19 @@ export default function SiteDetails({ site, onBack, onViewOnMap, onSiteUpdated }
       </Modal>
 
       {!site ? (
-        <View className="flex-1 bg-white items-center justify-center">
+        <View className="flex-1 items-center justify-center bg-white">
           <TouchableOpacity
             onPress={onBack}
-            className="mb-4 rounded-full bg-green-50 px-4 py-2 border border-green-100"
-          >
-            <Text className="text-green-600 font-semibold">Back to Sites</Text>
+            className="mb-4 rounded-full border border-green-100 bg-green-50 px-4 py-2">
+            <Text className="font-semibold text-green-600">Back to Sites</Text>
           </TouchableOpacity>
-          <Text className="text-gray-500 font-semibold">No site selected</Text>
+          <Text className="font-semibold text-gray-500">No site selected</Text>
         </View>
       ) : (
         <>
           <ScrollView className="flex-1" showsVerticalScrollIndicator={false}>
             {/* Top hero section with live map */}
-            <View className="rounded-b-3xl overflow-hidden border-b border-green-100 bg-green-50">
+            <View className="overflow-hidden rounded-b-3xl border-b border-green-100 bg-green-50">
               <View className="h-64 w-full">
                 <SiteLocationMap
                   latitude={site.latitude}
@@ -713,17 +723,18 @@ export default function SiteDetails({ site, onBack, onViewOnMap, onSiteUpdated }
                   onBack={onBack}
                 />
               </View>
-              <View className="absolute top-12 left-6 right-6 flex-row items-center justify-between">
-                <Text className="text-base font-semibold text-gray-900 bg-white bg-opacity-80 px-3 py-1 rounded-full">
+              <View className="absolute left-6 right-6 top-12 flex-row items-center justify-between">
+                <Text className="rounded-full bg-white bg-opacity-80 px-3 py-1 text-base font-semibold text-gray-900">
                   Site Information
                 </Text>
                 <View className="w-10" />
               </View>
               <TouchableOpacity
                 onPress={onViewOnMap}
-                className="absolute bottom-6 right-6 rounded-full bg-white px-4 py-1.5 border border-green-100 shadow-sm"
-              >
-                <Text className="text-xs font-semibold text-green-600 tracking-widest">VIEW ON MAP</Text>
+                className="absolute bottom-6 right-6 rounded-full border border-green-100 bg-white px-4 py-1.5 shadow-sm">
+                <Text className="text-xs font-semibold tracking-widest text-green-600">
+                  VIEW ON MAP
+                </Text>
               </TouchableOpacity>
             </View>
 
@@ -732,146 +743,167 @@ export default function SiteDetails({ site, onBack, onViewOnMap, onSiteUpdated }
               {!!onBack && (
                 <TouchableOpacity
                   onPress={onBack}
-                  className="self-start mb-4 rounded-full bg-green-50 px-4 py-2 border border-green-100"
-                >
-                  <Text className="text-green-600 font-semibold">Back to Sites</Text>
+                  className="mb-4 self-start rounded-full border border-green-100 bg-green-50 px-4 py-2">
+                  <Text className="font-semibold text-green-600">Back to Sites</Text>
                 </TouchableOpacity>
               )}
               <Text className="text-2xl font-extrabold text-gray-900">{site.name}</Text>
-              {site.companyName && <Text className="text-base text-gray-500 mt-1">{site.companyName}</Text>}
+              {site.companyName && (
+                <Text className="mt-1 text-base text-gray-500">{site.companyName}</Text>
+              )}
             </View>
 
             {/* Detail cards */}
-            <View className="px-6 pt-6 pb-24">
+            <View className="px-6 pb-24 pt-6">
               {/* Branch card */}
-              <View className="bg-white rounded-3xl p-4 mb-4 shadow-sm border border-gray-100 flex-row items-center">
-                <View className="w-10 h-10 rounded-2xl bg-green-50 items-center justify-center mr-4">
+              <View className="mb-4 flex-row items-center rounded-3xl border border-gray-100 bg-white p-4 shadow-sm">
+                <View className="mr-4 h-10 w-10 items-center justify-center rounded-2xl bg-green-50">
                   <Ionicons name="git-branch-outline" size={22} color="#10b981" />
                 </View>
                 <View className="flex-1">
-                  <Text className="text-[10px] font-semibold text-gray-400 tracking-widest">MAIN BRANCH</Text>
-                  <Text className="text-base font-semibold text-gray-900 mt-1">{site.branchName || 'N/A'}</Text>
+                  <Text className="text-[10px] font-semibold tracking-widest text-gray-400">
+                    MAIN BRANCH
+                  </Text>
+                  <Text className="mt-1 text-base font-semibold text-gray-900">
+                    {site.branchName || 'N/A'}
+                  </Text>
                 </View>
               </View>
 
               {/* Workforce card */}
-              <View className="bg-white rounded-3xl p-4 mb-4 shadow-sm border border-gray-100 flex-row items-center">
-                <View className="w-10 h-10 rounded-2xl bg-green-50 items-center justify-center mr-4">
+              <View className="mb-4 flex-row items-center rounded-3xl border border-gray-100 bg-white p-4 shadow-sm">
+                <View className="mr-4 h-10 w-10 items-center justify-center rounded-2xl bg-green-50">
                   <Ionicons name="people-outline" size={22} color="#10b981" />
                 </View>
                 <View className="flex-1">
-                  <Text className="text-[10px] font-semibold text-gray-400 tracking-widest">SITE WORKFORCE</Text>
-                  <Text className="text-base font-semibold text-gray-900 mt-1">{workforceLabel}</Text>
+                  <Text className="text-[10px] font-semibold tracking-widest text-gray-400">
+                    SITE WORKFORCE
+                  </Text>
+                  <Text className="mt-1 text-base font-semibold text-gray-900">
+                    {workforceLabel}
+                  </Text>
                 </View>
               </View>
 
               {/* Leader card */}
-              <View className="bg-white rounded-3xl p-4 mb-4 shadow-sm border border-gray-100 flex-row items-center">
-                <View className="w-10 h-10 rounded-2xl bg-green-50 items-center justify-center mr-4">
+              <View className="mb-4 flex-row items-center rounded-3xl border border-gray-100 bg-white p-4 shadow-sm">
+                <View className="mr-4 h-10 w-10 items-center justify-center rounded-2xl bg-green-50">
                   <Ionicons name="person-circle-outline" size={22} color="#10b981" />
                 </View>
                 <View className="flex-1">
-                  <Text className="text-[10px] font-semibold text-gray-400 tracking-widest">TEAM LEADER</Text>
+                  <Text className="text-[10px] font-semibold tracking-widest text-gray-400">
+                    TEAM LEADER
+                  </Text>
                   {loadingGroupInfo ? (
-                    <View className="flex-row items-center mt-1">
+                    <View className="mt-1 flex-row items-center">
                       <ActivityIndicator size="small" color="#10b981" />
                       <Text className="ml-2 text-xs text-gray-500">Loading leader...</Text>
                     </View>
                   ) : (
-                    <Text className="text-base font-semibold text-gray-900 mt-1">
-                      {groupLeaderName || 'No leader assigned'}
+                    <Text className="mt-1 text-base font-semibold text-gray-900">
+                      {leaderName || 'No leader assigned'}
                     </Text>
                   )}
                 </View>
               </View>
 
               {/* Status card */}
-              <View className="bg-white rounded-3xl p-4 mb-4 shadow-sm border border-gray-100 flex-row items-center">
-                <View className="w-10 h-10 rounded-2xl bg-green-50 items-center justify-center mr-4">
+              <View className="mb-4 flex-row items-center rounded-3xl border border-gray-100 bg-white p-4 shadow-sm">
+                <View className="mr-4 h-10 w-10 items-center justify-center rounded-2xl bg-green-50">
                   <Ionicons
-                    name={isFinished ? 'checkmark-circle-outline' : isActiveish ? 'alert-circle-outline' : 'alert-circle-outline'}
+                    name={
+                      isFinished
+                        ? 'checkmark-circle-outline'
+                        : isActiveish
+                          ? 'alert-circle-outline'
+                          : 'alert-circle-outline'
+                    }
                     size={22}
                     color={isFinished ? '#9ca3af' : '#22c55e'}
                   />
                 </View>
                 <View className="flex-1">
-                  <Text className="text-[10px] font-semibold text-gray-400 tracking-widest">SITE STATUS</Text>
+                  <Text className="text-[10px] font-semibold tracking-widest text-gray-400">
+                    SITE STATUS
+                  </Text>
                   <Text
-                    className={`text-base font-semibold mt-1 ${
+                    className={`mt-1 text-base font-semibold ${
                       isFinished ? 'text-gray-500' : 'text-green-600'
-                    }`}
-                  >
+                    }`}>
                     {site.status}
                   </Text>
                 </View>
               </View>
 
               {/* Coordinates card */}
-              <View className="bg-white rounded-3xl p-4 shadow-sm border border-gray-100 flex-row items-center">
-                <View className="w-10 h-10 rounded-2xl bg-green-50 items-center justify-center mr-4">
+              <View className="flex-row items-center rounded-3xl border border-gray-100 bg-white p-4 shadow-sm">
+                <View className="mr-4 h-10 w-10 items-center justify-center rounded-2xl bg-green-50">
                   <Ionicons name="location-outline" size={22} color="#10b981" />
                 </View>
                 <View className="flex-1">
-                  <Text className="text-[10px] font-semibold text-gray-400 tracking-widest">COORDINATES</Text>
-                  <Text className="text-base font-semibold text-gray-900 mt-1">{coordinateText}</Text>
+                  <Text className="text-[10px] font-semibold tracking-widest text-gray-400">
+                    COORDINATES
+                  </Text>
+                  <Text className="mt-1 text-base font-semibold text-gray-900">
+                    {coordinateText}
+                  </Text>
                 </View>
               </View>
             </View>
           </ScrollView>
 
           {/* Accept Site button fixed at bottom */}
-          <View className="absolute bottom-0 left-0 right-0 bg-white border-t border-gray-200 px-6 py-4">
+          <View className="absolute bottom-0 left-0 right-0 border-t border-gray-200 bg-white px-6 py-4">
             {isFinished ? (
               <TouchableOpacity
                 disabled
-                className="w-full items-center justify-center rounded-2xl px-4 py-3 bg-gray-300"
-              >
+                className="w-full items-center justify-center rounded-2xl bg-gray-300 px-4 py-3">
                 <Text className="text-base font-bold text-gray-600">Site Finished</Text>
               </TouchableOpacity>
             ) : isPending && isLeaderForThisSite ? (
               <TouchableOpacity
                 onPress={() => setUpdateVisible(true)}
-                className="w-full items-center justify-center rounded-2xl px-4 py-3 bg-green-500 active:scale-95"
-              >
+                className="w-full items-center justify-center rounded-2xl bg-green-500 px-4 py-3 active:scale-95">
                 <Text className="text-base font-bold text-white">Update Site</Text>
               </TouchableOpacity>
             ) : isPending && isUserLeaderAny ? (
               <TouchableOpacity
                 disabled
-                className="w-full items-center justify-center rounded-2xl px-4 py-3 bg-gray-300"
-              >
-                <Text className="text-base font-bold text-gray-600">Assigned to another leader</Text>
+                className="w-full items-center justify-center rounded-2xl bg-gray-300 px-4 py-3">
+                <Text className="text-base font-bold text-gray-600">
+                  Assigned to another leader
+                </Text>
               </TouchableOpacity>
             ) : isPending ? (
               <TouchableOpacity
                 onPress={handleAcceptSite}
-                disabled={acceptLoading || hasAccepted || !!currentUserGroupId || isUserLeaderAny}
+                disabled={acceptLoading || hasAccepted || !!currentUserSiteId || isUserLeaderAny}
                 className={`w-full items-center justify-center rounded-2xl px-4 py-3 ${
-                  hasAccepted || !!currentUserGroupId ? 'bg-gray-300' : 'bg-green-500 active:scale-95'
-                }`}
-              >
+                  hasAccepted || !!currentUserSiteId
+                    ? 'bg-gray-300'
+                    : 'bg-green-500 active:scale-95'
+                }`}>
                 {acceptLoading ? (
                   <ActivityIndicator color="#ffffff" />
                 ) : (
-                  <Text className={`text-base font-bold ${hasAccepted || !!currentUserGroupId ? 'text-gray-600' : 'text-white'}`}>
-                    {hasAccepted || !!currentUserGroupId ? 'Joined' : 'Accept & Join'}
+                  <Text
+                    className={`text-base font-bold ${hasAccepted || !!currentUserSiteId ? 'text-gray-600' : 'text-white'}`}>
+                    {hasAccepted || !!currentUserSiteId ? 'Joined' : 'Accept & Join'}
                   </Text>
                 )}
               </TouchableOpacity>
             ) : isActive ? (
               <TouchableOpacity
                 disabled
-                className={`w-full items-center justify-center rounded-2xl px-4 py-3 ${
-                  'bg-gray-300'
-                }`}
-              >
-                <Text className="text-base font-bold text-gray-600">Waiting for leader assignment</Text>
+                className={`w-full items-center justify-center rounded-2xl px-4 py-3 ${'bg-gray-300'}`}>
+                <Text className="text-base font-bold text-gray-600">
+                  Waiting for leader assignment
+                </Text>
               </TouchableOpacity>
             ) : (
               <TouchableOpacity
                 disabled
-                className="w-full items-center justify-center rounded-2xl px-4 py-3 bg-gray-300"
-              >
+                className="w-full items-center justify-center rounded-2xl bg-gray-300 px-4 py-3">
                 <Text className="text-base font-bold text-gray-600">Pending (Leader only)</Text>
               </TouchableOpacity>
             )}
