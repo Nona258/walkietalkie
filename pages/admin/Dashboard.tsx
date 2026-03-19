@@ -983,9 +983,9 @@ function MapEmbed({
           onLoadEnd={() => setReady(true)}
         />
       ) : (
-        <View className="flex-1 items-center justify-center">
+        <View className="items-center justify-center flex-1">
           <Ionicons name="map-outline" size={48} color="#a8a29e" />
-          <Text className="text-stone-400 mt-2">Map not available</Text>
+          <Text className="mt-2 text-stone-400">Map not available</Text>
         </View>
       )}
     </View>
@@ -1078,6 +1078,20 @@ export default function AdminDashboard({ onLogout, onNavigate }: AdminDashboardP
   const [pendingUsersCount, setPendingUsersCount] = useState(0);
   const [onlineUserHistoryRows, setOnlineUserHistoryRows] = useState<OnlineUserHistoryRow[]>([]);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+
+  const colors = {
+    green: '#237227',
+    greenLight: '#237227',
+    greenPale: '#e8f5e9',
+    cloudMist: '#f8fafb',
+    white: '#ffffff',
+    textPrimary: '#1e293b',
+    textSecondary: '#64748b',
+    textTertiary: '#94a3b8',
+    border: '#e2e8f0',
+    black: '#000000',
+  };
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => {
@@ -1402,30 +1416,34 @@ export default function AdminDashboard({ onLogout, onNavigate }: AdminDashboardP
 
   const StatCard = ({ item }: { item: StatCard }) => (
     <View
-      className="bg-white rounded-xl border border-stone-100 p-4 lg:p-5 flex-1 min-w-[45%] lg:min-w-[200px]"
-      style={{ shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.06, shadowRadius: 4 }}
+      className={`bg-[#e8f5e9] rounded-xl shadow-lg ${isWebView ? 'p-6' : 'p-4'}`}
     >
-      <View className="flex-row items-start justify-between mb-4">
+      <View
+        className={`flex-row items-center justify-between ${isWebView ? 'mb-3' : 'mb-2'}`}
+      >
         <View
-          className="w-10 h-10 rounded-lg items-center justify-center"
-          style={{ backgroundColor: item.color + '18' }}
+          className={`bg-[#237227] items-center justify-center rounded-full ${isWebView ? 'w-[44px] h-[44px]' : 'w-10 h-10'}`}
         >
-          <Ionicons name={item.icon as any} size={20} color={item.color} />
-        </View>
-        <View className="flex-row items-center bg-emerald-50 px-2 py-0.5 rounded-full">
-          <Ionicons name="trending-up" size={10} color="#059669" />
-          <Text className="text-emerald-700 text-xs font-semibold ml-0.5">+5%</Text>
+          <Ionicons name={item.icon as any} size={isWebView ? 22 : 18} color="#f8fafb" />
         </View>
       </View>
-      <Text className="text-2xl lg:text-3xl font-bold text-stone-900 mb-1">{item.value}</Text>
-      <Text className="text-stone-400 text-xs font-medium uppercase tracking-wide">{item.label}</Text>
+      <Text
+        className={`text-[#237227] font-light mb-1 ${isWebView ? 'text-4xl' : 'text-2xl'}`}
+      >
+        {item.value}
+      </Text>
+      <Text
+        className={`text-[#237227] opacity-70 font-medium tracking-[0.5px] ${isWebView ? 'text-sm' : 'text-[11px]'}`}
+      >
+        {item.label.toUpperCase()}
+      </Text>
     </View>
   );
 
   if (loading) {
     return (
-      <View className="flex-1 items-center justify-center bg-stone-50">
-        <ActivityIndicator size="large" color="#10b981" />
+      <View className="flex-1 items-center justify-center bg-[#f8fafb]">
+        <ActivityIndicator size="large" color={colors.green} />
       </View>
     );
   }
@@ -1433,15 +1451,21 @@ export default function AdminDashboard({ onLogout, onNavigate }: AdminDashboardP
   // Render SiteManagement if selected
   if (activeTab === 'siteManagement') {
     return (
-      <View className="flex-1 flex-row bg-stone-50">
-        <AdminNavbar 
+      <View className="flex-row flex-1 bg-[#f8fafb]">
+        <AdminNavbar
           activeTab={activeTab}
           setActiveTab={setActiveTab}
           onNavigate={onNavigate}
           onLogout={onLogout}
           pendingUsersCount={pendingUsersCount}
+          isMobileOpen={isMobileMenuOpen}
+          onMobileClose={() => setIsMobileMenuOpen(false)}
         />
-        <SiteManagement onNavigate={setActiveTab} />
+        <SiteManagement
+          onNavigate={setActiveTab}
+          isMobileMenuOpen={isMobileMenuOpen}
+          setIsMobileMenuOpen={setIsMobileMenuOpen}
+        />
       </View>
     );
   }
@@ -1449,15 +1473,21 @@ export default function AdminDashboard({ onLogout, onNavigate }: AdminDashboardP
   // Render ContactManagement if selected
   if (activeTab === 'walkieTalkie') {
     return (
-      <View className="flex-1 flex-row bg-stone-50">
-        <AdminNavbar 
+      <View className="flex-row flex-1 bg-[#f8fafb]">
+        <AdminNavbar
           activeTab={activeTab}
           setActiveTab={setActiveTab}
           onNavigate={onNavigate}
           onLogout={onLogout}
           pendingUsersCount={pendingUsersCount}
+          isMobileOpen={isMobileMenuOpen}
+          onMobileClose={() => setIsMobileMenuOpen(false)}
         />
-        <ContactManagement onNavigate={setActiveTab} />
+        <ContactManagement
+          onNavigate={setActiveTab}
+          isMobileMenuOpen={isMobileMenuOpen}
+          setIsMobileMenuOpen={setIsMobileMenuOpen}
+        />
       </View>
     );
   }
@@ -1465,15 +1495,21 @@ export default function AdminDashboard({ onLogout, onNavigate }: AdminDashboardP
   // Render ActivityLogs if selected
   if (activeTab === 'activityLogs') {
     return (
-      <View className="flex-1 flex-row bg-stone-50">
-        <AdminNavbar 
+      <View className="flex-row flex-1 bg-[#f8fafb]">
+        <AdminNavbar
           activeTab={activeTab}
           setActiveTab={setActiveTab}
           onNavigate={onNavigate}
           onLogout={onLogout}
           pendingUsersCount={pendingUsersCount}
+          isMobileOpen={isMobileMenuOpen}
+          onMobileClose={() => setIsMobileMenuOpen(false)}
         />
-        <ActivityLogs onNavigate={setActiveTab} />
+        <ActivityLogs
+          onNavigate={setActiveTab}
+          isMobileMenuOpen={isMobileMenuOpen}
+          setIsMobileMenuOpen={setIsMobileMenuOpen}
+        />
       </View>
     );
   }
@@ -1481,15 +1517,21 @@ export default function AdminDashboard({ onLogout, onNavigate }: AdminDashboardP
   // Render CompanyList if selected
   if (activeTab === 'companyList') {
     return (
-      <View className="flex-1 flex-row bg-stone-50">
-        <AdminNavbar 
+      <View className="flex-row flex-1 bg-[#f8fafb]">
+        <AdminNavbar
           activeTab={activeTab}
           setActiveTab={setActiveTab}
           onNavigate={onNavigate}
           onLogout={onLogout}
           pendingUsersCount={pendingUsersCount}
+          isMobileOpen={isMobileMenuOpen}
+          onMobileClose={() => setIsMobileMenuOpen(false)}
         />
-        <CompanyList onNavigate={setActiveTab} />
+        <CompanyList
+          onNavigate={setActiveTab}
+          isMobileMenuOpen={isMobileMenuOpen}
+          setIsMobileMenuOpen={setIsMobileMenuOpen}
+        />
       </View>
     );
   }
@@ -1497,15 +1539,22 @@ export default function AdminDashboard({ onLogout, onNavigate }: AdminDashboardP
   // Render Employees if selected
   if (activeTab === 'employee') {
     return (
-      <View className="flex-1 flex-row bg-stone-50">
-        <AdminNavbar 
+      <View className="flex-row flex-1 bg-[#f8fafb]">
+        <AdminNavbar
           activeTab={activeTab}
           setActiveTab={setActiveTab}
           onNavigate={onNavigate}
           onLogout={onLogout}
           pendingUsersCount={pendingUsersCount}
+          isMobileOpen={isMobileMenuOpen}
+          onMobileClose={() => setIsMobileMenuOpen(false)}
         />
-        <Employees onNavigate={setActiveTab} pendingUsersCount={pendingUsersCount} />
+        <Employees
+          onNavigate={setActiveTab}
+          pendingUsersCount={pendingUsersCount}
+          isMobileMenuOpen={isMobileMenuOpen}
+          setIsMobileMenuOpen={setIsMobileMenuOpen}
+        />
       </View>
     );
   }
@@ -1513,130 +1562,158 @@ export default function AdminDashboard({ onLogout, onNavigate }: AdminDashboardP
   // Render Settings if selected
   if (activeTab === 'settings') {
     return (
-      <View className="flex-1 flex-row bg-stone-50">
-        <AdminNavbar 
+      <View className="flex-row flex-1 bg-[#f8fafb]">
+        <AdminNavbar
           activeTab={activeTab}
           setActiveTab={setActiveTab}
           onNavigate={onNavigate}
           onLogout={onLogout}
           pendingUsersCount={pendingUsersCount}
+          isMobileOpen={isMobileMenuOpen}
+          onMobileClose={() => setIsMobileMenuOpen(false)}
         />
-        <Settings onNavigate={setActiveTab} />
+        <Settings
+          onNavigate={setActiveTab}
+          isMobileMenuOpen={isMobileMenuOpen}
+          setIsMobileMenuOpen={setIsMobileMenuOpen}
+        />
       </View>
     );
   }
 
   return (
-    <View className="flex-1 flex-row bg-stone-50">
-      <AdminNavbar 
+    <View className="flex-row flex-1 bg-[#f8fafb]">
+      <AdminNavbar
         activeTab={activeTab}
         setActiveTab={setActiveTab}
         onNavigate={onNavigate}
         onLogout={onLogout}
         pendingUsersCount={pendingUsersCount}
+        isMobileOpen={isMobileMenuOpen}
+        onMobileClose={() => setIsMobileMenuOpen(false)}
       />
 
       {/* Main Content Area */}
-      <ScrollView 
-        className="flex-1 bg-stone-50"
+      <ScrollView
+        className="flex-1 bg-[#f8fafb]"
         showsVerticalScrollIndicator={false}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.green} />}
       >
-        {/* Header */}
-        <View className="bg-white px-6 pt-5 pb-4 border-b border-stone-100">
+        {/* Header - Minimalist */}
+        <View
+          className={`bg-[#f8fafb] border-b border-slate-200 ${isWebView ? 'px-6 pt-8 pb-6' : 'px-4 pt-4 pb-4'}`}
+        >
           <View className="flex-row items-center justify-between">
             <View className="flex-row items-center flex-1">
-              <TouchableOpacity className="lg:hidden w-9 h-9 items-center justify-center mr-3">
-                <Ionicons name="menu" size={22} color="#44403c" />
-              </TouchableOpacity>
+              {!isWebView && (
+                <TouchableOpacity
+                  onPress={() => setIsMobileMenuOpen(true)}
+                  className="items-center justify-center w-10 h-10 mr-3"
+                >
+                  <Ionicons name="menu" size={28} color={colors.green} />
+                </TouchableOpacity>
+              )}
               <View className="flex-1">
-                <Text className="text-xl font-bold text-stone-900 tracking-tight">Dashboard</Text>
-                <Text className="text-stone-400 text-xs mt-0.5 font-medium">Overview & analytics</Text>
+                <Text
+                  className="mb-1 text-xl font-light text-black lg:text-3xl"
+                >
+                  Dashboard
+                </Text>
+                <Text
+                  className="text-xs text-black lg:text-base"
+                >
+                  Welcome back, Administrator
+                </Text>
               </View>
             </View>
-            <View className="flex-row items-center gap-2">
-              <TouchableOpacity className="w-9 h-9 bg-stone-50 border border-stone-100 rounded-lg items-center justify-center">
-                <View className="w-2 h-2 bg-red-400 rounded-full absolute top-1.5 right-1.5" />
-                <Ionicons name="notifications-outline" size={17} color="#78716c" />
+            <View className={`flex-row items-center ${isWebView ? 'space-x-3' : 'space-x-2'}`}>
+              <TouchableOpacity
+                className="relative items-center justify-center w-10 h-10 rounded-full bg-[#f8fafb]"
+              >
+                <Ionicons name="notifications-outline" size={20} color={colors.textSecondary} />
+                <View
+                  className="absolute w-2 h-2 rounded-full top-2 right-2 bg-[#237227]"
+                />
               </TouchableOpacity>
-              <View className="flex-row items-center gap-2 bg-stone-50 border border-stone-100 rounded-lg px-2.5 py-1.5">
-                <View className="w-6 h-6 bg-emerald-500 rounded-md items-center justify-center">
-                  <Text className="text-white font-bold text-xs">AD</Text>
-                </View>
-                <View className="hidden lg:flex">
-                  <Text className="text-xs font-semibold text-stone-800">Admin User</Text>
-                  <Text className="text-xs text-stone-400 leading-none">Super Admin</Text>
-                </View>
+              <View
+                className="items-center justify-center w-10 h-10 rounded-full bg-[#237227]"
+              >
+                <Text className="text-sm font-medium text-[#f8fafb]">AD</Text>
               </View>
             </View>
           </View>
         </View>
 
-        {/* Stats Grid */}
-        <View className="px-6 pt-6 pb-4">
-          <View className="flex-row flex-wrap gap-3">
+        {/* Stats Grid - Clean spacing */}
+        <View className={isWebView ? 'px-6 py-8' : 'px-4 py-5'}>
+          <View className={`flex-row flex-wrap ${isWebView ? '-mx-2' : '-mx-[6px]'}`}>
             {stats.map((stat, index) => (
-              <View key={index} style={{ width: isWebView ? '23.5%' : '48%' }}>
+              <View
+                key={index}
+                className={`${isWebView ? 'w-1/4 px-2 mb-4' : 'w-1/2 px-[6px] mb-3'}`}
+              >
                 <StatCard item={stat} />
               </View>
             ))}
           </View>
         </View>
 
-        <View className="lg:flex-row lg:gap-5 px-6 pb-6">
+        <View className={isWebView ? 'px-6 pb-8 flex-row' : 'px-4 pb-5 flex-col'}>
           {/* Left Column */}
-          <View className="flex-1 mb-5 lg:mb-0">
-            {/* Chart Card */}
+          <View className={`flex-1 ${isWebView ? 'mb-0 mr-6' : 'mb-4 mr-0'}`}>
+            {/* Communication Activity */}
             <View
-              className="bg-white rounded-xl border border-stone-100 p-5 mb-5"
-              style={{ shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.05, shadowRadius: 4 }}
+              className={`bg-white rounded-xl shadow-sm ${isWebView ? 'p-7 mb-6' : 'p-4 mb-4'}`}
             >
-              <View className="flex-row items-center justify-between mb-5">
-                <View>
-                  <Text className="text-sm font-semibold text-stone-900">Communication Activity</Text>
-                  <Text className="text-xs text-stone-400 mt-0.5">Messages sent per day</Text>
-                </View>
-                <View className="flex-row items-center bg-stone-50 border border-stone-100 px-3 py-1.5 rounded-lg">
-                  <Text className="text-stone-600 text-xs font-medium mr-1">Last 7 Days</Text>
-                  <Ionicons name="chevron-down" size={13} color="#78716c" />
-                </View>
+              <View
+                className={`flex-row items-center justify-between ${isWebView ? 'mb-6' : 'mb-4'}`}
+              >
+                <Text
+                  className={`text-slate-800 font-light ${isWebView ? 'text-xl' : 'text-base'}`}
+                >
+                  Communication Activity
+                </Text>
+                <TouchableOpacity
+                  className={`flex-row items-center rounded-lg bg-[#f8fafb] ${isWebView ? 'px-3 py-2' : 'px-2 py-1.5'}`}
+                >
+                  <Text className="mr-1 text-xs text-slate-500">7 Days</Text>
+                  <Ionicons name="chevron-down" size={14} color={colors.textSecondary} />
+                </TouchableOpacity>
               </View>
-              {/* Bar chart with day labels */}
-              <View className="flex-row items-end justify-between gap-1" style={{ height: 120 }}>
-                {[
-                  { h: 45, day: 'Mon' }, { h: 60, day: 'Tue' }, { h: 75, day: 'Wed' },
-                  { h: 55, day: 'Thu' }, { h: 85, day: 'Fri' }, { h: 95, day: 'Sat' }, { h: 70, day: 'Sun' },
-                ].map((bar, i) => (
-                  <View key={i} className="flex-1 items-center">
-                    <View
-                      className="w-full rounded-t-md"
-                      style={{ height: `${bar.h}%`, backgroundColor: bar.h >= 85 ? '#10b981' : '#d1fae5' }}
-                    />
-                    <Text className="text-stone-400 text-xs mt-1.5 font-medium">{bar.day}</Text>
-                  </View>
+              <View
+                className="flex-row items-end space-x-2 h-44"
+              >
+                {[45, 60, 75, 55, 85, 95, 70].map((h, i) => (
+                  <View
+                    key={i}
+                    className={`flex-1 rounded-t ${i === 5 ? 'bg-[#237227]' : 'bg-[#e8f5e9]'}`}
+                    style={{ height: `${h}%` }}
+                  />
+                ))}
+              </View>
+              <View className="flex-row justify-between mt-3">
+                {['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map((day, i) => (
+                  <Text
+                    key={i}
+                    className="flex-1 text-xs text-center text-slate-400"
+                  >
+                    {day}
+                  </Text>
                 ))}
               </View>
             </View>
 
-            {/* Map Card */}
+            {/* Live Location Map */}
             <View
-              className="bg-white rounded-xl border border-stone-100 p-5"
-              style={{ shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.05, shadowRadius: 4 }}
+              className={`bg-white rounded-xl shadow-sm ${isWebView ? 'p-7' : 'p-4'}`}
             >
-              <View className="flex-row items-center justify-between mb-4">
-                <View>
-                  <Text className="text-sm font-semibold text-stone-900">Live Location Map</Text>
-                  <Text className="text-xs text-stone-400 mt-0.5">Real-time employee tracking</Text>
-                </View>
-                <View className="flex-row items-center gap-1.5">
-                  <View className="w-2 h-2 rounded-full bg-emerald-500" />
-                  <Text className="text-xs text-stone-500 font-medium">
-                    {onlineUsersForMap.length} online
-                  </Text>
-                </View>
-              </View>
+              <Text
+                className={`text-slate-800 font-light ${isWebView ? 'text-xl mb-5' : 'text-base mb-4'}`}
+              >
+                Live Location Tracking
+              </Text>
               <LiveLocationMap
-                heightClassName="h-48 lg:h-56"
+                heightClassName={isWebView ? 'h-64' : 'h-48'}
                 sites={sites}
                 onlineUsers={onlineUsersForMap}
                 onlineUserHistory={onlineUserHistoryRows}
@@ -1644,47 +1721,53 @@ export default function AdminDashboard({ onLogout, onNavigate }: AdminDashboardP
             </View>
           </View>
 
-          {/* Right Column - Activity Feed */}
-          <View className="lg:w-80">
+          {/* Right Column - Recent Activity */}
+          <View className={`${isWebView ? 'w-96 mt-0' : 'w-full mt-4'}`}>
             <View
-              className="bg-white rounded-xl border border-stone-100 p-5"
-              style={{ shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.05, shadowRadius: 4, height: 400 }}
+              className={`bg-white rounded-xl shadow-sm ${isWebView ? 'p-7' : 'p-4'}`}
             >
-              <View className="flex-row items-center justify-between mb-4">
-                <View>
-                  <Text className="text-sm font-semibold text-stone-900">Recent Activity</Text>
-                  <Text className="text-xs text-stone-400 mt-0.5">Latest system events</Text>
-                </View>
-                <View className="bg-emerald-50 px-2.5 py-1 rounded-full">
-                  <Text className="text-emerald-700 text-xs font-semibold">{activities.length} events</Text>
-                </View>
-              </View>
+              <Text
+                className={`text-slate-800 font-light ${isWebView ? 'text-xl mb-5' : 'text-base mb-4'}`}
+              >
+                Recent Activity
+              </Text>
               {activities.length === 0 ? (
-                <View className="flex-1 items-center justify-center">
-                  <View className="w-12 h-12 bg-stone-50 rounded-xl items-center justify-center mb-3">
-                    <Ionicons name="clipboard-outline" size={22} color="#d6d3d1" />
-                  </View>
-                  <Text className="text-stone-400 text-sm font-medium">No activities yet</Text>
-                </View>
+                <Text className="text-sm text-slate-500">No activities yet.</Text>
               ) : (
-                <ScrollView className="flex-1" nestedScrollEnabled showsVerticalScrollIndicator={false}>
+                <ScrollView
+                  nestedScrollEnabled
+                  showsVerticalScrollIndicator
+                  persistentScrollbar
+                  className={isWebView ? 'max-h-[420px]' : 'max-h-80'}
+                >
                   {activities.map((activity, idx) => (
-                    <View key={activity.id} className={`flex-row items-start ${idx !== activities.length - 1 ? 'mb-3 pb-3 border-b border-stone-50' : ''}`}>
+                    <View
+                      key={activity.id}
+                      className={`flex-row items-start ${
+                        idx !== activities.length - 1
+                          ? isWebView
+                            ? 'mb-5 pb-5 border-b border-slate-200'
+                            : 'mb-4 pb-4 border-b border-slate-200'
+                          : ''
+                      }`}
+                    >
                       <View
-                        className="w-8 h-8 rounded-lg items-center justify-center mr-3 mt-0.5"
-                        style={{ backgroundColor: activity.color || '#ecfdf5' }}
+                        className="items-center justify-center w-10 h-10 mr-4 rounded-full bg-[#237227]"
                       >
-                        <Ionicons name={(activity.icon || 'notifications-outline') as any} size={14} color="#10b981" />
+                        <Ionicons name={(activity.icon || 'notifications-outline') as any} size={18} color={colors.cloudMist} />
                       </View>
                       <View className="flex-1">
-                        <Text className="text-stone-800 text-xs font-semibold mb-0.5">{activity.action}</Text>
+                        <Text
+                          className="mb-1 text-sm font-medium text-slate-800"
+                        >
+                          {activity.action}
+                        </Text>
                         {activity.description ? (
-                          <Text className="text-stone-400 text-xs leading-relaxed" numberOfLines={2}>{activity.description}</Text>
+                          <Text className="text-xs text-slate-500">
+                            {activity.description}
+                          </Text>
                         ) : null}
                       </View>
-                      <Text className="text-stone-300 text-xs ml-2 mt-0.5 font-medium">
-                        {activity.time ? new Date(activity.time).toLocaleDateString() : ''}
-                      </Text>
                     </View>
                   ))}
                 </ScrollView>

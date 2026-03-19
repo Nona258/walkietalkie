@@ -33,10 +33,10 @@ export default function SweetAlertModal({
   showCancelButton = false,
 }: SweetAlertModalProps) {
   const iconMap = {
-    success: { name: "checkmark-circle" as const, color: "#10b981" },
-    error: { name: "close-circle" as const, color: "#ef4444" },
-    warning: { name: "warning" as const, color: "#f59e0b" },
-    info: { name: "information-circle" as const, color: "#3b82f6" },
+    success: { name: "checkmark-circle" as const, color: "#237227", bgColor: "#e8f5e9" },
+    error: { name: "close-circle" as const, color: "#ef4444", bgColor: "#ef444415" },
+    warning: { name: "warning" as const, color: "#f59e0b", bgColor: "#f59e0b15" },
+    info: { name: "information-circle" as const, color: "#3b82f6", bgColor: "#3b82f615" },
   };
 
   const icon = iconMap[type];
@@ -56,7 +56,7 @@ export default function SweetAlertModal({
           {/* Icon */}
           <View
             className="w-20 h-20 rounded-full items-center justify-center mb-5"
-            style={{ backgroundColor: `${icon.color}15` }}
+            style={{ backgroundColor: icon.bgColor }}
           >
             <Ionicons name={icon.name} size={48} color={icon.color} />
           </View>
@@ -90,11 +90,11 @@ export default function SweetAlertModal({
             )}
             <TouchableOpacity
               className="flex-1 py-3.5 rounded-2xl items-center"
-              style={{ backgroundColor: icon.color }}
+              style={{ backgroundColor: '#237227' }}
               onPress={onConfirm}
               activeOpacity={0.8}
             >
-              <Text className="text-white text-base font-bold">
+              <Text className="text-base font-bold" style={{ color: '#f8fafb' }}>
                 {confirmText}
               </Text>
             </TouchableOpacity>
