@@ -1942,7 +1942,7 @@ export default function ContactManagement({ onNavigate, setIsMobileMenuOpen }: C
 
                   <View className="flex-row gap-2">
                     <TouchableOpacity
-                      className="flex-1 py-2.5 rounded-xl bg-[#237227] items-center"
+                      className="flex-1 py-2.5 rounded-xl  bg-[#f8fafb] border border-[#237227] items-center"
                       onPress={() => {
                         setShowCreateGroupModal(false);
                         setGroupName('');
@@ -1951,7 +1951,7 @@ export default function ContactManagement({ onNavigate, setIsMobileMenuOpen }: C
                         setGroupStep(1);
                       }}
                     >
-                      <Text className="text-sm font-semibold text-[#f8fafb]">Cancel</Text>
+                      <Text className="text-sm font-semibold text-black">Cancel</Text>
                     </TouchableOpacity>
 
                     <TouchableOpacity

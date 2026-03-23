@@ -645,9 +645,9 @@ export default function Employees({
                   setIsAddModalOpen(false);
                   setIsEditModalOpen(false);
                 }}
-                className="flex-1 h-10 rounded-[9px] items-center justify-center bg-[#237227] border border-[#e5e7eb]"
+                className="flex-1 h-10 rounded-[9px] items-center justify-center bg-[#f8fafb] border border-[#237227]"
               >
-                <Text className="text-[14px] font-semibold text-[#f8fafb]">Cancel</Text>
+                <Text className="text-[14px] font-semibold text-black">Cancel</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 onPress={() => {
@@ -716,8 +716,8 @@ export default function Employees({
               <Text className="font-semibold text-[#4b6b4d]">{deleteTarget?.full_name}</Text> will be permanently removed from the system.
             </Text>
             <View className="flex-row gap-[10px] w-full mt-1">
-              <TouchableOpacity onPress={() => setIsDeleteModalOpen(false)} className="flex-1 h-10 rounded-[9px] items-center justify-center bg-[#237227] border border-[#e5e7eb]">
-                <Text className="text-[14px] font-semibold text-[#f8fafb]">Cancel</Text>
+              <TouchableOpacity onPress={() => setIsDeleteModalOpen(false)} className="flex-1 h-10 rounded-[9px] items-center justify-center bg-[#f8fafb] border border-[#237227]">
+                <Text className="text-[14px] font-semibold text-black">Cancel</Text>
               </TouchableOpacity>
               <TouchableOpacity onPress={handleDelete} className="flex-1 h-10 rounded-[9px] bg-[#ef4444] items-center justify-center">
                 <Text className="text-[14px] font-semibold text-white">Remove</Text>

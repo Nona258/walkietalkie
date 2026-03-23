@@ -1258,16 +1258,16 @@ export default function SiteManagement({ onNavigate, setIsMobileMenuOpen }: Site
             <View className="px-6 pt-4 pb-6 border-t border-stone-100">
               <View className="flex-row gap-3">
                 <TouchableOpacity
-                  className="flex-1 py-3 rounded-lg bg-[#237227] active:opacity-80"
+                  className="flex-1 py-3 rounded-lg bg-[#f8fafb] border border-[#237227] active:opacity-80"
                   onPress={() => {
                     setIsAddModalOpen(false);
                     resetForm();
                   }}
                 >
-                  <Text className="text-sm font-semibold text-center text-[#f8fafb]">Cancel</Text>
+                  <Text className="text-sm font-semibold text-center text-black">Cancel</Text>
                 </TouchableOpacity>
                 <TouchableOpacity
-                  className="flex-1 py-3 rounded-lg bg-[#237227] shadow-sm active:opacity-80"
+                  className="flex-1 py-3 rounded-lg bg-[#237227]  active:opacity-80"
                   onPress={handleAddSite}
                 >
                   <Text className="text-sm font-semibold text-center text-white">Add Site</Text>
@@ -1440,13 +1440,13 @@ export default function SiteManagement({ onNavigate, setIsMobileMenuOpen }: Site
             <View className="px-6 pt-4 pb-6 border-t border-stone-100">
               <View className="flex-row gap-3">
                 <TouchableOpacity
-                  className="flex-1 py-3 rounded-lg bg-[#237227] active:opacity-80"
+                  className="flex-1 py-3 rounded-lg bg-[#f8fafb] border border-[#237227] active:opacity-80"
                   onPress={() => {
                     setIsEditModalOpen(false);
                     resetForm();
                   }}
                 >
-                  <Text className="text-sm font-semibold text-center text-[#f8fafb]">Cancel</Text>
+                  <Text className="text-sm font-semibold text-center text-black">Cancel</Text>
                 </TouchableOpacity>
                 <TouchableOpacity
                   className="flex-1 py-3 rounded-lg bg-[#237227] shadow-sm active:opacity-80"

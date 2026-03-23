@@ -112,7 +112,7 @@ function CompanyRow({ company, isLast, onPress, onDelete, isWebView }: { company
                 onPress={(e) => { e.stopPropagation?.(); onDelete(); }}
                 className="flex-1 flex-row items-center justify-center gap-[5px] py-2 rounded-[7px] bg-[#fee2e2] border border-[#ef4444]"
               >
-                <Ionicons name="trash-outline" size={14} color="#ef4444" />
+                <Ionicons name="trash-outline" size={14} color="#f8fafb" />
                 <Text className="text-[12px] font-semibold text-[#ef4444]">Delete</Text>
               </TouchableOpacity>
             </View>
@@ -164,9 +164,9 @@ function CompanyRow({ company, isLast, onPress, onDelete, isWebView }: { company
         <TouchableOpacity
           onPress={(e) => { e.stopPropagation?.(); onDelete(); }}
           hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-          className="w-7 h-7 rounded-[7px] bg-[#fee2e2] border border-[#ef4444] items-center justify-center"
+          className="w-7 h-7 rounded-[7px] bg-[#ef4444] items-center justify-center"
         >
-          <Ionicons name="trash-outline" size={13} color="#ef4444" />
+          <Ionicons name="trash-outline" size={13} color="#fff" />
         </TouchableOpacity>
       </View>
     </TouchableOpacity>
@@ -296,37 +296,6 @@ export default function CompanyList({ onNavigate, isMobileMenuOpen, setIsMobileM
 
         {/* ── Page Body ────────────────────────────────────────────────────────── */}
         <View className={`${pageX} ${isWebView ? 'pt-6' : 'pt-4'} pb-12 w-full`}>
-
-          {/* Stats strip */}
-          <View className={`flex-row ${isWebView ? 'gap-3' : 'gap-2'} ${isWebView ? 'mb-6' : 'mb-4'} flex-wrap`}>
-            {[
-              { label: 'Total Companies', value: `${companies.length}`,                                      icon: 'business-outline'   },
-              { label: 'Active Sites',    value: `${companies.filter((c) => c.status === 'Active').length}`, icon: 'location-outline'   },
-              { label: 'Active Users',    value: `${companies.reduce((s, c) => s + c.employees, 0)}`,        icon: 'people-outline'     },
-              { label: 'Total Employees', value: `${companies.reduce((s, c) => s + c.employees, 0)}`,        icon: 'people-outline'     },
-            ].map((stat) => (
-              <View
-                key={stat.label}
-                className={
-                  `bg-[#e8f5e9] rounded-xl border border-[#e5e7eb] flex-row items-center ` +
-                  (isWebView ? 'flex-1 min-w-[140px] p-4 gap-3' : 'w-[48%] p-3 gap-[10px]')
-                }
-              >
-                <View
-                  className={
-                    `rounded-[10px] bg-white items-center justify-center border border-[#f0f4f0] ` +
-                    (isWebView ? 'w-[38px] h-[38px]' : 'w-[34px] h-[34px]')
-                  }
-                >
-                  <Ionicons name={stat.icon as any} size={isWebView ? 18 : 16} color="#237227" />
-                </View>
-                <View className="flex-1">
-                  <Text className={`${isWebView ? 'text-[20px]' : 'text-[18px]'} font-bold text-[#1c1917]`}>{stat.value}</Text>
-                  <Text className={`${isWebView ? 'text-[11px]' : 'text-[10px]'} text-[#78716c] mt-[1px]`}>{stat.label}</Text>
-                </View>
-              </View>
-            ))}
-          </View>
 
           {/* ── Table Container ───────────────────────────────────────────────── */}
           <View className="bg-white rounded-[14px] border border-[#e5e7eb] overflow-hidden w-full">
@@ -486,8 +455,8 @@ export default function CompanyList({ onNavigate, isMobileMenuOpen, setIsMobileM
               <LabeledInput label="Employees"    placeholder="e.g. 120"          value={employees}   onChangeText={setEmployees}   icon="people-outline"    />
             </View>
             <View className="flex-row gap-[10px] px-6 pb-6">
-              <TouchableOpacity onPress={() => setIsAddModalOpen(false)} className="flex-1 h-10 rounded-[9px] items-center justify-center bg-[#237227]">
-                <Text className="text-[13px] font-semibold text-[#f8fafb]">Cancel</Text>
+              <TouchableOpacity onPress={() => setIsAddModalOpen(false)} className="flex-1 h-10 rounded-[9px] items-center justify-center bg-[#f8fafb] border border-[#237227]">
+                <Text className="text-[13px] font-semibold text-black">Cancel</Text>
               </TouchableOpacity>
               <TouchableOpacity onPress={handleAddCompany} className="flex-1 h-10 rounded-[9px] bg-[#237227] items-center justify-center flex-row gap-[5px]">
                 <Ionicons name="add-outline" size={15} color="#ffffff" />
@@ -551,8 +520,8 @@ export default function CompanyList({ onNavigate, isMobileMenuOpen, setIsMobileM
               <Text className="font-semibold text-[#44403c]">{deleteTarget?.name}</Text> and all its data will be permanently removed.
             </Text>
             <View className="flex-row gap-[10px] w-full mt-1">
-              <TouchableOpacity onPress={() => setIsDeleteModalOpen(false)} className="flex-1 h-10 rounded-[9px] items-center justify-center bg-[#237227]">
-                <Text className="text-[13px] font-semibold text-[#f8fafb]">Cancel</Text>
+              <TouchableOpacity onPress={() => setIsDeleteModalOpen(false)} className="flex-1 h-10 rounded-[9px] items-center justify-center bg-[#f8fafb] border border-[#237227]">
+                <Text className="text-[13px] font-semibold text-black">Cancel</Text>
               </TouchableOpacity>
               <TouchableOpacity onPress={confirmDelete} className="flex-1 h-10 rounded-[9px] bg-[#ef4444] items-center justify-center">
                 <Text className="text-[13px] font-semibold text-white">Delete</Text>

@@ -266,9 +266,9 @@ export default function Settings({ onNavigate, setIsMobileMenuOpen }: SettingsPr
                       </TouchableOpacity>
                       <TouchableOpacity
                         onPress={handleCancel}
-                        className="h-[38px] rounded-[9px] border items-center justify-center bg-[#f8fafb] border-[#e5e7eb]"
+                        className="h-[38px] rounded-[9px]  items-center justify-center bg-[#f8fafb] border border-[#237227]"
                       >
-                        <Text className="text-sm font-semibold text-[#4b6b4d]">
+                        <Text className="text-sm font-semibold text-black">
                           Cancel
                         </Text>
                       </TouchableOpacity>
