@@ -77,7 +77,10 @@ export default function Sites({ onMapPress, onSiteMapPress }: SitesProps) {
     site.name.toLowerCase().includes(searchText.toLowerCase()) ||
     (site.companyName && site.companyName.toLowerCase().includes(searchText.toLowerCase())) ||
     (site.branchName && site.branchName.toLowerCase().includes(searchText.toLowerCase()))
-  );
+  ).sort((a, b) => {
+    if (a.status === b.status) return 0;
+    return a.status === 'active' ? -1 : 1;
+  });
 
   const handleSitePress = (site: Site) => {
     setSelectedSite(site);
@@ -146,58 +149,56 @@ export default function Sites({ onMapPress, onSiteMapPress }: SitesProps) {
               <Text className="text-gray-500 text-base mt-4 font-semibold">Loading sites...</Text>
             </View>
           ) : filteredSites.length > 0 ? (
-            <View className="gap-4">
+            <View className="gap-3">
               {filteredSites.map((site) => (
                 <TouchableOpacity
                   key={site.id}
                   onPress={() => handleSitePress(site)}
-                  className="bg-white rounded-3xl p-5 shadow-md shadow-green-200 border-2 border-green-100 active:scale-95"
+                  className="bg-white rounded-2xl px-4 py-4 border border-gray-200 shadow-md shadow-gray-300 flex-row items-center active:opacity-70"
                 >
-                  {/* Top Section - Icon and Basic Info */}
-                  <View className="flex-row items-start mb-5">
-                    {/* Location Icon */}
-                    <TouchableOpacity 
-                      onPress={() => onSiteMapPress?.(site)}
-                      className={`w-14 h-14 rounded-2xl ${site.status === 'active' ? 'bg-green-500' : 'bg-gray-400'} items-center justify-center mr-4 active:scale-95`}
-                    >
-                      <Ionicons name="location" size={26} color="white" />
-                    </TouchableOpacity>
+                  {/* Location Icon Box */}
+                  <View className={`w-12 h-12 rounded-xl ${site.status === 'active' ? 'bg-green-100' : 'bg-gray-100'} items-center justify-center mr-3`}>
+                    <Ionicons name="location-outline" size={22} color={site.status === 'active' ? '#16a34a' : '#6b7280'} />
+                  </View>
 
-                    {/* Site Info with Company & Branch */}
-                    <View className="flex-1">
-                      <View className="flex-row items-center mb-1">
-                        <Text className="text-gray-900 font-extrabold text-lg flex-1">
-                          {site.name}
+                  {/* Main Content */}
+                  <View className="flex-1 mr-2">
+                    {/* Name + Status Badge */}
+                    <View className="flex-row items-center justify-between mb-0.5">
+                      <Text className="text-gray-900 font-bold text-base flex-1 mr-2" numberOfLines={1}>
+                        {site.name}
+                      </Text>
+                      <View className={`px-2 py-0.5 rounded-full ${site.status === 'active' ? 'bg-green-100' : 'bg-gray-100'}`}>
+                        <Text className={`text-xs font-semibold ${site.status === 'active' ? 'text-green-600' : 'text-gray-500'}`}>
+                          {site.status === 'active' ? 'Active' : 'Inactive'}
                         </Text>
-                        <View className={`h-3 w-3 rounded-full ${site.status === 'active' ? 'bg-green-500' : 'bg-gray-400'}`} />
                       </View>
-                      
-                      {/* Company name (if available) */}
-                      {site.companyName && (
-                        <Text className="text-gray-700 font-bold text-base">
-                          {site.companyName}
-                        </Text>
+                    </View>
+
+                    {/* Company - Branch */}
+                    {(site.companyName || site.branchName) && (
+                      <Text className="text-gray-500 text-xs mb-2" numberOfLines={1}>
+                        {[site.companyName, site.branchName].filter(Boolean).join(' - ')}
+                      </Text>
+                    )}
+
+                    {/* Footer Info */}
+                    <View className="flex-row items-center gap-3">
+                      <View className="flex-row items-center gap-1">
+                        <Ionicons name="people-outline" size={13} color="#9ca3af" />
+                        <Text className="text-gray-400 text-xs">{site.staffCount} staff</Text>
+                      </View>
+                      {site.latitude != null && site.longitude != null && (
+                        <View className="flex-row items-center gap-1">
+                          <Ionicons name="navigate-outline" size={13} color="#9ca3af" />
+                          <Text className="text-gray-400 text-xs">Has location</Text>
+                        </View>
                       )}
                     </View>
                   </View>
 
-                  {/* Staff Count Section */}
-                  <View className="bg-green-50 rounded-2xl p-4 items-center justify-center border border-green-200 mb-4">
-                    <Text className="text-gray-500 text-xs font-semibold uppercase">Staff Count</Text>
-                    <Text className="text-gray-900 font-extrabold text-2xl mt-2">{site.staffCount}</Text>
-                  </View>
-
-                  {/* Coordinates Section (beside house icon) */}
-                  <View className="flex-row items-center">
-                    <Ionicons name="home-outline" size={16} color="#6b7280" />
-                      {/* Branch name (if available) */}
-                      {site.branchName && (
-                        <Text className="text-green-600 text-sm  ml-2 flex-1 font-semibold mt-0.5" numberOfLines={1}>
-                          {site.branchName}
-                        </Text>
-                      )}
-                    <Ionicons name="chevron-forward" size={20} color="#10b981" />
-                  </View>
+                  {/* Chevron */}
+                  <Ionicons name="chevron-forward" size={18} color="#d1d5db" />
                 </TouchableOpacity>
               ))}
             </View>

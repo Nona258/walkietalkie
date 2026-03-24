@@ -17,7 +17,9 @@ import ContactManagement from './ContactManagement';
 import ActivityLogs from './ActivityLogs';
 import CompanyList from './CompanyList';
 import Employees from './Employees';
+import EmployeeLogs from './EmployeeLogs';
 import Settings from './Settings';
+import TechnicalSupport from './TechnicalSupport'; // <-- new import
 import '../../global.css';
 
 // Only import WebView for native platforms
@@ -46,7 +48,7 @@ function buildLiveLocationMapHtml(
   onlineUsers: User[] = [],
   onlineUserHistory: OnlineUserHistoryRow[] = []
 ) {
-  const sitesForMap = (sites ?? []).map(s => ({
+  const sitesForMap = (sites ?? []).map((s) => ({
     id: s.id,
     name: s.name,
     status: s.status,
@@ -64,13 +66,19 @@ function buildLiveLocationMapHtml(
 
   const onlineUsersForMap = (onlineUsers ?? [])
     .filter(
-      u =>
-        u && (String(u.status || '').toLowerCase() === 'online' || String(u.status || '').toLowerCase() === 'lost_connection' || String(u.status || '').toLowerCase() === 'lost connection') &&
-        u.latitude !== null && u.latitude !== undefined &&
-        u.longitude !== null && u.longitude !== undefined &&
-        !Number.isNaN(Number(u.latitude)) && !Number.isNaN(Number(u.longitude))
+      (u) =>
+        u &&
+        (String(u.status || '').toLowerCase() === 'online' ||
+          String(u.status || '').toLowerCase() === 'lost_connection' ||
+          String(u.status || '').toLowerCase() === 'lost connection') &&
+        u.latitude !== null &&
+        u.latitude !== undefined &&
+        u.longitude !== null &&
+        u.longitude !== undefined &&
+        !Number.isNaN(Number(u.latitude)) &&
+        !Number.isNaN(Number(u.longitude))
     )
-    .map(u => ({
+    .map((u) => ({
       id: u.id,
       email: u.email,
       full_name: u.full_name,
@@ -85,16 +93,25 @@ function buildLiveLocationMapHtml(
     }));
 
   const historyForMap = (onlineUserHistory ?? [])
-    .filter(r => !!r && !!r.user_id && r.latitude !== null && r.latitude !== undefined && r.longitude !== null && r.longitude !== undefined && !Number.isNaN(Number(r.latitude)) && !Number.isNaN(Number(r.longitude)))
-    .map(r => ({
+    .filter(
+      (r) =>
+        !!r &&
+        !!r.user_id &&
+        r.latitude !== null &&
+        r.latitude !== undefined &&
+        r.longitude !== null &&
+        r.longitude !== undefined &&
+        !Number.isNaN(Number(r.latitude)) &&
+        !Number.isNaN(Number(r.longitude))
+    )
+    .map((r) => ({
       user_id: r.user_id,
       latitude: Number(r.latitude),
       longitude: Number(r.longitude),
       recorded_at: r.recorded_at,
     }));
 
-  return LIVE_LOCATION_MAP_HTML
-    .replace('__SITES_JSON__', safeJsonForHtml(sitesForMap))
+  return LIVE_LOCATION_MAP_HTML.replace('__SITES_JSON__', safeJsonForHtml(sitesForMap))
     .replace('__ONLINE_USERS_JSON__', safeJsonForHtml(onlineUsersForMap))
     .replace('__ONLINE_USER_HISTORY_JSON__', safeJsonForHtml(historyForMap));
 }
@@ -926,13 +943,20 @@ function MapEmbed({
   const [ready, setReady] = React.useState(false);
 
   // Build initial HTML once for the iframe so we don't reload it when onlineUsers change.
-  const initialHtmlRef = React.useRef(buildLiveLocationMapHtml(sites, [], []));
+  // Include current online users in the initial HTML so markers appear immediately
+  // when the admin returns to the dashboard (avoids empty markers after navigation).
+  const initialHtmlRef = React.useRef(
+    buildLiveLocationMapHtml(sites, onlineUsers || [], onlineUserHistory || [])
+  );
 
   React.useEffect(() => {
     if (!ready) return;
 
     const usersPayload = JSON.stringify({ type: 'ONLINE_USERS_UPDATE', users: onlineUsers ?? [] });
-    const historyPayload = JSON.stringify({ type: 'ONLINE_USER_HISTORY_UPDATE', rows: onlineUserHistory ?? [] });
+    const historyPayload = JSON.stringify({
+      type: 'ONLINE_USER_HISTORY_UPDATE',
+      rows: onlineUserHistory ?? [],
+    });
     const sitesPayload = JSON.stringify({ type: 'ONLINE_SITES_UPDATE', sites: sites ?? [] });
 
     if (Platform.OS === 'web') {
@@ -953,7 +977,7 @@ function MapEmbed({
 
   if (Platform.OS === 'web') {
     return (
-      <View className={`bg-stone-100 rounded-xl overflow-hidden ${heightClassName}`}>
+      <View className={`overflow-hidden rounded-xl bg-stone-100 ${heightClassName}`}>
         {React.createElement('iframe', {
           ref: iframeRef,
           srcDoc: initialHtmlRef.current,
@@ -973,7 +997,7 @@ function MapEmbed({
   }
 
   return (
-    <View className={`bg-stone-100 rounded-xl overflow-hidden ${heightClassName}`}>
+    <View className={`overflow-hidden rounded-xl bg-stone-100 ${heightClassName}`}>
       {WebView ? (
         <WebView
           ref={webViewRef}
@@ -985,7 +1009,7 @@ function MapEmbed({
       ) : (
         <View className="flex-1 items-center justify-center">
           <Ionicons name="map-outline" size={48} color="#a8a29e" />
-          <Text className="text-stone-400 mt-2">Map not available</Text>
+          <Text className="mt-2 text-stone-400">Map not available</Text>
         </View>
       )}
     </View>
@@ -1067,7 +1091,17 @@ interface Activity {
 }
 
 export default function AdminDashboard({ onLogout, onNavigate }: AdminDashboardProps) {
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'siteManagement' | 'walkieTalkie' | 'activityLogs' | 'companyList' | 'employee' | 'settings'>('dashboard');
+  const [activeTab, setActiveTab] = useState<
+    | 'dashboard'
+    | 'siteManagement'
+    | 'walkieTalkie'
+    | 'activityLogs'
+    | 'companyList'
+    | 'employee'
+    | 'employeeLogs'
+    | 'technicalSupport'   // <-- added
+    | 'settings'
+  >('dashboard');
   const [refreshing, setRefreshing] = useState(false);
   const [loading, setLoading] = useState(true);
   const [stats, setStats] = useState<StatCard[]>([]);
@@ -1099,78 +1133,40 @@ export default function AdminDashboard({ onLogout, onNavigate }: AdminDashboardP
 
   const onlineUsersForMap = React.useMemo(
     () =>
-      users.filter(
-        u =>
-          u && u.role !== 'admin' &&
-          (currentUserId === null || u.id !== currentUserId) &&
-          (normalizePresenceStatus(u.status) === 'online' || normalizePresenceStatus(u.status) === 'lost_connection') &&
-          u.latitude !== null && u.latitude !== undefined &&
-          u.longitude !== null && u.longitude !== undefined &&
-          !Number.isNaN(Number(u.latitude)) && !Number.isNaN(Number(u.longitude))
-      ).map(u => ({
-        ...u,
-        status: normalizePresenceStatus(u.status),
-        latitude: Number(u.latitude),
-        longitude: Number(u.longitude),
-      })),
+      users
+        .filter(
+          (u) =>
+            u &&
+            u.role !== 'admin' &&
+            (currentUserId === null || u.id !== currentUserId) &&
+            (normalizePresenceStatus(u.status) === 'online' ||
+              normalizePresenceStatus(u.status) === 'lost_connection') &&
+            u.latitude !== null &&
+            u.latitude !== undefined &&
+            u.longitude !== null &&
+            u.longitude !== undefined &&
+            !Number.isNaN(Number(u.latitude)) &&
+            !Number.isNaN(Number(u.longitude))
+        )
+        .map((u) => ({
+          ...u,
+          status: normalizePresenceStatus(u.status),
+          latitude: Number(u.latitude),
+          longitude: Number(u.longitude),
+        })),
     [users, normalizePresenceStatus]
   );
 
   const onlineUserIdsForMap = React.useMemo(() => {
-    const ids = onlineUsersForMap.map(u => u.id).filter(Boolean);
+    const ids = onlineUsersForMap.map((u) => u.id).filter(Boolean);
     ids.sort();
     return ids;
   }, [onlineUsersForMap]);
 
-  const onlineUserIdsKey = React.useMemo(() => onlineUserIdsForMap.join('|'), [onlineUserIdsForMap]);
-
-  // Load recent movement history for currently-online users
-  useEffect(() => {
-    const run = async () => {
-      if (!onlineUserIdsForMap.length) {
-        setOnlineUserHistoryRows([]);
-        return;
-      }
-
-      // Pull recent history rows for these users; cap to keep it fast.
-      const limit = Math.min(6000, onlineUserIdsForMap.length * 300);
-      const { data, error } = await supabase
-        .from('user_location_history')
-        .select('user_id, latitude, longitude, recorded_at')
-        .in('user_id', onlineUserIdsForMap)
-        .order('recorded_at', { ascending: false })
-        .limit(limit);
-
-      if (error) {
-        console.error('Error fetching user location history:', error);
-        return;
-      }
-
-      const rows = (data ?? []) as OnlineUserHistoryRow[];
-      // Sort ascending for correct path direction, then cap per user
-      rows.sort((a, b) => {
-        const at = a.recorded_at ? Date.parse(a.recorded_at) : 0;
-        const bt = b.recorded_at ? Date.parse(b.recorded_at) : 0;
-        return at - bt;
-      });
-
-      const byUser: Record<string, OnlineUserHistoryRow[]> = {};
-      for (const r of rows) {
-        const id = String(r.user_id);
-        if (!byUser[id]) byUser[id] = [];
-        byUser[id].push(r);
-      }
-      const flattened: OnlineUserHistoryRow[] = [];
-      for (const id of Object.keys(byUser)) {
-        const pts = byUser[id];
-        const capped = pts.length > 300 ? pts.slice(pts.length - 300) : pts;
-        flattened.push(...capped);
-      }
-      setOnlineUserHistoryRows(flattened);
-    };
-
-    run();
-  }, [onlineUserIdsKey, onlineUserIdsForMap]);
+  const onlineUserIdsKey = React.useMemo(
+    () => onlineUserIdsForMap.join('|'),
+    [onlineUserIdsForMap]
+  );
 
   // Live append history points when movement is recorded
   useEffect(() => {
@@ -1179,19 +1175,19 @@ export default function AdminDashboard({ onLogout, onNavigate }: AdminDashboardP
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'user_location_history' },
-        payload => {
+        (payload) => {
           const eventType = (payload as any).eventType as string | undefined;
           const newRow = (payload as any).new as OnlineUserHistoryRow | undefined;
           if (!newRow?.user_id) return;
           if (onlineUserIdsForMap.indexOf(String(newRow.user_id)) === -1) return;
 
-          setOnlineUserHistoryRows(prev => {
+          setOnlineUserHistoryRows((prev) => {
             // If rows are being UPDATED (single-row-per-user approach), replace the latest point for that user.
             // If rows are being INSERTED (true history), append.
             let next: OnlineUserHistoryRow[];
             if (eventType === 'UPDATE') {
               const userId = String(newRow.user_id);
-              const filtered = prev.filter(r => String(r.user_id) !== userId);
+              const filtered = prev.filter((r) => String(r.user_id) !== userId);
               next = filtered.concat([newRow]);
             } else {
               next = prev.concat([newRow]);
@@ -1229,63 +1225,59 @@ export default function AdminDashboard({ onLogout, onNavigate }: AdminDashboardP
   useEffect(() => {
     const channel = supabase
       .channel('admin_users_live_locations')
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'users' },
-        payload => {
-          const eventType = (payload as any).eventType;
-          const newRow = (payload as any).new as any;
-          const oldRow = (payload as any).old as any;
-          const id = (newRow?.id || oldRow?.id) as string | undefined;
-          if (!id) return;
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'users' }, (payload) => {
+        const eventType = (payload as any).eventType;
+        const newRow = (payload as any).new as any;
+        const oldRow = (payload as any).old as any;
+        const id = (newRow?.id || oldRow?.id) as string | undefined;
+        if (!id) return;
 
-          setUsers(prev => {
-            if (eventType === 'DELETE') {
-              return prev.filter(u => u.id !== id);
-            }
+        setUsers((prev) => {
+          if (eventType === 'DELETE') {
+            return prev.filter((u) => u.id !== id);
+          }
 
-            const nextUser: User = {
-              id: newRow.id,
-              email: newRow.email,
-              full_name: newRow.full_name,
-              role: newRow.role,
-              status: newRow.status,
-              latitude: newRow.latitude,
-              longitude: newRow.longitude,
-            };
+          const nextUser: User = {
+            id: newRow.id,
+            email: newRow.email,
+            full_name: newRow.full_name,
+            role: newRow.role,
+            status: newRow.status,
+            latitude: newRow.latitude,
+            longitude: newRow.longitude,
+          };
 
-            const idx = prev.findIndex(u => u.id === id);
-            if (idx === -1) return [nextUser, ...prev];
-            const copy = prev.slice();
-            copy[idx] = { ...copy[idx], ...nextUser };
-            return copy;
-          });
+          const idx = prev.findIndex((u) => u.id === id);
+          if (idx === -1) return [nextUser, ...prev];
+          const copy = prev.slice();
+          copy[idx] = { ...copy[idx], ...nextUser };
+          return copy;
+        });
 
-          setEmployees(prev => {
-            // Keep employees list in sync for existing UI
-            if (eventType === 'DELETE') {
-              return prev.filter(u => u.id !== id);
-            }
-            if (newRow?.role === 'admin') {
-              return prev.filter(u => u.id !== id);
-            }
-            const nextUser: User = {
-              id: newRow.id,
-              email: newRow.email,
-              full_name: newRow.full_name,
-              role: newRow.role,
-              status: newRow.status,
-              latitude: newRow.latitude,
-              longitude: newRow.longitude,
-            };
-            const idx = prev.findIndex(u => u.id === id);
-            if (idx === -1) return [nextUser, ...prev];
-            const copy = prev.slice();
-            copy[idx] = { ...copy[idx], ...nextUser };
-            return copy;
-          });
-        }
-      )
+        setEmployees((prev) => {
+          // Keep employees list in sync for existing UI
+          if (eventType === 'DELETE') {
+            return prev.filter((u) => u.id !== id);
+          }
+          if (newRow?.role === 'admin') {
+            return prev.filter((u) => u.id !== id);
+          }
+          const nextUser: User = {
+            id: newRow.id,
+            email: newRow.email,
+            full_name: newRow.full_name,
+            role: newRow.role,
+            status: newRow.status,
+            latitude: newRow.latitude,
+            longitude: newRow.longitude,
+          };
+          const idx = prev.findIndex((u) => u.id === id);
+          if (idx === -1) return [nextUser, ...prev];
+          const copy = prev.slice();
+          copy[idx] = { ...copy[idx], ...nextUser };
+          return copy;
+        });
+      })
       .subscribe();
 
     return () => {
@@ -1303,7 +1295,7 @@ export default function AdminDashboard({ onLogout, onNavigate }: AdminDashboardP
           .select('id', { count: 'exact' })
           .eq('is_approved', false)
           .neq('role', 'admin');
-        
+
         if (error) {
           console.error('Error fetching pending users count:', error);
         } else {
@@ -1342,25 +1334,25 @@ export default function AdminDashboard({ onLogout, onNavigate }: AdminDashboardP
   const fetchData = async () => {
     try {
       setLoading(true);
-      
+
       // Fetch users
       const { data: usersData } = await supabase
         .from('users')
         .select('*')
         .order('created_at', { ascending: false });
-      
+
       // Fetch sites
       const { data: sitesData } = await supabase
         .from('sites')
         .select('*')
         .order('created_at', { ascending: false });
-      
+
       // Count employees (non-admin users)
-      const employeesCount = usersData?.filter(u => u.role !== 'admin').length || 0;
-      const adminCount = usersData?.filter(u => u.role === 'admin').length || 0;
-      const onlineCount = usersData?.filter(u => u.status === 'online').length || 0;
+      const employeesCount = usersData?.filter((u) => u.role !== 'admin').length || 0;
+      const adminCount = usersData?.filter((u) => u.role === 'admin').length || 0;
+      const onlineCount = usersData?.filter((u) => u.status === 'online').length || 0;
       const sitesCount = sitesData?.length || 0;
-      
+
       // Set statistics
       setStats([
         { label: 'Total Employees', value: employeesCount, icon: 'people', color: '#10b981' },
@@ -1371,9 +1363,9 @@ export default function AdminDashboard({ onLogout, onNavigate }: AdminDashboardP
 
       if (usersData) {
         setUsers(usersData);
-        setEmployees(usersData.filter(u => u.role !== 'admin'));
+        setEmployees(usersData.filter((u) => u.role !== 'admin'));
       }
-      
+
       if (sitesData) {
         setSites(sitesData);
       }
@@ -1384,7 +1376,7 @@ export default function AdminDashboard({ onLogout, onNavigate }: AdminDashboardP
         .select('*')
         .order('time', { ascending: false })
         .limit(10);
-      
+
       if (logsData) {
         setActivities((logsData as Activity[]) || []);
       }
@@ -1402,23 +1394,28 @@ export default function AdminDashboard({ onLogout, onNavigate }: AdminDashboardP
 
   const StatCard = ({ item }: { item: StatCard }) => (
     <View
-      className="bg-white rounded-xl border border-stone-100 p-4 lg:p-5 flex-1 min-w-[45%] lg:min-w-[200px]"
-      style={{ shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.06, shadowRadius: 4 }}
-    >
-      <View className="flex-row items-start justify-between mb-4">
+      className="min-w-[45%] flex-1 rounded-xl border border-stone-100 bg-white p-4 lg:min-w-[200px] lg:p-5"
+      style={{
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 1 },
+        shadowOpacity: 0.06,
+        shadowRadius: 4,
+      }}>
+      <View className="mb-4 flex-row items-start justify-between">
         <View
-          className="w-10 h-10 rounded-lg items-center justify-center"
-          style={{ backgroundColor: item.color + '18' }}
-        >
+          className="h-10 w-10 items-center justify-center rounded-lg"
+          style={{ backgroundColor: item.color + '18' }}>
           <Ionicons name={item.icon as any} size={20} color={item.color} />
         </View>
-        <View className="flex-row items-center bg-emerald-50 px-2 py-0.5 rounded-full">
+        <View className="flex-row items-center rounded-full bg-emerald-50 px-2 py-0.5">
           <Ionicons name="trending-up" size={10} color="#059669" />
-          <Text className="text-emerald-700 text-xs font-semibold ml-0.5">+5%</Text>
+          <Text className="ml-0.5 text-xs font-semibold text-emerald-700">+5%</Text>
         </View>
       </View>
-      <Text className="text-2xl lg:text-3xl font-bold text-stone-900 mb-1">{item.value}</Text>
-      <Text className="text-stone-400 text-xs font-medium uppercase tracking-wide">{item.label}</Text>
+      <Text className="mb-1 text-2xl font-bold text-stone-900 lg:text-3xl">{item.value}</Text>
+      <Text className="text-xs font-medium uppercase tracking-wide text-stone-400">
+        {item.label}
+      </Text>
     </View>
   );
 
@@ -1434,7 +1431,7 @@ export default function AdminDashboard({ onLogout, onNavigate }: AdminDashboardP
   if (activeTab === 'siteManagement') {
     return (
       <View className="flex-1 flex-row bg-stone-50">
-        <AdminNavbar 
+        <AdminNavbar
           activeTab={activeTab}
           setActiveTab={setActiveTab}
           onNavigate={onNavigate}
@@ -1450,7 +1447,7 @@ export default function AdminDashboard({ onLogout, onNavigate }: AdminDashboardP
   if (activeTab === 'walkieTalkie') {
     return (
       <View className="flex-1 flex-row bg-stone-50">
-        <AdminNavbar 
+        <AdminNavbar
           activeTab={activeTab}
           setActiveTab={setActiveTab}
           onNavigate={onNavigate}
@@ -1466,7 +1463,7 @@ export default function AdminDashboard({ onLogout, onNavigate }: AdminDashboardP
   if (activeTab === 'activityLogs') {
     return (
       <View className="flex-1 flex-row bg-stone-50">
-        <AdminNavbar 
+        <AdminNavbar
           activeTab={activeTab}
           setActiveTab={setActiveTab}
           onNavigate={onNavigate}
@@ -1482,7 +1479,7 @@ export default function AdminDashboard({ onLogout, onNavigate }: AdminDashboardP
   if (activeTab === 'companyList') {
     return (
       <View className="flex-1 flex-row bg-stone-50">
-        <AdminNavbar 
+        <AdminNavbar
           activeTab={activeTab}
           setActiveTab={setActiveTab}
           onNavigate={onNavigate}
@@ -1498,7 +1495,7 @@ export default function AdminDashboard({ onLogout, onNavigate }: AdminDashboardP
   if (activeTab === 'employee') {
     return (
       <View className="flex-1 flex-row bg-stone-50">
-        <AdminNavbar 
+        <AdminNavbar
           activeTab={activeTab}
           setActiveTab={setActiveTab}
           onNavigate={onNavigate}
@@ -1510,11 +1507,45 @@ export default function AdminDashboard({ onLogout, onNavigate }: AdminDashboardP
     );
   }
 
+  // Render EmployeeLogs if selected
+  if (activeTab === 'employeeLogs') {
+    return (
+      <View className="flex-1 flex-row bg-stone-50">
+        <AdminNavbar
+          activeTab={activeTab}
+          setActiveTab={setActiveTab}
+          onNavigate={onNavigate}
+          onLogout={onLogout}
+          pendingUsersCount={pendingUsersCount}
+        />
+        <EmployeeLogs />
+      </View>
+    );
+  }
+
+// Render TechnicalSupport if selected
+if (activeTab === 'technicalSupport') {
+  return (
+    <View className="flex-1 flex-row bg-stone-50">
+      <AdminNavbar
+        activeTab={activeTab}
+        setActiveTab={setActiveTab}
+        onNavigate={onNavigate}
+        onLogout={onLogout}
+        pendingUsersCount={pendingUsersCount}
+      />
+      <TechnicalSupport
+        onNavigate={(page) => setActiveTab(page as typeof activeTab)}
+      />
+    </View>
+  );
+}
+
   // Render Settings if selected
   if (activeTab === 'settings') {
     return (
       <View className="flex-1 flex-row bg-stone-50">
-        <AdminNavbar 
+        <AdminNavbar
           activeTab={activeTab}
           setActiveTab={setActiveTab}
           onNavigate={onNavigate}
@@ -1528,7 +1559,7 @@ export default function AdminDashboard({ onLogout, onNavigate }: AdminDashboardP
 
   return (
     <View className="flex-1 flex-row bg-stone-50">
-      <AdminNavbar 
+      <AdminNavbar
         activeTab={activeTab}
         setActiveTab={setActiveTab}
         onNavigate={onNavigate}
@@ -1537,35 +1568,36 @@ export default function AdminDashboard({ onLogout, onNavigate }: AdminDashboardP
       />
 
       {/* Main Content Area */}
-      <ScrollView 
+      <ScrollView
         className="flex-1 bg-stone-50"
         showsVerticalScrollIndicator={false}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
-      >
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}>
         {/* Header */}
-        <View className="bg-white px-6 pt-5 pb-4 border-b border-stone-100">
+        <View className="border-b border-stone-100 bg-white px-6 pb-4 pt-5">
           <View className="flex-row items-center justify-between">
-            <View className="flex-row items-center flex-1">
-              <TouchableOpacity className="lg:hidden w-9 h-9 items-center justify-center mr-3">
+            <View className="flex-1 flex-row items-center">
+              <TouchableOpacity className="mr-3 h-9 w-9 items-center justify-center lg:hidden">
                 <Ionicons name="menu" size={22} color="#44403c" />
               </TouchableOpacity>
               <View className="flex-1">
-                <Text className="text-xl font-bold text-stone-900 tracking-tight">Dashboard</Text>
-                <Text className="text-stone-400 text-xs mt-0.5 font-medium">Overview & analytics</Text>
+                <Text className="text-xl font-bold tracking-tight text-stone-900">Dashboard</Text>
+                <Text className="mt-0.5 text-xs font-medium text-stone-400">
+                  Overview & analytics
+                </Text>
               </View>
             </View>
             <View className="flex-row items-center gap-2">
-              <TouchableOpacity className="w-9 h-9 bg-stone-50 border border-stone-100 rounded-lg items-center justify-center">
-                <View className="w-2 h-2 bg-red-400 rounded-full absolute top-1.5 right-1.5" />
+              <TouchableOpacity className="h-9 w-9 items-center justify-center rounded-lg border border-stone-100 bg-stone-50">
+                <View className="absolute right-1.5 top-1.5 h-2 w-2 rounded-full bg-red-400" />
                 <Ionicons name="notifications-outline" size={17} color="#78716c" />
               </TouchableOpacity>
-              <View className="flex-row items-center gap-2 bg-stone-50 border border-stone-100 rounded-lg px-2.5 py-1.5">
-                <View className="w-6 h-6 bg-emerald-500 rounded-md items-center justify-center">
-                  <Text className="text-white font-bold text-xs">AD</Text>
+              <View className="flex-row items-center gap-2 rounded-lg border border-stone-100 bg-stone-50 px-2.5 py-1.5">
+                <View className="h-6 w-6 items-center justify-center rounded-md bg-emerald-500">
+                  <Text className="text-xs font-bold text-white">AD</Text>
                 </View>
                 <View className="hidden lg:flex">
                   <Text className="text-xs font-semibold text-stone-800">Admin User</Text>
-                  <Text className="text-xs text-stone-400 leading-none">Super Admin</Text>
+                  <Text className="text-xs leading-none text-stone-400">Super Admin</Text>
                 </View>
               </View>
             </View>
@@ -1573,7 +1605,7 @@ export default function AdminDashboard({ onLogout, onNavigate }: AdminDashboardP
         </View>
 
         {/* Stats Grid */}
-        <View className="px-6 pt-6 pb-4">
+        <View className="px-6 pb-4 pt-6">
           <View className="flex-row flex-wrap gap-3">
             {stats.map((stat, index) => (
               <View key={index} style={{ width: isWebView ? '23.5%' : '48%' }}>
@@ -1583,36 +1615,50 @@ export default function AdminDashboard({ onLogout, onNavigate }: AdminDashboardP
           </View>
         </View>
 
-        <View className="lg:flex-row lg:gap-5 px-6 pb-6">
+        <View className="px-6 pb-6 lg:flex-row lg:gap-5">
           {/* Left Column */}
-          <View className="flex-1 mb-5 lg:mb-0">
+          <View className="mb-5 flex-1 lg:mb-0">
             {/* Chart Card */}
             <View
-              className="bg-white rounded-xl border border-stone-100 p-5 mb-5"
-              style={{ shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.05, shadowRadius: 4 }}
-            >
-              <View className="flex-row items-center justify-between mb-5">
+              className="mb-5 rounded-xl border border-stone-100 bg-white p-5"
+              style={{
+                shadowColor: '#000',
+                shadowOffset: { width: 0, height: 1 },
+                shadowOpacity: 0.05,
+                shadowRadius: 4,
+              }}>
+              <View className="mb-5 flex-row items-center justify-between">
                 <View>
-                  <Text className="text-sm font-semibold text-stone-900">Communication Activity</Text>
-                  <Text className="text-xs text-stone-400 mt-0.5">Messages sent per day</Text>
+                  <Text className="text-sm font-semibold text-stone-900">
+                    Communication Activity
+                  </Text>
+                  <Text className="mt-0.5 text-xs text-stone-400">Messages sent per day</Text>
                 </View>
-                <View className="flex-row items-center bg-stone-50 border border-stone-100 px-3 py-1.5 rounded-lg">
-                  <Text className="text-stone-600 text-xs font-medium mr-1">Last 7 Days</Text>
+                <View className="flex-row items-center rounded-lg border border-stone-100 bg-stone-50 px-3 py-1.5">
+                  <Text className="mr-1 text-xs font-medium text-stone-600">Last 7 Days</Text>
                   <Ionicons name="chevron-down" size={13} color="#78716c" />
                 </View>
               </View>
               {/* Bar chart with day labels */}
               <View className="flex-row items-end justify-between gap-1" style={{ height: 120 }}>
                 {[
-                  { h: 45, day: 'Mon' }, { h: 60, day: 'Tue' }, { h: 75, day: 'Wed' },
-                  { h: 55, day: 'Thu' }, { h: 85, day: 'Fri' }, { h: 95, day: 'Sat' }, { h: 70, day: 'Sun' },
+                  { h: 45, day: 'Mon' },
+                  { h: 60, day: 'Tue' },
+                  { h: 75, day: 'Wed' },
+                  { h: 55, day: 'Thu' },
+                  { h: 85, day: 'Fri' },
+                  { h: 95, day: 'Sat' },
+                  { h: 70, day: 'Sun' },
                 ].map((bar, i) => (
                   <View key={i} className="flex-1 items-center">
                     <View
                       className="w-full rounded-t-md"
-                      style={{ height: `${bar.h}%`, backgroundColor: bar.h >= 85 ? '#10b981' : '#d1fae5' }}
+                      style={{
+                        height: `${bar.h}%`,
+                        backgroundColor: bar.h >= 85 ? '#10b981' : '#d1fae5',
+                      }}
                     />
-                    <Text className="text-stone-400 text-xs mt-1.5 font-medium">{bar.day}</Text>
+                    <Text className="mt-1.5 text-xs font-medium text-stone-400">{bar.day}</Text>
                   </View>
                 ))}
               </View>
@@ -1620,26 +1666,31 @@ export default function AdminDashboard({ onLogout, onNavigate }: AdminDashboardP
 
             {/* Map Card */}
             <View
-              className="bg-white rounded-xl border border-stone-100 p-5"
-              style={{ shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.05, shadowRadius: 4 }}
-            >
-              <View className="flex-row items-center justify-between mb-4">
+              className="rounded-xl border border-stone-100 bg-white p-5"
+              style={{
+                shadowColor: '#000',
+                shadowOffset: { width: 0, height: 1 },
+                shadowOpacity: 0.05,
+                shadowRadius: 4,
+              }}>
+              <View className="mb-4 flex-row items-center justify-between">
                 <View>
                   <Text className="text-sm font-semibold text-stone-900">Live Location Map</Text>
-                  <Text className="text-xs text-stone-400 mt-0.5">Real-time employee tracking</Text>
+                  <Text className="mt-0.5 text-xs text-stone-400">Real-time employee tracking</Text>
                 </View>
                 <View className="flex-row items-center gap-1.5">
-                  <View className="w-2 h-2 rounded-full bg-emerald-500" />
-                  <Text className="text-xs text-stone-500 font-medium">
+                  <View className="h-2 w-2 rounded-full bg-emerald-500" />
+                  <Text className="text-xs font-medium text-stone-500">
                     {onlineUsersForMap.length} online
                   </Text>
                 </View>
               </View>
+              {/* Pass only users, not history, to map */}
               <LiveLocationMap
                 heightClassName="h-48 lg:h-56"
                 sites={sites}
                 onlineUsers={onlineUsersForMap}
-                onlineUserHistory={onlineUserHistoryRows}
+                onlineUserHistory={[]} // No history, only live user data
               />
             </View>
           </View>
@@ -1647,42 +1698,63 @@ export default function AdminDashboard({ onLogout, onNavigate }: AdminDashboardP
           {/* Right Column - Activity Feed */}
           <View className="lg:w-80">
             <View
-              className="bg-white rounded-xl border border-stone-100 p-5"
-              style={{ shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.05, shadowRadius: 4, height: 400 }}
-            >
-              <View className="flex-row items-center justify-between mb-4">
+              className="rounded-xl border border-stone-100 bg-white p-5"
+              style={{
+                shadowColor: '#000',
+                shadowOffset: { width: 0, height: 1 },
+                shadowOpacity: 0.05,
+                shadowRadius: 4,
+                height: 400,
+              }}>
+              <View className="mb-4 flex-row items-center justify-between">
                 <View>
                   <Text className="text-sm font-semibold text-stone-900">Recent Activity</Text>
-                  <Text className="text-xs text-stone-400 mt-0.5">Latest system events</Text>
+                  <Text className="mt-0.5 text-xs text-stone-400">Latest system events</Text>
                 </View>
-                <View className="bg-emerald-50 px-2.5 py-1 rounded-full">
-                  <Text className="text-emerald-700 text-xs font-semibold">{activities.length} events</Text>
+                <View className="rounded-full bg-emerald-50 px-2.5 py-1">
+                  <Text className="text-xs font-semibold text-emerald-700">
+                    {activities.length} events
+                  </Text>
                 </View>
               </View>
               {activities.length === 0 ? (
                 <View className="flex-1 items-center justify-center">
-                  <View className="w-12 h-12 bg-stone-50 rounded-xl items-center justify-center mb-3">
+                  <View className="mb-3 h-12 w-12 items-center justify-center rounded-xl bg-stone-50">
                     <Ionicons name="clipboard-outline" size={22} color="#d6d3d1" />
                   </View>
-                  <Text className="text-stone-400 text-sm font-medium">No activities yet</Text>
+                  <Text className="text-sm font-medium text-stone-400">No activities yet</Text>
                 </View>
               ) : (
-                <ScrollView className="flex-1" nestedScrollEnabled showsVerticalScrollIndicator={false}>
+                <ScrollView
+                  className="flex-1"
+                  nestedScrollEnabled
+                  showsVerticalScrollIndicator={false}>
                   {activities.map((activity, idx) => (
-                    <View key={activity.id} className={`flex-row items-start ${idx !== activities.length - 1 ? 'mb-3 pb-3 border-b border-stone-50' : ''}`}>
+                    <View
+                      key={activity.id}
+                      className={`flex-row items-start ${idx !== activities.length - 1 ? 'mb-3 border-b border-stone-50 pb-3' : ''}`}>
                       <View
-                        className="w-8 h-8 rounded-lg items-center justify-center mr-3 mt-0.5"
-                        style={{ backgroundColor: activity.color || '#ecfdf5' }}
-                      >
-                        <Ionicons name={(activity.icon || 'notifications-outline') as any} size={14} color="#10b981" />
+                        className="mr-3 mt-0.5 h-8 w-8 items-center justify-center rounded-lg"
+                        style={{ backgroundColor: activity.color || '#ecfdf5' }}>
+                        <Ionicons
+                          name={(activity.icon || 'notifications-outline') as any}
+                          size={14}
+                          color="#10b981"
+                        />
                       </View>
                       <View className="flex-1">
-                        <Text className="text-stone-800 text-xs font-semibold mb-0.5">{activity.action}</Text>
+                        <Text className="mb-0.5 text-xs font-semibold text-stone-800">
+                          {activity.action}
+                        </Text>
                         {activity.description ? (
-                          <Text className="text-stone-400 text-xs leading-relaxed" numberOfLines={2}>{activity.description}</Text>
+                          <Text
+                            className="text-xs leading-relaxed text-stone-400"
+                            numberOfLines={2}>
+                            {activity.description}
+                          </Text>
                         ) : null}
                       </View>
-                      <Text className="text-stone-300 text-xs ml-2 mt-0.5 font-medium">
+                      <Text className="ml-2 mt-0.5 text-xs font-medium text-stone-300">
                         {activity.time ? new Date(activity.time).toLocaleDateString() : ''}
                       </Text>
                     </View>

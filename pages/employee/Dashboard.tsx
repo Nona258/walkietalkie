@@ -95,14 +95,11 @@ export default function Dashboard({
             </View>
           </View>
           <View className="flex-row items-center gap-3">
-            <View className="bg-green-100 rounded-full p-3">
-              <Ionicons name="notifications" size={24} color="#10b981" />
-            </View>
             <TouchableOpacity 
               onPress={onNavigateToSettings}
-              className="bg-green-100 rounded-full p-3 active:scale-95"
+              className="bg-white rounded-full p-3 active:scale-95 border border-gray-200 shadow-md shadow-gray-300"
             >
-              <Ionicons name="settings" size={24} color="#10b981" />
+              <Ionicons name="settings" size={24} color="#6b7280" />
             </TouchableOpacity>
           </View>
         </View>
@@ -112,18 +109,18 @@ export default function Dashboard({
           {/* 2. STATS GRID - ENHANCED DESIGN */}
           <Text className="text-gray-800 text-lg font-bold mb-4">Your Statistics</Text>
           <View className="flex-row flex-wrap justify-between w-full gap-3">
-            <StatCard icon="map-outline" title="Sites" value="3" color="bg-green-500" />
-            <StatCard icon="chatbubbles-outline" title="Alerts" value="5" color="bg-green-400" />
-            <StatCard icon="time-outline" title="Hours" value="8h" color="bg-green-600" />
-            <StatCard icon="shield-checkmark-outline" title="Tasks" value="12" color="bg-green-500" />
+            <StatCard icon="map-outline" title="Sites" value="3" color="bg-orange-500" />
+            <StatCard icon="chatbubbles-outline" title="Alerts" value="5" color="bg-sky-500" />
+            <StatCard icon="time-outline" title="Hours" value="8h" color="bg-teal-500" />
+            <StatCard icon="shield-checkmark-outline" title="Tasks" value="12" color="bg-violet-500" />
           </View>
 
           {/* 3. CURRENT ASSIGNMENT CARD - PREMIUM DESIGN */}
           <View className="mt-6 w-full">
             <Text className="text-gray-800 text-lg font-bold mb-4">Ongoing Shift</Text>
-            <View className="bg-gradient-to-br from-white to-green-50 rounded-3xl p-6 shadow-md shadow-green-200 border-2 border-green-200 w-full">
+            <View className="bg-gradient-to-br from-white to-green-50 rounded-3xl p-6 shadow-md shadow-gray-300 border border-gray-200 w-full">
               {/* Location Section */}
-              <View className="flex-row items-center mb-6 bg-green-50 p-4 rounded-2xl border border-green-200">
+              <View className="flex-row items-center mb-6 bg-green-50 p-4 rounded-2xl border border-gray-200">
                 <View className="bg-green-500 p-3 rounded-full mr-4">
                   <Ionicons name="location" size={24} color="white" />
                 </View>
@@ -134,7 +131,7 @@ export default function Dashboard({
               </View>
 
               {/* Time Range Section */}
-              <View className="flex-row justify-between items-center bg-white p-4 rounded-2xl mb-6 w-full border border-green-100">
+              <View className="flex-row justify-between items-center bg-white p-4 rounded-2xl mb-6 w-full border border-gray-200">
                 <View>
                   <Text className="text-gray-500 text-xs font-semibold">START TIME</Text>
                   <Text className="text-gray-900 font-bold text-base mt-1">08:00 AM</Text>
@@ -146,13 +143,12 @@ export default function Dashboard({
                 </View>
               </View>
 
-              {/* Check In Button */}
+              {/* Start Shift Button */}
               <TouchableOpacity 
                 activeOpacity={0.8}
-                className="bg-gradient-to-r from-green-500 to-green-600 flex-row items-center justify-center py-4 rounded-2xl shadow-lg shadow-green-300 w-full active:scale-95"
+                className="bg-gradient-to-r from-green-500 to-green-600 items-center justify-center py-4 rounded-2xl shadow-md shadow-gray-300 w-full active:scale-95"
               >
-                <Ionicons name="finger-print" size={20} color="white" />
-                <Text className="text-white font-bold ml-2 text-base">Check In Now</Text>
+                <Text className="text-white font-bold text-lg">Start Shift</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -160,9 +156,9 @@ export default function Dashboard({
           {/* 4. ACTIVITY LOG - ENHANCED */}
           <View className="mt-6 w-full mb-16">
              <Text className="text-gray-800 text-lg font-bold mb-4">Recent Activity</Text>
-             <ActivityItem icon="checkmark-circle" text="Completed safety inspection" time="2h ago" />
-             <ActivityItem icon="mail" text="New message from supervisor" time="4h ago" />
-             <ActivityItem icon="alert-circle" text="System update available" time="1h ago" />
+             <ActivityItem type="success" text="Completed safety inspection" time="2h ago" />
+             <ActivityItem type="message" text="New message from supervisor" time="4h ago" />
+             <ActivityItem type="alert" text="System update available" time="1h ago" />
           </View>
         </View>
       </ScrollView>
@@ -174,7 +170,7 @@ export default function Dashboard({
 function StatCard({ icon, title, value, color }: { icon: any, title: string, value: string, color: string }) {
   return (
     // FIX 4: Use 48% width to ensure grid responsiveness on all screen sizes
-    <View className="bg-white w-[48%] mb-3 p-5 rounded-3xl shadow-md shadow-green-200 border-2 border-green-100 active:scale-95">
+    <View className="bg-white w-[48%] mb-3 p-5 rounded-3xl shadow-md shadow-gray-300 border border-gray-200 active:scale-95">
       <View className={`${color} self-start p-3 rounded-xl mb-3`}>
         <Ionicons name={icon} size={24} color="white" />
       </View>
@@ -184,11 +180,37 @@ function StatCard({ icon, title, value, color }: { icon: any, title: string, val
   );
 }
 
-function ActivityItem({ icon, text, time }: { icon: any, text: string, time: string }) {
+function ActivityItem({
+  type,
+  text,
+  time,
+}: {
+  type: 'success' | 'message' | 'alert';
+  text: string;
+  time: string;
+}) {
+  const activityStyle = {
+    success: {
+      icon: 'checkmark-circle' as const,
+      backgroundClass: 'bg-green-100',
+      iconColor: '#16a34a',
+    },
+    message: {
+      icon: 'mail' as const,
+      backgroundClass: 'bg-sky-100',
+      iconColor: '#0284c7',
+    },
+    alert: {
+      icon: 'alert-circle' as const,
+      backgroundClass: 'bg-amber-100',
+      iconColor: '#d97706',
+    },
+  }[type];
+
   return (
-    <View className="flex-row items-center mb-4 bg-white p-4 rounded-2xl shadow-md shadow-green-100 border border-green-100 w-full">
-      <View className="bg-green-100 p-3 rounded-full mr-4">
-        <Ionicons name={icon} size={18} color="#16a34a" />
+    <View className="flex-row items-center mb-4 bg-white p-4 rounded-2xl shadow-md shadow-gray-300 border border-gray-200 w-full">
+      <View className={`${activityStyle.backgroundClass} p-3 rounded-full mr-4`}>
+        <Ionicons name={activityStyle.icon} size={18} color={activityStyle.iconColor} />
       </View>
       <View className="flex-1">
         <Text className="text-gray-800 font-semibold text-sm" numberOfLines={1}>{text}</Text>
