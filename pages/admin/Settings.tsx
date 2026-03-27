@@ -66,7 +66,7 @@ function LabeledInput({
   );
 }
 
-export default function Settings({ onNavigate, setIsMobileMenuOpen }: SettingsProps) {
+export default function Settings({ onNavigate, isMobileMenuOpen, setIsMobileMenuOpen }: SettingsProps) {
   const windowWidth = Dimensions.get('window').width;
   const isWebView = windowWidth > 900;
 

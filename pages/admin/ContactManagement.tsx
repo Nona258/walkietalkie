@@ -73,7 +73,7 @@ const padZero = (num: number, length: number = 2): string => {
   return String(num).length >= length ? String(num) : '0'.repeat(length - String(num).length) + num;
 };
 
-export default function ContactManagement({ onNavigate, setIsMobileMenuOpen }: ContactManagementProps) {
+export default function ContactManagement({ onNavigate, isMobileMenuOpen, setIsMobileMenuOpen }: ContactManagementProps) {
   const windowWidth = Dimensions.get('window').width;
   const isWebView = windowWidth > 900;
 

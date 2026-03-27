@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -7,525 +7,1191 @@ import {
   Modal,
   Pressable,
   TextInput,
-  Dimensions,
 } from 'react-native';
+import supabase from '../../utils/supabase';
 import { Ionicons } from '@expo/vector-icons';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import SweetAlertModal from '../../components/SweetAlertModal';
 import '../../global.css';
 
-// ─── Types ──────────────────────────────────────────────────────────────────────
-interface Company {
+// ---------- Type Definitions ----------
+type Company = {
   id: number;
   name: string;
   industry: string;
   branches: number;
   initials: string;
-  employees: number;
-  status: 'Active' | 'Inactive';
-  location: string;
-}
+  color: string;
+};
 
-// ─── Mock Data ──────────────────────────────────────────────────────────────────
-const MOCK_COMPANIES: Company[] = [
-  { id: 1, name: 'Example Corp',         industry: 'Technology',      branches: 3,  initials: 'EC', employees: 148, status: 'Active',   location: 'San Francisco, CA' },
-  { id: 2, name: 'Global Logistics',     industry: 'Transport',       branches: 12, initials: 'GL', employees: 420, status: 'Active',   location: 'Chicago, IL'       },
-  { id: 3, name: 'NorthShield Security', industry: 'Security',        branches: 7,  initials: 'NS', employees: 305, status: 'Active',   location: 'Dallas, TX'        },
-  { id: 4, name: 'Omega Facilities',     industry: 'Facilities Mgmt', branches: 2,  initials: 'OF', employees: 60,  status: 'Inactive', location: 'Atlanta, GA'       },
-];
-
-// ─── Props ──────────────────────────────────────────────────────────────────────
 interface CompanyListProps {
   onNavigate: (
-    page: 'dashboard' | 'siteManagement' | 'walkieTalkie' | 'activityLogs' | 'companyList' | 'employee' | 'settings'
+    page:
+      | 'dashboard'
+      | 'siteManagement'
+      | 'walkieTalkie'
+      | 'activityLogs'
+      | 'companyList'
+      | 'employee'
+      | 'settings'
   ) => void;
-  isMobileMenuOpen?: boolean;
-  setIsMobileMenuOpen?: (open: boolean) => void;
 }
 
-// ─── Sub-components ─────────────────────────────────────────────────────────────
-
-function CompanyAvatar({ initials }: { initials: string }) {
-  return (
-    <View className="w-9 h-9 rounded-full bg-[#237227] items-center justify-center border border-[#f0f4f0]">
-      <Text className="text-[12px] font-bold text-[#f8fafb]">{initials}</Text>
-    </View>
-  );
+interface ValidationErrors {
+  companyName?: string;
+  industry?: string;
+  branches?: string;
+  branchNames?: string;
 }
 
-function StatusPill({ status }: { status: 'Active' | 'Inactive' }) {
-  const isActive = status === 'Active';
-  return (
-    <View
-      className={
-        `px-2 py-[3px] rounded-full border self-start ` +
-        (isActive ? 'bg-[#e8f5e9] border-[#237227]' : 'bg-[#f3f4f6] border-[#e5e7eb]')
-      }
-    >
-      <Text className={`text-[10px] font-semibold ${isActive ? 'text-[#237227]' : 'text-[#78716c]'}`}>{status}</Text>
-    </View>
-  );
-}
-
-function ColHeader({ label, className }: { label: string; className?: string }) {
-  return (
-    <View className={className}>
-      <Text className="text-[11px] font-semibold text-[#78716c] uppercase tracking-[0.5px]">{label}</Text>
-    </View>
-  );
-}
-
-function CompanyRow({ company, isLast, onPress, onDelete, isWebView }: { company: Company; isLast: boolean; onPress: () => void; onDelete: () => void; isWebView: boolean }) {
-  if (!isWebView) {
-    return (
-      <TouchableOpacity
-        onPress={onPress}
-        activeOpacity={0.7}
-        className={`p-4 bg-white ${isLast ? '' : 'border-b border-[#f0f4f0]'}`}
-      >
-        <View className="flex-row items-start gap-3">
-          <CompanyAvatar initials={company.initials} />
-          <View className="flex-1 gap-2">
-            <View className="flex-row items-start justify-between">
-              <View className="flex-1">
-                <Text className="text-[14px] font-semibold text-[#1c1917]">{company.name}</Text>
-                <Text className="text-[12px] text-[#78716c] mt-0.5">{company.industry}</Text>
-              </View>
-              <StatusPill status={company.status} />
-            </View>
-            <View className="gap-[6px]">
-              <View className="flex-row items-center gap-[6px]">
-                <Ionicons name="location-outline" size={13} color="#78716c" />
-                <Text className="text-[12px] text-[#44403c] flex-1">{company.location}</Text>
-              </View>
-              <View className="flex-row items-center gap-3">
-                <View className="flex-row items-center gap-[5px]">
-                  <Ionicons name="business-outline" size={13} color="#78716c" />
-                  <Text className="text-[12px] text-[#44403c]">{company.branches} branches</Text>
-                </View>
-                <View className="flex-row items-center gap-[5px]">
-                  <Ionicons name="people-outline" size={13} color="#78716c" />
-                  <Text className="text-[12px] text-[#44403c]">{company.employees} employees</Text>
-                </View>
-              </View>
-            </View>
-            <View className="flex-row gap-2 mt-1">
-              <TouchableOpacity
-                onPress={(e) => { e.stopPropagation?.(); onDelete(); }}
-                className="flex-1 flex-row items-center justify-center gap-[5px] py-2 rounded-[7px] bg-[#fee2e2] border border-[#ef4444]"
-              >
-                <Ionicons name="trash-outline" size={14} color="#f8fafb" />
-                <Text className="text-[12px] font-semibold text-[#ef4444]">Delete</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </View>
-      </TouchableOpacity>
-    );
-  }
-
-  return (
-    <TouchableOpacity
-      onPress={onPress}
-      activeOpacity={0.7}
-      className={
-        `flex-row items-center px-5 py-[14px] bg-white ` +
-        (isLast ? '' : 'border-b border-[#f0f4f0]')
-      }
-    >
-      <View className="flex-[3] flex-row items-center gap-3">
-        <CompanyAvatar initials={company.initials} />
-        <View className="gap-[2px]">
-          <Text className="text-[13px] font-semibold text-[#1c1917]">{company.name}</Text>
-          <Text className="text-[11px] text-[#78716c]">{company.industry}</Text>
-        </View>
-      </View>
-      <View className="flex-[2] flex-row items-center gap-[5px]">
-        <Ionicons name="location-outline" size={12} color="#78716c" />
-        <Text className="text-[12px] text-[#44403c]">{company.location}</Text>
-      </View>
-      <View className="flex-1 flex-row items-center gap-[5px]">
-        <Ionicons name="business-outline" size={12} color="#78716c" />
-        <Text className="text-[12px] text-[#44403c]">{company.branches}</Text>
-      </View>
-      <View className="flex-1 flex-row items-center gap-[5px]">
-        <Ionicons name="people-outline" size={12} color="#78716c" />
-        <Text className="text-[12px] text-[#44403c]">{company.employees}</Text>
-      </View>
-      <View className="flex-1">
-        <StatusPill status={company.status} />
-      </View>
-      <View className="flex-row items-center justify-center w-20 gap-1.5">
-        <TouchableOpacity
-          onPress={(e) => { e.stopPropagation?.(); onPress(); }}
-          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-          className="w-7 h-7 rounded-[7px] bg-[#237227] items-center justify-center"
-        >
-          <Ionicons name="eye-outline" size={13} color="#f8fafb" />
-        </TouchableOpacity>
-        <TouchableOpacity
-          onPress={(e) => { e.stopPropagation?.(); onDelete(); }}
-          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-          className="w-7 h-7 rounded-[7px] bg-[#ef4444] items-center justify-center"
-        >
-          <Ionicons name="trash-outline" size={13} color="#fff" />
-        </TouchableOpacity>
-      </View>
-    </TouchableOpacity>
-  );
-}
-
-function LabeledInput({ label, placeholder, value, onChangeText, icon }: { label: string; placeholder: string; value: string; onChangeText: (t: string) => void; icon: string }) {
-  return (
-    <View className="gap-[6px]">
-      <Text className="text-[12px] font-semibold text-[#44403c]">{label}</Text>
-      <View className="flex-row items-center bg-[#f8fafb] border border-[#e5e7eb] rounded-[9px] px-3 h-10 gap-2">
-        <Ionicons name={icon as any} size={14} color="#78716c" />
-        <TextInput
-          value={value}
-          onChangeText={onChangeText}
-          placeholder={placeholder}
-          placeholderTextColor="#78716c"
-          className="flex-1 text-[13px] text-[#1c1917]"
-        />
-      </View>
-    </View>
-  );
-}
-
-// ─── Main Component ───────────────────────────────────────────────────────────
-export default function CompanyList({ onNavigate, isMobileMenuOpen, setIsMobileMenuOpen }: CompanyListProps) {
-  const PAGE_SIZE = 10;
-
-  const windowWidth = Dimensions.get('window').width;
-  const isWebView = windowWidth > 900;
-
-  const pageX = isWebView ? 'px-6' : 'px-4';
-  const titleSize = isWebView ? 'text-[30px]' : 'text-[20px]';
-  const subtitleSize = isWebView ? 'text-[16px]' : 'text-[12px]';
-
-  const [companies, setCompanies] = useState<Company[]>(MOCK_COMPANIES);
+// ---------- Main Component ----------
+export default function CompanyList({ onNavigate }: CompanyListProps) {
+  // ---------- UI States ----------
+  // drawer state not used in this component; keep a no-op setter to avoid unused variable errors
+  const setIsDrawerOpen = (_v: boolean) => {};
   const [isNotificationOpen, setIsNotificationOpen] = useState(false);
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
-  const [isBranchModalOpen, setIsBranchModalOpen] = useState(false);
-  const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
-  const [selectedCompany, setSelectedCompany] = useState<Company | null>(null);
-  const [deleteTarget, setDeleteTarget] = useState<Company | null>(null);
-  const [searchQuery, setSearchQuery] = useState('');
+  const [companies, setCompanies] = useState<Company[]>([]);
 
-  // Pagination
-  const [currentPage, setCurrentPage] = useState(1);
-
+  // ---------- Add Company Form States ----------
   const [companyName, setCompanyName] = useState('');
   const [industry, setIndustry] = useState('');
-  const [location, setLocation] = useState('');
-  const [employees, setEmployees] = useState('');
+  const [branches, setBranches] = useState('');
+  const [branchNames, setBranchNames] = useState<string[]>([]);
 
-  const filtered = useMemo(() => {
-    const q = searchQuery.toLowerCase();
-    return companies.filter(
-      (c) => c.name.toLowerCase().includes(q) || c.industry.toLowerCase().includes(q)
+  // Validation
+  const [errors, setErrors] = useState<ValidationErrors>({});
+  const [touched, setTouched] = useState<{ [key: string]: boolean }>({});
+
+  // ---------- Branch Management Modal States ----------
+  const [isBranchModalOpen, setIsBranchModalOpen] = useState(false);
+  const [selectedCompany, setSelectedCompany] = useState<Company | null>(null);
+  const [branchesList, setBranchesList] = useState<{ id: number; name: string }[]>([]);
+  // View-only branches modal states
+  const [isViewBranchModalOpen, setIsViewBranchModalOpen] = useState(false);
+  const [selectedCompanyForView, setSelectedCompanyForView] = useState<Company | null>(null);
+  const [branchesListView, setBranchesListView] = useState<{ id: number; name: string }[]>([]);
+  const [editingBranch, setEditingBranch] = useState<{ id: number; name: string } | null>(null);
+  const [newBranchName, setNewBranchName] = useState('');
+  const [branchFormError, setBranchFormError] = useState('');
+  // id of company which has its action menu open (or null)
+  const [menuOpenFor, setMenuOpenFor] = useState<number | null>(null);
+  // Sweet alert state (replaces showToast)
+  const [sweetVisible, setSweetVisible] = useState(false);
+  const [sweetTitle, setSweetTitle] = useState('');
+  const [sweetMessage, setSweetMessage] = useState('');
+  const [sweetType, setSweetType] = useState<'success' | 'error' | 'warning' | 'info'>('info');
+  const [sweetShowCancel, setSweetShowCancel] = useState(false);
+  const [sweetOnConfirm, setSweetOnConfirm] = useState<() => void>(
+    () => () => setSweetVisible(false)
+  );
+  const [sweetOnCancel, setSweetOnCancel] = useState<() => void | undefined>(() => undefined);
+
+  const openSweet = (
+    type: 'success' | 'error' | 'warning' | 'info',
+    title: string,
+    message = '',
+    showCancel = false,
+    onConfirm?: () => void,
+    onCancel?: () => void
+  ) => {
+    setSweetType(type);
+    setSweetTitle(title);
+    setSweetMessage(message);
+    setSweetShowCancel(showCancel);
+    setSweetOnConfirm(() => () => {
+      setSweetVisible(false);
+      if (onConfirm) onConfirm();
+    });
+    setSweetOnCancel(() => () => {
+      setSweetVisible(false);
+      if (onCancel) onCancel();
+    });
+    setSweetVisible(true);
+  };
+
+  const getInitialsFromText = (text: string): string => {
+    const cleaned = (text || '').trim();
+    if (!cleaned) return '??';
+    const parts = cleaned.split(/\s+/).filter(Boolean);
+    if (parts.length >= 2) return (parts[0][0] + parts[1][0]).toUpperCase();
+    return cleaned.slice(0, 2).toUpperCase();
+  };
+
+  const resolveActivityActor = async (): Promise<{ user_name: string; initials: string }> => {
+    try {
+      const { data: authData, error: authError } = await supabase.auth.getUser();
+      if (!authError && authData?.user?.id) {
+        const { data: meRow, error: meError } = await supabase
+          .from('users')
+          .select('full_name, email')
+          .eq('id', authData.user.id)
+          .single();
+
+        if (!meError && meRow) {
+          const name = (meRow as any).full_name || (meRow as any).email || 'Admin User';
+          return { user_name: name, initials: getInitialsFromText(name) };
+        }
+      }
+    } catch (e) {
+      console.error('resolveActivityActor error:', e);
+    }
+    return { user_name: 'Admin User', initials: 'AD' };
+  };
+
+  const logActivity = async (opts: {
+    action: string;
+    description?: string | null;
+    location?: string | null;
+    type?: string | null;
+    color?: string | null;
+    icon?: string | null;
+  }) => {
+    try {
+      const actor = await resolveActivityActor();
+      const payload = {
+        user_name: actor.user_name,
+        initials: actor.initials,
+        action: opts.action,
+        description: opts.description || null,
+        location: opts.location ?? 'Company List',
+        type: opts.type || 'company',
+        color: opts.color || '#d1fae5',
+        icon: opts.icon || 'business-outline',
+      };
+      const { error } = await supabase.from('activity_logs').insert([payload]);
+      if (error) console.error('activity_logs insert error:', error);
+    } catch (e) {
+      console.error('logActivity error:', e);
+    }
+  };
+
+  // ---------- Load Companies ----------
+  useEffect(() => {
+    loadCompaniesFromSupabase();
+  }, []);
+
+  const loadCompaniesFromSupabase = async () => {
+    try {
+      const { data: supabaseCompanies, error } = await supabase
+        .from('company')
+        .select('id, company_name, industry_or_sectors, no_of_branch');
+
+      if (error) throw error;
+
+      const transformed: Company[] = (supabaseCompanies || []).map((c: any) => {
+        const words = c.company_name.trim().split(' ');
+        const initials = words
+          .slice(0, 2)
+          .map((word: string) => word[0])
+          .join('')
+          .toUpperCase();
+        return {
+          id: c.id,
+          name: c.company_name,
+          industry: c.industry_or_sectors,
+          branches: c.no_of_branch,
+          initials,
+          color: '#ccfbf1',
+        };
+      });
+
+      setCompanies(transformed);
+      await AsyncStorage.setItem('companies', JSON.stringify(transformed));
+    } catch (err) {
+      console.log('Supabase fetch failed, loading from cache:', err);
+      try {
+        const stored = await AsyncStorage.getItem('companies');
+        if (stored) {
+          setCompanies(JSON.parse(stored));
+        }
+      } catch (cacheErr) {
+        console.log('Cache load failed:', cacheErr);
+      }
+    }
+  };
+
+  const saveCompaniesToCache = async (updatedCompanies: Company[]) => {
+    try {
+      await AsyncStorage.setItem('companies', JSON.stringify(updatedCompanies));
+      setCompanies(updatedCompanies);
+    } catch (error) {
+      console.log('Error saving to cache:', error);
+    }
+  };
+
+  // ---------- Form Validation ----------
+  const validateField = (fieldName: string, value: string): string | undefined => {
+    switch (fieldName) {
+      case 'companyName':
+        if (!value.trim()) return 'Company name is required';
+        if (value.trim().length < 2) return 'Company name must be at least 2 characters';
+        if (value.trim().length > 100) return 'Company name must not exceed 100 characters';
+        if (companies.some((company) => company.name.toLowerCase() === value.trim().toLowerCase()))
+          return 'A company with this name already exists';
+        return undefined;
+      case 'industry':
+        if (!value.trim()) return 'Industry/Sector is required';
+        if (value.trim().length < 2) return 'Industry must be at least 2 characters';
+        if (value.trim().length > 100) return 'Industry must not exceed 100 characters';
+        return undefined;
+      case 'branches':
+        if (value && value.trim() !== '') {
+          const num = parseInt(value);
+          if (isNaN(num)) return 'Branches must be a valid number';
+          if (num < 0) return 'Branches cannot be negative';
+          if (num > 1000) return 'Branches cannot exceed 1000';
+        }
+        return undefined;
+      default:
+        return undefined;
+    }
+  };
+
+  const validateForm = (): boolean => {
+    const newErrors: ValidationErrors = {
+      companyName: validateField('companyName', companyName),
+      industry: validateField('industry', industry),
+      branches: validateField('branches', branches),
+      branchNames: undefined,
+    };
+
+    const num = parseInt(branches) || 0;
+    if (num > 0) {
+      if (branchNames.length !== num || branchNames.some((b) => !b || !b.trim())) {
+        newErrors.branchNames = 'Please provide a name for each branch';
+      }
+    }
+
+    setErrors(newErrors);
+    setTouched({
+      companyName: true,
+      industry: true,
+      branches: true,
+      branchNames: true,
+    });
+
+    return !Object.keys(newErrors).some(
+      (key) => newErrors[key as keyof ValidationErrors] !== undefined
     );
-  }, [companies, searchQuery]);
-
-  const totalPages = useMemo(() => {
-    return Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
-  }, [filtered.length]);
-
-  useEffect(() => {
-    setCurrentPage(1);
-  }, [searchQuery]);
-
-  useEffect(() => {
-    setCurrentPage((p) => Math.min(Math.max(p, 1), totalPages));
-  }, [totalPages]);
-
-  const paginatedCompanies = useMemo(() => {
-    const start = (currentPage - 1) * PAGE_SIZE;
-    return filtered.slice(start, start + PAGE_SIZE);
-  }, [filtered, currentPage]);
-
-  const showingCount = useMemo(() => {
-    if (filtered.length === 0) return 0;
-    const end = currentPage * PAGE_SIZE;
-    return Math.min(end, filtered.length);
-  }, [filtered.length, currentPage]);
-
-  const handleAddCompany = () => {
-    if (!companyName.trim()) return;
-    const initials = companyName.split(' ').map((w) => w[0]).join('').toUpperCase().slice(0, 2);
-    setCompanies((prev) => [...prev, { id: Date.now(), name: companyName.trim(), industry: industry.trim() || 'General', branches: 1, initials, employees: parseInt(employees) || 0, status: 'Active', location: location.trim() || '—' }]);
-    setCompanyName(''); setIndustry(''); setLocation(''); setEmployees('');
-    setIsAddModalOpen(false);
   };
 
-  const confirmDelete = () => {
-    if (!deleteTarget) return;
-    setCompanies((prev) => prev.filter((c) => c.id !== deleteTarget.id));
-    setDeleteTarget(null); setIsDeleteModalOpen(false);
+  const handleFieldChange = (fieldName: string, value: string) => {
+    switch (fieldName) {
+      case 'companyName':
+        setCompanyName(value);
+        break;
+      case 'industry':
+        setIndustry(value);
+        break;
+      case 'branches':
+        setBranches(value);
+        const num = parseInt(value) || 0;
+        setBranchNames((prev) => {
+          const next = [...prev];
+          if (num > next.length) {
+            for (let i = next.length; i < num; i++) next.push('');
+          } else if (num < next.length) {
+            next.length = num;
+          }
+          return next;
+        });
+        break;
+    }
+
+    if (touched[fieldName]) {
+      const error = validateField(fieldName, value);
+      setErrors((prev) => ({ ...prev, [fieldName]: error }));
+    }
   };
 
+  const handleFieldBlur = (fieldName: string, value: string) => {
+    setTouched((prev) => ({ ...prev, [fieldName]: true }));
+    const error = validateField(fieldName, value);
+    setErrors((prev) => ({ ...prev, [fieldName]: error }));
+  };
+
+  const handleBranchNameChange = (index: number, value: string) => {
+    setBranchNames((prev) => {
+      const next = [...prev];
+      next[index] = value;
+      return next;
+    });
+    if (touched.branchNames) {
+      const num = parseInt(branches) || 0;
+      if (num !== branchNames.length || branchNames.some((b) => !b || !b.trim())) {
+        setErrors((prev) => ({ ...prev, branchNames: 'Please provide a name for each branch' }));
+      } else {
+        setErrors((prev) => ({ ...prev, branchNames: undefined }));
+      }
+    }
+  };
+
+  const resetForm = () => {
+    setCompanyName('');
+    setIndustry('');
+    setBranches('');
+    setBranchNames([]);
+    setErrors({});
+    setTouched({});
+  };
+
+  // ---------- Add Company ----------
+  const handleAddCompany = async () => {
+    if (!validateForm()) {
+      openSweet('error', 'Validation Error', 'Please fix the errors before submitting');
+      return;
+    }
+
+    try {
+      const { data: companyData, error: companyError } = await supabase
+        .from('company')
+        .insert({
+          company_name: companyName.trim(),
+          industry_or_sectors: industry.trim(),
+          no_of_branch: parseInt(branches) || 0,
+        })
+        .select()
+        .single();
+
+      if (companyError) throw companyError;
+
+      const companyId = companyData.id;
+      const branchCount = parseInt(branches) || 0;
+
+      if (branchCount > 0) {
+        const branchPayload = branchNames.slice(0, branchCount).map((name) => ({
+          branch_name: name.trim(),
+          company_id: companyId,
+        }));
+
+        const { error: branchError } = await supabase.from('branch').insert(branchPayload);
+        if (branchError) throw branchError;
+      }
+
+      const words = companyName.trim().split(' ');
+      const initials = words
+        .slice(0, 2)
+        .map((word) => word[0])
+        .join('')
+        .toUpperCase();
+
+      const newCompany: Company = {
+        id: companyId,
+        name: companyName.trim(),
+        industry: industry.trim(),
+        branches: branchCount,
+        initials,
+        color: '#ccfbf1',
+      };
+
+      const updatedCompanies = [...companies, newCompany];
+      await saveCompaniesToCache(updatedCompanies);
+
+      // Activity log
+      await logActivity({
+        action: `Added New Company: ${companyName.trim()}`,
+        description: `Industry: ${industry.trim()} • Branches: ${branchCount}`,
+        location: 'Company List',
+        type: 'company',
+        color: '#d1fae5',
+        icon: 'add-circle-outline',
+      });
+
+      resetForm();
+      setIsAddModalOpen(false);
+      openSweet('success', 'Success!', `${companyName.trim()} has been added successfully`);
+    } catch (err: any) {
+      console.log('Error saving to DB:', err);
+      openSweet('error', 'Error', err?.message || 'Failed to save company');
+    }
+  };
+
+  // ---------- Delete Company ----------
+  const handleDeleteCompany = async (id: number) => {
+    const company = companies.find((c) => c.id === id);
+    try {
+      // 1) Delete branches belonging to the company (if any)
+      const { error: branchError } = await supabase.from('branch').delete().eq('company_id', id);
+      if (branchError) throw branchError;
+
+      // 2) Delete the company
+      const { error: compError } = await supabase.from('company').delete().eq('id', id);
+      if (compError) throw compError;
+
+      // 3) Update local state/cache and UI
+      const updatedCompanies = companies.filter((c) => c.id !== id);
+      await saveCompaniesToCache(updatedCompanies);
+
+      // close any open menus/modals related to this company
+      setMenuOpenFor(null);
+      if (selectedCompany && selectedCompany.id === id) {
+        setIsBranchModalOpen(false);
+        setSelectedCompany(null);
+        setBranchesList([]);
+      }
+
+      openSweet('success', 'Deleted', `${company?.name} has been removed`);
+    } catch (err: any) {
+      console.error('Delete error:', err);
+      openSweet('error', 'Error', err?.message || 'Failed to delete company');
+    }
+  };
+
+  // ---------- Branch Management ----------
+  const fetchBranches = async (companyId: number) => {
+    try {
+      const { data, error } = await supabase
+        .from('branch')
+        .select('id, branch_name')
+        .eq('company_id', companyId)
+        .order('id', { ascending: true });
+
+      if (error) throw error;
+      const rows = (data || []).map((b: any) => ({ id: b.id, name: b.branch_name }));
+      setBranchesList(rows);
+      return rows;
+    } catch (error) {
+      console.error('Error fetching branches:', error);
+      openSweet('error', 'Error', 'Failed to load branches');
+      return [];
+    }
+  };
+
+  const fetchBranchesForView = async (companyId: number) => {
+    try {
+      const { data, error } = await supabase
+        .from('branch')
+        .select('id, branch_name')
+        .eq('company_id', companyId)
+        .order('id', { ascending: true });
+
+      if (error) throw error;
+      setBranchesListView((data || []).map((b: any) => ({ id: b.id, name: b.branch_name })));
+    } catch (error) {
+      console.error('Error fetching branches for view:', error);
+      openSweet('error', 'Error', 'Failed to load branches');
+    }
+  };
+
+  const handleCompanyPress = (company: Company) => {
+    setMenuOpenFor(null);
+    setSelectedCompany(company);
+    fetchBranches(company.id);
+    setIsBranchModalOpen(true);
+    setEditingBranch(null);
+    setNewBranchName('');
+    setBranchFormError('');
+  };
+
+  const handleViewCompany = (company: Company) => {
+    setMenuOpenFor(null);
+    setSelectedCompanyForView(company);
+    fetchBranchesForView(company.id);
+    setIsViewBranchModalOpen(true);
+  };
+
+  const updateCompanyBranchCount = async (companyId: number, newCount: number) => {
+    try {
+      const { error } = await supabase
+        .from('company')
+        .update({ no_of_branch: newCount })
+        .eq('id', companyId);
+      if (error) throw error;
+
+      const updatedCompanies = companies.map((c) =>
+        c.id === companyId ? { ...c, branches: newCount } : c
+      );
+      await saveCompaniesToCache(updatedCompanies);
+      setSelectedCompany((prev) => (prev ? { ...prev, branches: newCount } : null));
+    } catch (err) {
+      console.error('Error updating branch count:', err);
+      throw err;
+    }
+  };
+
+  const handleAddBranch = async () => {
+    if (!newBranchName.trim()) {
+      setBranchFormError('Branch name is required');
+      return;
+    }
+    if (!selectedCompany) return;
+
+    try {
+      const { data, error } = await supabase
+        .from('branch')
+        .insert({
+          branch_name: newBranchName.trim(),
+          company_id: selectedCompany.id,
+        })
+        .select()
+        .single();
+
+      if (error) throw error;
+
+      setBranchesList((prev) => [...prev, { id: data.id, name: data.branch_name }]);
+      setNewBranchName('');
+      setBranchFormError('');
+
+      await updateCompanyBranchCount(selectedCompany.id, selectedCompany.branches + 1);
+
+      // close modal then show confirmation so alert appears above modal
+      setIsBranchModalOpen(false);
+      setEditingBranch(null);
+      setTimeout(() => openSweet('success', 'Success', 'Branch added'), 150);
+    } catch (error: any) {
+      console.error('Error adding branch:', error);
+      openSweet('error', 'Error', error.message);
+    }
+  };
+
+  const handleEditBranch = (branch: { id: number; name: string }) => {
+    setEditingBranch(branch);
+    setNewBranchName(branch.name);
+    setBranchFormError('');
+  };
+
+  const handleUpdateBranch = async () => {
+    if (!newBranchName.trim()) {
+      setBranchFormError('Branch name is required');
+      return;
+    }
+    if (!editingBranch || !selectedCompany) return;
+
+    try {
+      const { error } = await supabase
+        .from('branch')
+        .update({ branch_name: newBranchName.trim() })
+        .eq('id', editingBranch.id);
+
+      if (error) throw error;
+
+      setBranchesList((prev) =>
+        prev.map((b) => (b.id === editingBranch.id ? { ...b, name: newBranchName.trim() } : b))
+      );
+
+      setEditingBranch(null);
+      setNewBranchName('');
+      setBranchFormError('');
+      // close modal so sweetalert is visible above
+      setIsBranchModalOpen(false);
+      setTimeout(() => openSweet('success', 'Success', 'Branch updated'), 150);
+    } catch (error: any) {
+      console.error('Error updating branch:', error);
+      openSweet('error', 'Error', error.message);
+    }
+  };
+
+  const handleDeleteBranch = async (branchId: number) => {
+    if (!selectedCompany) return;
+    try {
+      const { error } = await supabase.from('branch').delete().eq('id', branchId);
+      if (error) throw error;
+      // refresh branches from server to get an accurate count
+      const refreshed = await fetchBranches(selectedCompany.id);
+      const newCount = Math.max(0, refreshed?.length || 0);
+      await updateCompanyBranchCount(selectedCompany.id, newCount);
+
+      // close branch modal then show confirmation so the sweetalert appears on top
+      setIsBranchModalOpen(false);
+      setEditingBranch(null);
+      setNewBranchName('');
+      setBranchFormError('');
+      setTimeout(() => openSweet('success', 'Success', 'Branch deleted'), 350);
+    } catch (error: any) {
+      console.error('Error deleting branch:', error);
+      openSweet('error', 'Error', error.message);
+    }
+  };
+
+  const handleCancelBranchEdit = () => {
+    setEditingBranch(null);
+    setNewBranchName('');
+    setBranchFormError('');
+  };
+
+  // When user taps delete (trash) for a branch, close the branch modal first
+  // so the SweetAlert confirmation appears above it, then show confirm.
+  const confirmDeleteBranch = (branchId: number) => {
+    // close the branch modal so the alert will be visible on top
+    setIsBranchModalOpen(false);
+    setTimeout(() => {
+      openSweet(
+        'warning',
+        'Delete branch',
+        'Are you sure you want to delete this branch?',
+        true,
+        () => handleDeleteBranch(branchId)
+      );
+    }, 250);
+  };
+
+  // ---------- Render ----------
   return (
-    <View className="flex-1 bg-[#f8fafb]">
-      <ScrollView className="flex-1" showsVerticalScrollIndicator={false}>
-
-        {/* ── Top Header ─────────────────────────────────────────────────────── */}
-        <View className={`bg-[#f8fafb] ${pageX} pt-[18px] pb-4 border-b border-[#e5e7eb] flex-row items-center justify-between`}>
-          <View className="flex-row items-center flex-1">
-            {!isWebView && setIsMobileMenuOpen && (
+    <View className="flex-1 bg-stone-50">
+      {/* Main Content Area */}
+      <ScrollView className="flex-1 bg-stone-50">
+        {/* Header */}
+        <View className="px-5 pt-4 pb-3 bg-white border-b border-stone-200">
+          <View className="flex-row items-center justify-between">
+            <View className="flex-row items-center flex-1">
+              {/* Mobile Menu Button - Hidden on desktop */}
               <TouchableOpacity
-                onPress={() => setIsMobileMenuOpen(true)}
-                className="items-center justify-center w-10 h-10 mr-3"
-              >
-                <Ionicons name="menu-outline" size={24} color="#237227" />
+                className="items-center justify-center mr-3 h-9 w-9 lg:hidden"
+                onPress={() => setIsDrawerOpen(true)}>
+                <Ionicons name="menu" size={24} color="#44403c" />
               </TouchableOpacity>
-            )}
-            <View className="flex-1">
-              <Text className={`${titleSize} font-light text-[#1c1917] leading-[26px] mb-1`}>Company Management</Text>
-              <Text className={`${subtitleSize} text-[#1c1917]`}>Welcome back, Administrator</Text>
-            </View>
-          </View>
-          <View className="flex-row items-center gap-[10px]">
-            <TouchableOpacity onPress={() => setIsNotificationOpen(true)} className="w-10 h-10 rounded-full bg-[#f8fafb] items-center justify-center relative">
-              <Ionicons name="notifications-outline" size={20} color="#44403c" />
-              <View className="absolute top-2 right-2 w-2 h-2 rounded-full bg-[#237227]" />
-            </TouchableOpacity>
-            <View className="w-9 h-9 rounded-full bg-[#237227] items-center justify-center border border-[#e5e7eb]">
-              <Text className="text-[11px] font-bold text-[#f8fafb]">AD</Text>
-            </View>
-          </View>
-        </View>
-
-        {/* ── Page Body ────────────────────────────────────────────────────────── */}
-        <View className={`${pageX} ${isWebView ? 'pt-6' : 'pt-4'} pb-12 w-full`}>
-
-          {/* ── Table Container ───────────────────────────────────────────────── */}
-          <View className="bg-white rounded-[14px] border border-[#e5e7eb] overflow-hidden w-full">
-
-            {/* Toolbar */}
-            <View className={`${isWebView ? 'px-5' : 'px-4'} py-[14px] border-b border-[#e5e7eb] gap-3`}>
-              <View className="flex-row items-center justify-between">
-                <View className="flex-row items-center gap-[10px]">
-                  <Ionicons name="business-outline" size={16} color="#237227" />
-                  <Text className="text-[14px] font-bold text-[#1c1917]">Company Profiles</Text>
-                  <View className="px-2 py-[2px] rounded-full bg-[#e8f5e9] border border-[#f0f4f0]">
-                    <Text className="text-[11px] font-semibold text-[#237227]">{filtered.length}</Text>
-                  </View>
-                </View>
-                {isWebView && (
-                  <TouchableOpacity onPress={() => setIsAddModalOpen(true)} className="flex-row items-center gap-[5px] px-[14px] h-[34px] bg-[#237227] rounded-lg">
-                    <Ionicons name="add-outline" size={15} color="#ffffff" />
-                    <Text className="text-[12px] font-semibold text-white">Add Company</Text>
-                  </TouchableOpacity>
-                )}
-              </View>
-              <View className="flex-row items-center gap-[10px]">
-                <View className="flex-1 flex-row items-center bg-[#f8fafb] border border-[#e5e7eb] rounded-lg px-[10px] h-9 gap-[6px]">
-                  <Ionicons name="search-outline" size={13} color="#78716c" />
-                  <TextInput
-                    value={searchQuery}
-                    onChangeText={setSearchQuery}
-                    placeholder="Search companies…"
-                    placeholderTextColor="#78716c"
-                    className="flex-1 text-[13px] text-[#1c1917]"
-                  />
-                  {searchQuery.length > 0 && (
-                    <TouchableOpacity onPress={() => setSearchQuery('')}>
-                      <Ionicons name="close-circle" size={13} color="#78716c" />
-                    </TouchableOpacity>
-                  )}
-                </View>
-                {!isWebView && (
-                  <TouchableOpacity onPress={() => setIsAddModalOpen(true)} className="w-9 h-9 bg-[#237227] rounded-lg items-center justify-center">
-                    <Ionicons name="add-outline" size={18} color="#ffffff" />
-                  </TouchableOpacity>
-                )}
-              </View>
-            </View>
-
-            {/* Column headers */}
-            {isWebView && (
-              <View className="flex-row items-center px-5 py-[10px] bg-[#f8fafb] border-b border-[#e5e7eb]">
-                <ColHeader label="Company" className="flex-[3]" />
-                <ColHeader label="Location" className="flex-[2]" />
-                <ColHeader label="Branches" className="flex-1" />
-                <ColHeader label="Employees" className="flex-1" />
-                <ColHeader label="Status" className="flex-1" />
-                <View className="items-center w-20">
-                  <Text className="text-[11px] font-semibold text-[#78716c] uppercase tracking-[0.5px]">Actions</Text>
-                </View>
-              </View>
-            )}
-
-            {/* Rows */}
-            {filtered.length === 0 ? (
-              <View className="items-center py-[60px] gap-[10px]">
-                <View className="w-12 h-12 rounded-[12px] bg-[#e8f5e9] items-center justify-center">
-                  <Ionicons name="business-outline" size={22} color="#237227" />
-                </View>
-                <Text className="text-[14px] font-semibold text-[#1c1917]">No companies found</Text>
-                <Text className="text-[12px] text-[#78716c]">Try a different search or add a new company.</Text>
-              </View>
-            ) : (
-              paginatedCompanies.map((company, index) => (
-                <CompanyRow
-                  key={company.id}
-                  company={company}
-                  isLast={index === paginatedCompanies.length - 1}
-                  onPress={() => { setSelectedCompany(company); setIsBranchModalOpen(true); }}
-                  onDelete={() => { setDeleteTarget(company); setIsDeleteModalOpen(true); }}
-                  isWebView={isWebView}
-                />
-              ))
-            )}
-
-            {/* Table footer */}
-            <View className={`flex-row items-center justify-between ${isWebView ? 'px-5' : 'px-4'} py-3 border-t border-[#f0f4f0] bg-[#f8fafb]`}>
-              <Text className={`${isWebView ? 'text-[12px]' : 'text-[11px]'} text-black`}>Showing {showingCount} of {filtered.length} companies</Text>
-              <View className="flex-row gap-[6px]">
-                <TouchableOpacity
-                  onPress={() => setCurrentPage((p) => Math.max(1, p - 1))}
-                  disabled={currentPage <= 1}
-                  className={
-                    "w-7 h-7 rounded-[7px] border border-[#e5e7eb] bg-white items-center justify-center " +
-                    (currentPage <= 1 ? 'opacity-50' : '')
-                  }
-                >
-                  <Ionicons name={'chevron-back-outline' as any} size={13} color="#44403c" />
-                </TouchableOpacity>
-                <TouchableOpacity
-                  onPress={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
-                  disabled={currentPage >= totalPages}
-                  className={
-                    "w-7 h-7 rounded-[7px] border border-[#e5e7eb] bg-white items-center justify-center " +
-                    (currentPage >= totalPages ? 'opacity-50' : '')
-                  }
-                >
-                  <Ionicons name={'chevron-forward-outline' as any} size={13} color="#44403c" />
-                </TouchableOpacity>
-              </View>
-            </View>
-          </View>
-        </View>
-      </ScrollView>
-
-      {/* ── Notification Modal ──────────────────────────────────────────────── */}
-      <Modal visible={isNotificationOpen} transparent animationType="fade" onRequestClose={() => setIsNotificationOpen(false)}>
-        <Pressable className="flex-1 bg-black/15 justify-start items-end pt-[60px] pr-5" onPress={() => setIsNotificationOpen(false)}>
-          <View className="w-[300px] bg-white rounded-[14px] border border-[#e5e7eb] overflow-hidden">
-            <View className="flex-row items-center justify-between px-4 py-[14px] border-b border-[#f0f4f0]">
-              <Text className="text-[14px] font-bold text-[#1c1917]">Notifications</Text>
-              <View className="px-2 py-[2px] rounded-full bg-[#e8f5e9]">
-                <Text className="text-[10px] font-semibold text-[#237227]">1 new</Text>
-              </View>
-            </View>
-            <View className="flex-row items-start gap-[10px] px-4 py-3">
-              <View className="w-8 h-8 rounded-lg bg-[#e8f5e9] items-center justify-center">
-                <Ionicons name="business-outline" size={15} color="#237227" />
-              </View>
               <View className="flex-1">
-                <Text className="text-[12px] text-[#1c1917] font-medium leading-4">NorthShield Security was updated</Text>
-                <Text className="text-[11px] text-[#78716c] mt-0.5">5 min ago</Text>
+                <Text className="text-lg font-bold text-stone-900 lg:text-2xl">Company List</Text>
+                <Text className="mt-0.5 text-xs text-stone-500 lg:text-sm">
+                  Welcome back, Administrator
+                </Text>
               </View>
             </View>
-            <TouchableOpacity onPress={() => setIsNotificationOpen(false)} className="m-3 py-[9px] bg-[#237227] rounded-lg items-center">
-              <Text className="text-[12px] font-semibold text-white">Mark all as read</Text>
+            <View className="flex-row items-center gap-2.5">
+              <TouchableOpacity
+                className="items-center justify-center rounded-full h-9 w-9 bg-stone-100"
+                onPress={() => setIsNotificationOpen(true)}
+                activeOpacity={0.7}>
+                <View className="absolute right-1.5 top-1.5 h-2 w-2 rounded-full bg-red-500" />
+                <Ionicons name="notifications-outline" size={18} color="#57534e" />
+              </TouchableOpacity>
+              {/* Notification Modal */}
+              <Modal
+                visible={isNotificationOpen}
+                transparent
+                animationType="fade"
+                onRequestClose={() => setIsNotificationOpen(false)}>
+                <Pressable
+                  style={{
+                    flex: 1,
+                    backgroundColor: 'rgba(0,0,0,0.2)',
+                    justifyContent: 'center',
+                    alignItems: 'center',
+                  }}
+                  onPress={() => setIsNotificationOpen(false)}>
+                  <View
+                    style={{
+                      width: 320,
+                      backgroundColor: 'rgba(255,255,255,0.85)',
+                      borderRadius: 16,
+                      padding: 24,
+                      alignItems: 'center',
+                    }}>
+                    <Ionicons
+                      name="notifications-outline"
+                      size={32}
+                      color="#10b981"
+                      style={{ marginBottom: 12 }}
+                    />
+                    <Text
+                      style={{
+                        fontWeight: 'bold',
+                        fontSize: 18,
+                        color: '#44403c',
+                        marginBottom: 8,
+                      }}>
+                      Notifications
+                    </Text>
+                    <Text style={{ color: '#57534e', textAlign: 'center', marginBottom: 16 }}>
+                      You have no new notifications.
+                    </Text>
+                    <TouchableOpacity
+                      style={{
+                        backgroundColor: '#10b981',
+                        borderRadius: 8,
+                        paddingVertical: 8,
+                        paddingHorizontal: 24,
+                      }}
+                      onPress={() => setIsNotificationOpen(false)}>
+                      <Text style={{ color: 'white', fontWeight: 'bold' }}>Close</Text>
+                    </TouchableOpacity>
+                  </View>
+                </Pressable>
+              </Modal>
+              <View className="items-center justify-center rounded-full h-9 w-9 bg-emerald-100">
+                <Text className="text-xs font-semibold text-emerald-700">AD</Text>
+              </View>
+              {/* Desktop User Info - Hidden on mobile */}
+              <View className="hidden ml-2 lg:flex">
+                <Text className="text-sm font-semibold text-stone-900">Admin User</Text>
+                <Text className="text-xs text-stone-500">Super Admin</Text>
+              </View>
+            </View>
+          </View>
+        </View>
+
+        {/* Page Title & Add Button */}
+        <View className="px-5 pt-4 pb-3 lg:px-8 lg:pt-6">
+          <View className="flex-row items-center justify-between">
+            <View className="flex-1">
+              <Text className="mb-0.5 text-lg font-bold text-stone-900 lg:text-xl">
+                Company Management
+              </Text>
+            </View>
+            <TouchableOpacity
+              className="ml-2 flex-row items-center rounded-xl bg-emerald-600 px-3 py-2 lg:px-4 lg:py-2.5"
+              onPress={() => setIsAddModalOpen(true)}>
+              <Ionicons name="add" size={18} color="white" />
+              <Text className="ml-1 text-xs font-semibold text-white lg:text-sm">Add Company</Text>
             </TouchableOpacity>
           </View>
-        </Pressable>
-      </Modal>
+        </View>
 
-      {/* ── Add Company Modal ────────────────────────────────────────────────── */}
-      <Modal visible={isAddModalOpen} transparent animationType="fade" onRequestClose={() => setIsAddModalOpen(false)}>
-        <Pressable className="items-center justify-center flex-1 p-6 bg-black/20" onPress={() => setIsAddModalOpen(false)}>
-          <Pressable className="w-full max-w-[460px] bg-white rounded-2xl border border-[#e5e7eb] overflow-hidden" onPress={() => {}}>
-            <View className="flex-row items-center justify-between px-6 py-[18px] border-b border-[#f0f4f0]">
-              <View className="flex-row items-center gap-[10px]">
-                <View className="w-8 h-8 rounded-lg bg-[#e8f5e9] items-center justify-center">
-                  <Ionicons name="business-outline" size={16} color="#237227" />
-                </View>
-                <Text className="text-[15px] font-bold text-[#1c1917]">Add New Company</Text>
-              </View>
-              <TouchableOpacity onPress={() => setIsAddModalOpen(false)}>
-                <Ionicons name="close-outline" size={20} color="#78716c" />
-              </TouchableOpacity>
+        {/* ---------- Company Cards Grid ---------- */}
+        <View className="px-5 pb-6 lg:px-8">
+          {companies.length === 0 ? (
+            <View className="items-center px-6 py-12 bg-white border rounded-2xl border-stone-200">
+              <Ionicons name="business-outline" size={48} color="#d6d3d1" />
+              <Text className="mt-4 text-sm text-stone-500">No companies found</Text>
+              <Text className="mt-1 text-xs text-stone-400">
+                Click &quot;Add Company&quot; to create your first company
+              </Text>
             </View>
-            <View className="p-6 gap-[14px]">
-              <LabeledInput label="Company Name" placeholder="e.g. Acme Corp"    value={companyName} onChangeText={setCompanyName} icon="business-outline"  />
-              <LabeledInput label="Industry"     placeholder="e.g. Technology"   value={industry}    onChangeText={setIndustry}    icon="briefcase-outline" />
-              <LabeledInput label="Location"     placeholder="e.g. New York, NY" value={location}    onChangeText={setLocation}    icon="location-outline"  />
-              <LabeledInput label="Employees"    placeholder="e.g. 120"          value={employees}   onChangeText={setEmployees}   icon="people-outline"    />
-            </View>
-            <View className="flex-row gap-[10px] px-6 pb-6">
-              <TouchableOpacity onPress={() => setIsAddModalOpen(false)} className="flex-1 h-10 rounded-[9px] items-center justify-center bg-[#f8fafb] border border-[#237227]">
-                <Text className="text-[13px] font-semibold text-black">Cancel</Text>
-              </TouchableOpacity>
-              <TouchableOpacity onPress={handleAddCompany} className="flex-1 h-10 rounded-[9px] bg-[#237227] items-center justify-center flex-row gap-[5px]">
-                <Ionicons name="add-outline" size={15} color="#ffffff" />
-                <Text className="text-[13px] font-semibold text-white">Save Company</Text>
-              </TouchableOpacity>
-            </View>
-          </Pressable>
-        </Pressable>
-      </Modal>
-
-      {/* ── Branch Detail Modal ──────────────────────────────────────────────── */}
-      <Modal visible={isBranchModalOpen} transparent animationType="fade" onRequestClose={() => setIsBranchModalOpen(false)}>
-        <Pressable className="items-center justify-center flex-1 p-6 bg-black/20" onPress={() => setIsBranchModalOpen(false)}>
-          <Pressable className="w-full max-w-[420px] bg-white rounded-2xl border border-[#e5e7eb] overflow-hidden" onPress={() => {}}>
-            <View className="flex-row items-center justify-between px-6 py-[18px] border-b border-[#f0f4f0]">
-              <View className="flex-row items-center gap-[10px]">
-                <CompanyAvatar initials={selectedCompany?.initials ?? '?'} />
-                <View>
-                  <Text className="text-[14px] font-bold text-[#1c1917]">{selectedCompany?.name}</Text>
-                  <Text className="text-[11px] text-[#78716c]">{selectedCompany?.industry}</Text>
-                </View>
-              </View>
-              <TouchableOpacity onPress={() => setIsBranchModalOpen(false)}>
-                <Ionicons name="close-outline" size={20} color="#78716c" />
-              </TouchableOpacity>
-            </View>
-            <View className="gap-1 p-6">
-              {[
-                { icon: 'business-outline', label: 'Branches',  value: `${selectedCompany?.branches}`   },
-                { icon: 'people-outline',   label: 'Employees', value: `${selectedCompany?.employees}`  },
-                { icon: 'location-outline', label: 'Location',  value: selectedCompany?.location ?? '—' },
-                { icon: 'ellipse-outline',  label: 'Status',    value: selectedCompany?.status   ?? '—' },
-              ].map((row) => (
-                <View key={row.label} className="flex-row items-center justify-between py-[11px] border-b border-[#f0f4f0]">
-                  <View className="flex-row items-center gap-2">
-                    <Ionicons name={row.icon as any} size={14} color="#78716c" />
-                    <Text className="text-[13px] text-[#78716c]">{row.label}</Text>
+          ) : (
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 12 }}>
+              {companies.map((company) => (
+                <View
+                  key={company.id}
+                  style={{ flex: 1, minWidth: 260 }}
+                  className="bg-white border rounded-2xl border-stone-200">
+                  {/* Card Header */}
+                  <View className="flex-row items-center px-5 pt-5 pb-4" style={{ gap: 12 }}>
+                    <View className="items-center justify-center w-12 h-12 rounded-xl bg-emerald-100">
+                      <Text className="text-base font-bold text-emerald-700">
+                        {company.initials}
+                      </Text>
+                    </View>
+                    <View className="flex-1">
+                      <Text className="text-sm font-bold text-stone-900" numberOfLines={1}>
+                        {company.name}
+                      </Text>
+                      <Text className="mt-0.5 text-xs text-stone-500" numberOfLines={1}>
+                        {company.industry}
+                      </Text>
+                    </View>
                   </View>
-                  <Text className="text-[13px] font-semibold text-[#1c1917]">{row.value}</Text>
+
+                  {/* Divider */}
+                  <View className="mx-5 border-t border-stone-100" />
+
+                  {/* Card Body */}
+                  <View className="flex-row items-center justify-between px-5 py-3">
+                    <View className="flex-row items-center" style={{ gap: 6 }}>
+                      <Ionicons name="git-branch-outline" size={14} color="#78716c" />
+                      <Text className="text-xs text-stone-600">
+                        {company.branches} {company.branches === 1 ? 'branch' : 'branches'}
+                      </Text>
+                    </View>
+                    <View className="rounded-full bg-emerald-50 px-2.5 py-1">
+                      <Text className="text-xs font-medium text-emerald-700">
+                        {company.industry}
+                      </Text>
+                    </View>
+                  </View>
+
+                  {/* Divider */}
+                  <View className="mx-5 border-t border-stone-100" />
+
+                  {/* Card Footer / Actions */}
+                  <View className="flex-row items-center justify-end px-5 py-3" style={{ gap: 6 }}>
+                    <TouchableOpacity
+                      className="flex-row items-center rounded-lg bg-stone-50 px-3 py-1.5"
+                      style={{ gap: 5 }}
+                      onPress={() => handleCompanyPress(company)}>
+                      <Ionicons name="create-outline" size={15} color="#78716c" />
+                      <Text className="text-xs font-medium text-stone-600">Edit</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      className="flex-row items-center rounded-lg bg-stone-50 px-3 py-1.5"
+                      style={{ gap: 5 }}
+                      onPress={() => handleViewCompany(company)}>
+                      <Ionicons name="eye-outline" size={15} color="#78716c" />
+                      <Text className="text-xs font-medium text-stone-600">View</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      className="flex-row items-center rounded-lg bg-red-50 px-3 py-1.5"
+                      style={{ gap: 5 }}
+                      onPress={() =>
+                        openSweet(
+                          'warning',
+                          'Delete company',
+                          'Are you sure you want to delete this company?',
+                          true,
+                          () => handleDeleteCompany(company.id)
+                        )
+                      }>
+                      <Ionicons name="trash-outline" size={15} color="#dc2626" />
+                      <Text className="text-xs font-medium text-red-600">Delete</Text>
+                    </TouchableOpacity>
+                  </View>
                 </View>
               ))}
             </View>
-            <View className="px-6 pb-6">
-              <TouchableOpacity onPress={() => setIsBranchModalOpen(false)} className="h-10 rounded-[9px] bg-[#237227] items-center justify-center">
-                <Text className="text-[13px] font-semibold text-white">Close</Text>
+          )}
+        </View>
+      </ScrollView>
+
+      {/* ---------- Mobile Drawer Modal ---------- */}
+      <Modal visible={isNotificationOpen} transparent animationType="fade">
+        <Pressable
+          className="items-center justify-center flex-1 bg-black/20"
+          onPress={() => setIsNotificationOpen(false)}>
+          <View className="items-center p-6 bg-white w-80 rounded-2xl">
+            <Ionicons name="notifications-outline" size={32} color="#10b981" />
+            <Text className="mt-4 text-lg font-bold">Notifications</Text>
+            <Text className="my-4 text-center text-stone-500">You have no new notifications.</Text>
+            <TouchableOpacity
+              className="items-center w-full py-3 rounded-xl bg-emerald-500"
+              onPress={() => setIsNotificationOpen(false)}>
+              <Text className="font-bold text-white">Close</Text>
+            </TouchableOpacity>
+          </View>
+        </Pressable>
+      </Modal>
+
+      {/* Sweet Alert Modal (replaces SimpleToast) */}
+      <SweetAlertModal
+        visible={sweetVisible}
+        title={sweetTitle}
+        message={sweetMessage}
+        type={sweetType}
+        showCancelButton={sweetShowCancel}
+        onConfirm={() => sweetOnConfirm && sweetOnConfirm()}
+        onCancel={() => sweetOnCancel && sweetOnCancel()}
+      />
+
+      {/* ---------- Branch Management Modal (Edit) ---------- */}
+      <Modal
+        visible={isBranchModalOpen}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setIsBranchModalOpen(false)}>
+        <Pressable
+          className="items-center justify-center flex-1 bg-black/50"
+          onPress={() => setIsBranchModalOpen(false)}>
+          <Pressable
+            className="w-full max-w-md bg-white rounded-2xl"
+            onPress={(e) => e.stopPropagation()}>
+            <View className="px-6 pt-6 pb-4 border-b border-stone-100">
+              <View className="flex-row items-center justify-between">
+                <View>
+                  <Text className="text-xl font-bold text-stone-900">
+                    {selectedCompany?.name || 'Company'}
+                  </Text>
+                  <Text className="mt-1 text-xs text-stone-500">Manage branches</Text>
+                </View>
+                <TouchableOpacity
+                  className="items-center justify-center w-8 h-8"
+                  onPress={() => setIsBranchModalOpen(false)}>
+                  <Ionicons name="close" size={22} color="#78716c" />
+                </TouchableOpacity>
+              </View>
+            </View>
+
+            <ScrollView className="px-6 py-5 max-h-80">
+              <Text className="mb-3 text-sm font-medium text-stone-700">
+                Branches ({branchesList.length})
+              </Text>
+
+              {branchesList.length === 0 ? (
+                <View className="items-center p-4 rounded-xl bg-stone-50">
+                  <Ionicons name="business-outline" size={24} color="#a8a29e" />
+                  <Text className="mt-2 text-sm text-stone-500">No branches yet</Text>
+                </View>
+              ) : (
+                branchesList.map((branch) => (
+                  <View
+                    key={branch.id}
+                    className="flex-row items-center justify-between p-3 mb-3 rounded-xl bg-stone-50">
+                    <View className="flex-row items-center flex-1">
+                      <Ionicons name="location-outline" size={16} color="#78716c" />
+                      <Text className="ml-2 text-sm text-stone-700">{branch.name}</Text>
+                    </View>
+                    <View className="flex-row gap-2">
+                      <TouchableOpacity className="p-2" onPress={() => handleEditBranch(branch)}>
+                        <Ionicons name="pencil-outline" size={18} color="#10b981" />
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        className="p-2"
+                        onPress={() => confirmDeleteBranch(branch.id)}>
+                        <Ionicons name="trash-outline" size={18} color="#dc2626" />
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+                ))
+              )}
+
+              <View className="pt-4 mt-4 border-t border-stone-100">
+                <Text className="mb-2 text-sm font-medium text-stone-700">
+                  {editingBranch ? 'Edit Branch' : 'Add New Branch'}
+                </Text>
+                <TextInput
+                  className={`border bg-white ${branchFormError ? 'border-red-500' : 'border-stone-300'} rounded-xl px-4 py-3 text-sm text-stone-900`}
+                  placeholder="Branch name"
+                  placeholderTextColor="#a8a29e"
+                  value={newBranchName}
+                  onChangeText={setNewBranchName}
+                />
+                {branchFormError ? (
+                  <View className="mt-1.5 flex-row items-center">
+                    <Ionicons name="alert-circle" size={14} color="#dc2626" />
+                    <Text className="ml-1 text-xs text-red-600">{branchFormError}</Text>
+                  </View>
+                ) : null}
+
+                <View className="flex-row gap-2 mt-3">
+                  {editingBranch ? (
+                    <>
+                      <TouchableOpacity
+                        className="flex-1 py-3 rounded-xl bg-emerald-600"
+                        onPress={handleUpdateBranch}>
+                        <Text className="font-semibold text-center text-white">Update</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        className="flex-1 py-3 rounded-xl bg-stone-200"
+                        onPress={handleCancelBranchEdit}>
+                        <Text className="font-semibold text-center text-stone-700">Cancel</Text>
+                      </TouchableOpacity>
+                    </>
+                  ) : (
+                    <TouchableOpacity
+                      className="flex-1 py-3 rounded-xl bg-emerald-600"
+                      onPress={handleAddBranch}>
+                      <Text className="font-semibold text-center text-white">Add Branch</Text>
+                    </TouchableOpacity>
+                  )}
+                </View>
+              </View>
+            </ScrollView>
+
+            <View className="px-6 pt-2 pb-6 border-t border-stone-100">
+              <TouchableOpacity
+                className="py-3 rounded-xl bg-stone-100"
+                onPress={() => setIsBranchModalOpen(false)}>
+                <Text className="font-semibold text-center text-stone-700">Close</Text>
               </TouchableOpacity>
             </View>
           </Pressable>
         </Pressable>
       </Modal>
 
-      {/* ── Delete Confirm Modal ─────────────────────────────────────────────── */}
-      <Modal visible={isDeleteModalOpen} transparent animationType="fade" onRequestClose={() => setIsDeleteModalOpen(false)}>
-        <Pressable className="items-center justify-center flex-1 p-6 bg-black/20" onPress={() => setIsDeleteModalOpen(false)}>
-          <Pressable className="w-full max-w-[360px] bg-white rounded-2xl border border-[#e5e7eb] p-6 items-center gap-3" onPress={() => {}}>
-            <View className="w-12 h-12 rounded-[12px] bg-[#fee2e2] border border-[#ef4444] items-center justify-center">
-              <Ionicons name="trash-outline" size={22} color="#ef4444" />
+      {/* ---------- View-Only Branches Modal ---------- */}
+      <Modal
+        visible={isViewBranchModalOpen}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setIsViewBranchModalOpen(false)}>
+        <Pressable
+          className="items-center justify-center flex-1 bg-black/50"
+          onPress={() => setIsViewBranchModalOpen(false)}>
+          <Pressable
+            className="w-full max-w-md bg-white rounded-2xl"
+            onPress={(e) => e.stopPropagation()}>
+            <View className="px-6 pt-6 pb-4 border-b border-stone-100">
+              <View className="flex-row items-center justify-between">
+                <View>
+                  <Text className="text-xl font-bold text-stone-900">
+                    {selectedCompanyForView?.name || 'Company'}
+                  </Text>
+                  <Text className="mt-1 text-xs text-stone-500">Branches</Text>
+                </View>
+                <TouchableOpacity
+                  className="items-center justify-center w-8 h-8"
+                  onPress={() => setIsViewBranchModalOpen(false)}>
+                  <Ionicons name="close" size={22} color="#78716c" />
+                </TouchableOpacity>
+              </View>
             </View>
-            <Text className="text-[15px] font-bold text-[#1c1917]">Delete Company?</Text>
-            <Text className="text-[13px] text-[#78716c] text-center leading-[18px]">
-              <Text className="font-semibold text-[#44403c]">{deleteTarget?.name}</Text> and all its data will be permanently removed.
-            </Text>
-            <View className="flex-row gap-[10px] w-full mt-1">
-              <TouchableOpacity onPress={() => setIsDeleteModalOpen(false)} className="flex-1 h-10 rounded-[9px] items-center justify-center bg-[#f8fafb] border border-[#237227]">
-                <Text className="text-[13px] font-semibold text-black">Cancel</Text>
+
+            <ScrollView className="px-6 py-5 max-h-80">
+              {branchesListView.length === 0 ? (
+                <View className="items-center p-4 rounded-xl bg-stone-50">
+                  <Ionicons name="business-outline" size={24} color="#a8a29e" />
+                  <Text className="mt-2 text-sm text-stone-500">No branches yet</Text>
+                </View>
+              ) : (
+                branchesListView.map((branch) => (
+                  <View key={branch.id} className="p-3 mb-3 rounded-xl bg-stone-50">
+                    <View className="flex-row items-center">
+                      <Ionicons name="location-outline" size={16} color="#78716c" />
+                      <Text className="ml-2 text-sm text-stone-700">{branch.name}</Text>
+                    </View>
+                  </View>
+                ))
+              )}
+            </ScrollView>
+
+            <View className="px-6 pt-2 pb-6 border-t border-stone-100">
+              <TouchableOpacity
+                className="py-3 rounded-xl bg-stone-100"
+                onPress={() => setIsViewBranchModalOpen(false)}>
+                <Text className="font-semibold text-center text-stone-700">Close</Text>
               </TouchableOpacity>
-              <TouchableOpacity onPress={confirmDelete} className="flex-1 h-10 rounded-[9px] bg-[#ef4444] items-center justify-center">
-                <Text className="text-[13px] font-semibold text-white">Delete</Text>
-              </TouchableOpacity>
+            </View>
+          </Pressable>
+        </Pressable>
+      </Modal>
+
+      {/* ---------- Add Company Modal Design ---------- */}
+      <Modal
+        visible={isAddModalOpen}
+        transparent
+        animationType="fade"
+        onRequestClose={() => {
+          setIsAddModalOpen(false);
+          resetForm();
+        }}>
+        <Pressable
+          className="items-center justify-center flex-1"
+          style={{ backgroundColor: 'rgba(0,0,0,0.45)' }}
+          onPress={() => {
+            setIsAddModalOpen(false);
+            resetForm();
+          }}>
+          <Pressable
+            className="w-full max-w-md bg-white rounded-2xl"
+            onPress={(e) => e.stopPropagation()}>
+            <View className="px-6 pt-6 pb-4 border-b border-stone-100">
+              <View className="flex-row items-center justify-between">
+                <View>
+                  <Text className="text-xl font-bold text-stone-900">Add New Company</Text>
+                  <Text className="mt-1 text-xs text-stone-500">
+                    Fill in the company details below
+                  </Text>
+                </View>
+                <TouchableOpacity
+                  className="items-center justify-center w-8 h-8"
+                  onPress={() => {
+                    setIsAddModalOpen(false);
+                    resetForm();
+                  }}>
+                  <Ionicons name="close" size={22} color="#78716c" />
+                </TouchableOpacity>
+              </View>
+            </View>
+
+            <ScrollView className="px-6 py-5 max-h-96">
+              {/* Company Name */}
+              <View className="mb-4">
+                <Text className="mb-2 text-sm font-medium text-stone-700">
+                  Company Name <Text className="text-red-500">*</Text>
+                </Text>
+                <TextInput
+                  className={`border bg-white ${touched.companyName && errors.companyName ? 'border-red-500' : 'border-stone-300'} rounded-xl px-4 py-3 text-sm text-stone-900`}
+                  placeholder="e.g., Acme Corporation"
+                  placeholderTextColor="#a8a29e"
+                  value={companyName}
+                  onChangeText={(v) => handleFieldChange('companyName', v)}
+                  onBlur={() => handleFieldBlur('companyName', companyName)}
+                  maxLength={100}
+                />
+                {touched.companyName && errors.companyName && (
+                  <View className="mt-1.5 flex-row items-center">
+                    <Ionicons name="alert-circle" size={14} color="#dc2626" />
+                    <Text className="ml-1 text-xs text-red-600">{errors.companyName}</Text>
+                  </View>
+                )}
+                <Text className="mt-1 text-xs text-stone-400">
+                  {companyName.length}/100 characters
+                </Text>
+              </View>
+
+              {/* Industry */}
+              <View className="mb-4">
+                <Text className="mb-2 text-sm font-medium text-stone-700">
+                  Industry/Sector <Text className="text-red-500">*</Text>
+                </Text>
+                <TextInput
+                  className={`border bg-white ${touched.industry && errors.industry ? 'border-red-500' : 'border-stone-300'} rounded-xl px-4 py-3 text-sm text-stone-900`}
+                  placeholder="e.g., Technology & Security"
+                  placeholderTextColor="#a8a29e"
+                  value={industry}
+                  onChangeText={(v) => handleFieldChange('industry', v)}
+                  onBlur={() => handleFieldBlur('industry', industry)}
+                  maxLength={100}
+                />
+                {touched.industry && errors.industry && (
+                  <View className="mt-1.5 flex-row items-center">
+                    <Ionicons name="alert-circle" size={14} color="#dc2626" />
+                    <Text className="ml-1 text-xs text-red-600">{errors.industry}</Text>
+                  </View>
+                )}
+                <Text className="mt-1 text-xs text-stone-400">
+                  {industry.length}/100 characters
+                </Text>
+              </View>
+
+              {/* Number of Branches */}
+              <View className="mb-4">
+                <Text className="mb-2 text-sm font-medium text-stone-700">Number of Branches</Text>
+                <TextInput
+                  className={`border bg-white ${touched.branches && errors.branches ? 'border-red-500' : 'border-stone-300'} rounded-xl px-4 py-3 text-sm text-stone-900`}
+                  placeholder="e.g., 3"
+                  placeholderTextColor="#a8a29e"
+                  keyboardType="numeric"
+                  value={branches}
+                  onChangeText={(v) => handleFieldChange('branches', v)}
+                  onBlur={() => handleFieldBlur('branches', branches)}
+                />
+                {touched.branches && errors.branches && (
+                  <View className="mt-1.5 flex-row items-center">
+                    <Ionicons name="alert-circle" size={14} color="#dc2626" />
+                    <Text className="ml-1 text-xs text-red-600">{errors.branches}</Text>
+                  </View>
+                )}
+                <Text className="mt-1 text-xs text-stone-400">Maximum 1000 branches</Text>
+              </View>
+
+              {/* Branch Names */}
+              {(() => {
+                const num = parseInt(branches) || 0;
+                if (num <= 0) return null;
+                return (
+                  <View className="mb-4">
+                    <Text className="mb-2 text-sm font-medium text-stone-700">Branch Names</Text>
+                    {Array.from({ length: num }).map((_, idx) => (
+                      <View key={idx} className="mb-3">
+                        <TextInput
+                          className={`border bg-white ${touched.branchNames && errors.branchNames ? 'border-red-500' : 'border-stone-300'} rounded-xl px-4 py-3 text-sm text-stone-900`}
+                          placeholder={`Branch ${idx + 1} name`}
+                          placeholderTextColor="#a8a29e"
+                          value={branchNames[idx] ?? ''}
+                          onChangeText={(value) => handleBranchNameChange(idx, value)}
+                        />
+                      </View>
+                    ))}
+                    {touched.branchNames && errors.branchNames && (
+                      <View className="mt-1.5 flex-row items-center">
+                        <Ionicons name="alert-circle" size={14} color="#dc2626" />
+                        <Text className="ml-1 text-xs text-red-600">{errors.branchNames}</Text>
+                      </View>
+                    )}
+                  </View>
+                );
+              })()}
+
+              <Text className="mt-3 text-xs text-stone-400">
+                <Text className="text-red-500">*</Text> Required fields
+              </Text>
+            </ScrollView>
+
+            <View className="px-6 pt-4 pb-6 border-t border-stone-100">
+              <View className="flex-row gap-3">
+                <TouchableOpacity
+                  className="flex-1 py-3 rounded-xl bg-stone-100 active:opacity-70"
+                  onPress={() => {
+                    setIsAddModalOpen(false);
+                    resetForm();
+                  }}>
+                  <Text className="font-semibold text-center text-stone-700">Cancel</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  className="flex-1 py-3 rounded-xl bg-emerald-600 active:opacity-80"
+                  onPress={handleAddCompany}>
+                  <Text className="font-semibold text-center text-white">Add Company</Text>
+                </TouchableOpacity>
+              </View>
             </View>
           </Pressable>
         </Pressable>
