@@ -28,7 +28,7 @@ export interface Site {
   membersCount?: number | null;
   createdAt?: string | null;
   finishedAt?: string | null;
-  staffCount: number;
+  staffCount: number; // actual number of members from group_members
 }
 
 interface SitesProps {
@@ -48,7 +48,27 @@ export default function Sites({ onMapPress, onSiteMapPress }: SitesProps) {
   const [selectedSite, setSelectedSite] = useState<Site | null>(null);
   const [loading, setLoading] = useState(false);
 
-  const mapRowToSite = (item: any): Site => ({
+  // Helper to fetch member counts for given site IDs
+  async function fetchMemberCounts(siteIds: string[]): Promise<Record<string, number>> {
+    if (siteIds.length === 0) return {};
+    const { data, error } = await supabase
+      .from('group_members')
+      .select('site_id', { count: 'exact', head: false })
+      .in('site_id', siteIds);
+    if (error) {
+      console.error('Error fetching member counts:', error);
+      return {};
+    }
+    const counts: Record<string, number> = {};
+    // Count occurrences of each site_id
+    (data || []).forEach((row: any) => {
+      const siteId = row.site_id;
+      counts[siteId] = (counts[siteId] || 0) + 1;
+    });
+    return counts;
+  }
+
+  const mapRowToSite = (item: any, memberCounts: Record<string, number> = {}): Site => ({
     id: item.id,
     name: item.name || 'Unnamed site',
     companyName: item.company?.company_name || null,
@@ -57,7 +77,7 @@ export default function Sites({ onMapPress, onSiteMapPress }: SitesProps) {
     longitude: item.longitude,
     status: (item.status as 'Active' | 'Pending' | 'Finished') || 'Active',
     securityLevel: 'low',
-    staffCount: 0,
+    staffCount: memberCounts[item.id] || 0,
     createdAt: item.created_at || null,
     finishedAt: item.finished_at || null,
     dateAccomplished: item.date_accomplished || null,
@@ -88,7 +108,10 @@ export default function Sites({ onMapPress, onSiteMapPress }: SitesProps) {
         .order('finished_at', { ascending: false })
         .order('name', { ascending: true });
       if (error) throw error;
-      setFinishedSites(((allArchived || []) as any[]).map(mapRowToSite));
+      const sites = (allArchived || []) as any[];
+      const siteIds = sites.map(s => s.id);
+      const memberCounts = await fetchMemberCounts(siteIds);
+      setFinishedSites(sites.map(s => mapRowToSite(s, memberCounts)));
     } catch (err: any) {
       Alert.alert('Error', err?.message || String(err));
     } finally {
@@ -142,22 +165,6 @@ export default function Sites({ onMapPress, onSiteMapPress }: SitesProps) {
       if (memberSiteIds.size === 0 && userSiteId) {
         memberSiteIds.add(userSiteId);
       }
-
-      const mapRowToSite = (item: any): Site => ({
-        id: item.id,
-        name: item.name || 'Unnamed site',
-        companyName: item.company?.company_name || null,
-        branchName: item.branch?.branch_name || null,
-        latitude: item.latitude,
-        longitude: item.longitude,
-        status: (item.status as 'Active' | 'Pending' | 'Finished') || 'Active',
-        securityLevel: 'low',
-        staffCount: 0,
-        createdAt: item.created_at || null,
-        finishedAt: item.finished_at || null,
-        dateAccomplished: item.date_accomplished || null,
-        membersCount: item.members_count ?? null,
-      });
 
       // Determine if current user is a leader of any site
       const { data: leaderSites, error: leaderSitesError } = await supabase
@@ -224,7 +231,11 @@ export default function Sites({ onMapPress, onSiteMapPress }: SitesProps) {
         seen.add(id);
         deduped.push(row);
       }
-      setActiveSites(deduped.map(mapRowToSite));
+
+      // Fetch member counts for all sites we are about to display
+      const allSiteIds = deduped.map(s => s.id);
+      const memberCounts = await fetchMemberCounts(allSiteIds);
+      setActiveSites(deduped.map(s => mapRowToSite(s, memberCounts)));
 
       // Pending/Finished lists:
       // - Leaders: their assigned site(s)
@@ -244,6 +255,11 @@ export default function Sites({ onMapPress, onSiteMapPress }: SitesProps) {
           .order('name', { ascending: true });
         if (pendingAssignedError) throw pendingAssignedError;
 
+        // Fetch member counts for these sites
+        const pendingIds = (pendingAssigned || []).map(s => s.id);
+        const pendingCounts = await fetchMemberCounts(pendingIds);
+        setPendingSites((pendingAssigned || []).map(s => mapRowToSite(s, pendingCounts)));
+
         // Finished sites now from archived_sitegroup
         const { data: finishedAssigned, error: finishedAssignedError } = await supabase
           .from('archived_sitegroup')
@@ -257,8 +273,9 @@ export default function Sites({ onMapPress, onSiteMapPress }: SitesProps) {
           .order('name', { ascending: true });
         if (finishedAssignedError) throw finishedAssignedError;
 
-        setPendingSites((pendingAssigned || []).map(mapRowToSite));
-        setFinishedSites((finishedAssigned || []).map(mapRowToSite));
+        const finishedIds = (finishedAssigned || []).map(s => s.id);
+        const finishedCounts = await fetchMemberCounts(finishedIds);
+        setFinishedSites((finishedAssigned || []).map(s => mapRowToSite(s, finishedCounts)));
 
         if ((pendingAssigned || []).length > 0 && activeList === 'All' && !didAutoSwitchToPending) {
           setActiveList('Pending');
@@ -284,7 +301,8 @@ export default function Sites({ onMapPress, onSiteMapPress }: SitesProps) {
           .order('created_at', { ascending: true });
         if (mySitesError) throw mySitesError;
 
-        const mappedSites = (mySites || []).map(mapRowToSite);
+        const memberCountsForMySites = await fetchMemberCounts(siteIdList);
+        const mappedSites = (mySites || []).map(s => mapRowToSite(s, memberCountsForMySites));
         setPendingSites(mappedSites.filter((s) => s.status === 'Pending'));
 
         // Finished sites from archived_sitegroup for this user (as member)
@@ -300,7 +318,9 @@ export default function Sites({ onMapPress, onSiteMapPress }: SitesProps) {
           .order('name', { ascending: true });
         if (finishedArchivedError) throw finishedArchivedError;
 
-        setFinishedSites((finishedArchived || []).map(mapRowToSite));
+        const finishedIds = (finishedArchived || []).map(s => s.id);
+        const finishedCounts = await fetchMemberCounts(finishedIds);
+        setFinishedSites((finishedArchived || []).map(s => mapRowToSite(s, finishedCounts)));
       }
     } catch (err: any) {
       Alert.alert('Error', err?.message || String(err));

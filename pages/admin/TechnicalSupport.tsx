@@ -83,7 +83,7 @@ export default function TechnicalSupport({ onNavigate }: Props) {
     <View className="flex-1 bg-stone-50">
       <ScrollView className="flex-1 px-6 py-6">
         <View className="mb-6 flex-row items-center justify-between">
-          <Text className="text-xl font-bold text-stone-900">Technical Support</Text>
+          <Text className="text-xl font-bold text-stone-900">Technical Issues</Text>
           <Text className="text-sm text-stone-500">Shows sites with a submitted technical issue</Text>
         </View>
 

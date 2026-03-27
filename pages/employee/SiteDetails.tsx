@@ -14,6 +14,12 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import SiteLocationMap from '../../components/SiteLocationMap';
 import supabase from '../../utils/supabase';
+import {
+  joinSiteWithSlotManagement,
+  checkAndMarkSiteAsFull,
+  getSiteMemberInfo,
+  getSiteMembers,
+} from '../../utils/siteMemberSlots';
 import type { Site } from './Sites';
 import * as ImagePicker from 'expo-image-picker';
 import * as ImageManipulator from 'expo-image-manipulator';
@@ -40,6 +46,29 @@ export default function SiteDetails({
   const [loadingGroupInfo, setLoadingGroupInfo] = useState(false);
   const [acceptLoading, setAcceptLoading] = useState(false);
   const [isUserLeaderAny, setIsUserLeaderAny] = useState(false);
+
+  // Member slot management
+  const [memberInfo, setMemberInfo] = useState<{
+    maxMembers: number | null;
+    currentMembers: number;
+    availableSlots: number | null;
+    isFull: boolean;
+  } | null>(null);
+  const [loadingMemberInfo, setLoadingMemberInfo] = useState(false);
+
+  // Site members list
+  const [siteMembers, setSiteMembers] = useState<
+    Array<{
+      id: string;
+      fullName: string;
+      email: string;
+      phoneNumber: string | null;
+      profilePictureUrl: string | null;
+      role: string;
+      joinedAt: string | null;
+    }>
+  >([]);
+  const [loadingSiteMembers, setLoadingSiteMembers] = useState(false);
 
   const [updateVisible, setUpdateVisible] = useState(false);
   const [updateSubmitting, setUpdateSubmitting] = useState(false);
@@ -299,6 +328,52 @@ export default function SiteDetails({
 
     loadTeamInfo();
   }, [site]);
+
+  // Load member info for slot management
+  useEffect(() => {
+    const loadMemberInfo = async () => {
+      if (!site?.id) {
+        setMemberInfo(null);
+        return;
+      }
+
+      setLoadingMemberInfo(true);
+      try {
+        const info = await getSiteMemberInfo(site.id);
+        setMemberInfo(info);
+      } catch (err) {
+        console.error('Failed to load member info:', err);
+        setMemberInfo(null);
+      } finally {
+        setLoadingMemberInfo(false);
+      }
+    };
+
+    loadMemberInfo();
+  }, [site?.id]);
+
+  // Load site members list
+  useEffect(() => {
+    const loadMembers = async () => {
+      if (!site?.id) {
+        setSiteMembers([]);
+        return;
+      }
+
+      setLoadingSiteMembers(true);
+      try {
+        const members = await getSiteMembers(site.id);
+        setSiteMembers(members);
+      } catch (err) {
+        console.error('Failed to load site members:', err);
+        setSiteMembers([]);
+      } finally {
+        setLoadingSiteMembers(false);
+      }
+    };
+
+    loadMembers();
+  }, [site?.id]);
 
   useEffect(() => {
     // Ask permission for selecting evidence photos.
@@ -704,6 +779,16 @@ export default function SiteDetails({
         // ignore
       }
 
+      // CHECK FOR AVAILABLE SLOTS before accepting
+      const slotCheckResult = await joinSiteWithSlotManagement(site.id, currentUserId);
+      if (!slotCheckResult.success) {
+        Alert.alert('Cannot Join', slotCheckResult.message);
+        // Refresh member info to show site is full
+        const updatedInfo = await getSiteMemberInfo(site.id);
+        setMemberInfo(updatedInfo);
+        return;
+      }
+
       // Persist membership: link the current user to the site
       const { error: updateUserError } = await supabase
         .from('users')
@@ -726,8 +811,17 @@ export default function SiteDetails({
         console.warn('Skipping group_members insert:', (e as any)?.message || String(e));
       }
 
+      // Check if site is now full and mark as Pending if needed
+      const siteNowFull = await checkAndMarkSiteAsFull(site.id);
+      if (siteNowFull) {
+        console.log('Site is now full - status updated to Pending');
+      }
+
       setHasAccepted(true);
-      Alert.alert('Site accepted', 'You have joined this site team.');
+      const successMessage = slotCheckResult.siteIsFull
+        ? 'Site accepted. This site is now full!'
+        : slotCheckResult.message;
+      Alert.alert('Site accepted', successMessage);
       onSiteUpdated?.('Pending');
       onBack?.();
     } catch (err: any) {
@@ -1012,6 +1106,66 @@ export default function SiteDetails({
                 </View>
               </View>
 
+              {/* Member Slots card */}
+              {memberInfo && (
+                <View
+                  className={`mb-4 flex-row items-center rounded-3xl border p-4 shadow-sm ${
+                    memberInfo.isFull
+                      ? 'border-red-100 bg-red-50'
+                      : 'border-green-100 bg-green-50'
+                  }`}>
+                  <View
+                    className={`mr-4 h-10 w-10 items-center justify-center rounded-2xl ${
+                      memberInfo.isFull ? 'bg-red-100' : 'bg-green-100'
+                    }`}>
+                    <Ionicons
+                      name={memberInfo.isFull ? 'close-circle-outline' : 'checkmark-circle-outline'}
+                      size={22}
+                      color={memberInfo.isFull ? '#dc2626' : '#10b981'}
+                    />
+                  </View>
+                  <View className="flex-1">
+                    <Text className="text-[10px] font-semibold tracking-widest text-gray-600">
+                      MEMBER SLOTS
+                    </Text>
+                    <View className="mt-1 flex-row items-center justify-between">
+                      <Text className="text-base font-semibold text-gray-900">
+                        {memberInfo.maxMembers !== null
+                          ? `${memberInfo.currentMembers} / ${memberInfo.maxMembers}`
+                          : 'No limit'}
+                      </Text>
+                      {memberInfo.maxMembers !== null && (
+                        <Text
+                          className={`text-xs font-semibold ${
+                            memberInfo.isFull ? 'text-red-600' : 'text-green-600'
+                          }`}>
+                          {memberInfo.isFull
+                            ? 'FULL'
+                            : memberInfo.availableSlots === null
+                              ? 'N/A'
+                              : `${memberInfo.availableSlots} slot${memberInfo.availableSlots !== 1 ? 's' : ''} left`}
+                        </Text>
+                      )}
+                    </View>
+                  </View>
+                </View>
+              )}
+
+              {/* Member Slots Loading */}
+              {loadingMemberInfo && !memberInfo && (
+                <View className="mb-4 flex-row items-center rounded-3xl border border-gray-100 bg-white p-4 shadow-sm">
+                  <View className="mr-4 h-10 w-10 items-center justify-center rounded-2xl bg-green-50">
+                    <ActivityIndicator size="small" color="#10b981" />
+                  </View>
+                  <View className="flex-1">
+                    <Text className="text-[10px] font-semibold tracking-widest text-gray-400">
+                      MEMBER SLOTS
+                    </Text>
+                    <Text className="mt-1 text-xs text-gray-500">Loading slot information...</Text>
+                  </View>
+                </View>
+              )}
+
               {/* Leader card */}
               <View className="mb-4 flex-row items-center rounded-3xl border border-gray-100 bg-white p-4 shadow-sm">
                 <View className="mr-4 h-10 w-10 items-center justify-center rounded-2xl bg-green-50">
@@ -1060,6 +1214,65 @@ export default function SiteDetails({
                     {site.status}
                   </Text>
                 </View>
+              </View>
+
+              {/* Site Members Section */}
+              <View className="mb-4 rounded-3xl border border-gray-100 bg-white shadow-sm">
+                <View className="flex-row items-center border-b border-gray-100 p-4">
+                  <View className="mr-4 h-10 w-10 items-center justify-center rounded-2xl bg-blue-50">
+                    <Ionicons name="people-outline" size={22} color="#3b82f6" />
+                  </View>
+                  <View className="flex-1">
+                    <Text className="text-[10px] font-semibold tracking-widest text-gray-400">
+                      SITE MEMBERS
+                    </Text>
+                    <Text className="mt-1 text-base font-semibold text-gray-900">
+                      {siteMembers.length} {siteMembers.length === 1 ? 'Member' : 'Members'}
+                    </Text>
+                  </View>
+                </View>
+
+                {loadingSiteMembers ? (
+                  <View className="flex-row items-center justify-center px-4 py-6">
+                    <ActivityIndicator size="small" color="#3b82f6" />
+                    <Text className="ml-2 text-xs text-gray-500">Loading members...</Text>
+                  </View>
+                ) : siteMembers.length === 0 ? (
+                  <View className="flex-row items-center justify-center px-4 py-6">
+                    <Text className="text-xs text-gray-500">No members joined yet</Text>
+                  </View>
+                ) : (
+                  <View className="px-4 pb-4">
+                    {siteMembers.map((member, index) => (
+                      <View
+                        key={member.id}
+                        className={`flex-row items-center py-3 ${index < siteMembers.length - 1 ? 'border-b border-gray-50' : ''}`}>
+                        <View className="mr-3 h-8 w-8 items-center justify-center rounded-full bg-blue-100">
+                          {member.profilePictureUrl ? (
+                            <Image
+                              source={{ uri: member.profilePictureUrl }}
+                              className="h-8 w-8 rounded-full"
+                            />
+                          ) : (
+                            <Ionicons name="person" size={16} color="#3b82f6" />
+                          )}
+                        </View>
+                        <View className="flex-1">
+                          <Text className="font-semibold text-gray-900">{member.fullName}</Text>
+                          <Text className="text-xs text-gray-500">{member.email}</Text>
+                          {member.phoneNumber && (
+                            <Text className="mt-1 text-xs text-gray-500">{member.phoneNumber}</Text>
+                          )}
+                        </View>
+                        <View className="ml-2 rounded-full bg-blue-50 px-2 py-1">
+                          <Text className="text-xs font-semibold text-blue-600 capitalize">
+                            {member.role}
+                          </Text>
+                        </View>
+                      </View>
+                    ))}
+                  </View>
+                )}
               </View>
 
               {/* Coordinates card */}
@@ -1116,9 +1329,9 @@ export default function SiteDetails({
             ) : isPending ? (
               <TouchableOpacity
                 onPress={handleAcceptSite}
-                disabled={acceptLoading || hasAccepted || !!currentUserSiteId || isUserLeaderAny}
+                disabled={acceptLoading || hasAccepted || !!currentUserSiteId || isUserLeaderAny || memberInfo?.isFull}
                 className={`w-full items-center justify-center rounded-2xl px-4 py-3 ${
-                  hasAccepted || !!currentUserSiteId
+                  hasAccepted || !!currentUserSiteId || memberInfo?.isFull
                     ? 'bg-gray-300'
                     : 'bg-green-500 active:scale-95'
                 }`}>
@@ -1126,8 +1339,8 @@ export default function SiteDetails({
                   <ActivityIndicator color="#ffffff" />
                 ) : (
                   <Text
-                    className={`text-base font-bold ${hasAccepted || !!currentUserSiteId ? 'text-gray-600' : 'text-white'}`}>
-                    {hasAccepted || !!currentUserSiteId ? 'Joined' : 'Accept & Join'}
+                    className={`text-base font-bold ${hasAccepted || !!currentUserSiteId || memberInfo?.isFull ? 'text-gray-600' : 'text-white'}`}>
+                    {memberInfo?.isFull ? 'Site is Full' : hasAccepted || !!currentUserSiteId ? 'Joined' : 'Accept & Join'}
                   </Text>
                 )}
               </TouchableOpacity>

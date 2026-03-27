@@ -19,7 +19,7 @@ import CompanyList from './CompanyList';
 import Employees from './Employees';
 import EmployeeLogs from './EmployeeLogs';
 import Settings from './Settings';
-import TechnicalSupport from './TechnicalSupport'; // <-- new import
+import TechnicalSupport from './TechnicalSupport';
 import '../../global.css';
 
 // Only import WebView for native platforms
@@ -942,9 +942,6 @@ function MapEmbed({
   const webViewRef = React.useRef<any>(null);
   const [ready, setReady] = React.useState(false);
 
-  // Build initial HTML once for the iframe so we don't reload it when onlineUsers change.
-  // Include current online users in the initial HTML so markers appear immediately
-  // when the admin returns to the dashboard (avoids empty markers after navigation).
   const initialHtmlRef = React.useRef(
     buildLiveLocationMapHtml(sites, onlineUsers || [], onlineUserHistory || [])
   );
@@ -962,7 +959,6 @@ function MapEmbed({
     if (Platform.OS === 'web') {
       const win = iframeRef.current?.contentWindow;
       if (win) {
-        // Post sites first (in case map needs to render site markers)
         win.postMessage(sitesPayload, '*');
         win.postMessage(usersPayload, '*');
         win.postMessage(historyPayload, '*');
@@ -1073,7 +1069,6 @@ interface Site {
   end_time?: string | null;
   date_accomplished?: string | null;
   members_count?: number | null;
-  // Backward compatibility (older UI fields)
   location?: string;
 }
 
@@ -1090,6 +1085,11 @@ interface Activity {
   icon?: string | null;
 }
 
+type DailyAccomplished = {
+  day: string;
+  count: number;
+};
+
 export default function AdminDashboard({ onLogout, onNavigate }: AdminDashboardProps) {
   const [activeTab, setActiveTab] = useState<
     | 'dashboard'
@@ -1099,7 +1099,7 @@ export default function AdminDashboard({ onLogout, onNavigate }: AdminDashboardP
     | 'companyList'
     | 'employee'
     | 'employeeLogs'
-    | 'technicalSupport'   // <-- added
+    | 'technicalSupport'
     | 'settings'
   >('dashboard');
   const [refreshing, setRefreshing] = useState(false);
@@ -1112,6 +1112,7 @@ export default function AdminDashboard({ onLogout, onNavigate }: AdminDashboardP
   const [pendingUsersCount, setPendingUsersCount] = useState(0);
   const [onlineUserHistoryRows, setOnlineUserHistoryRows] = useState<OnlineUserHistoryRow[]>([]);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+  const [dailyAccomplished, setDailyAccomplished] = useState<DailyAccomplished[]>([]);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => {
@@ -1168,7 +1169,63 @@ export default function AdminDashboard({ onLogout, onNavigate }: AdminDashboardP
     [onlineUserIdsForMap]
   );
 
-  // Live append history points when movement is recorded
+  const getLast7Days = () => {
+    const days = [];
+    for (let i = 6; i >= 0; i--) {
+      const d = new Date();
+      d.setDate(d.getDate() - i);
+      d.setHours(0, 0, 0, 0);
+      const dayName = d.toLocaleDateString('en-US', { weekday: 'short' });
+      days.push({ date: d, dayName });
+    }
+    return days;
+  };
+
+  const fetchAccomplishedSitesData = async () => {
+    try {
+      const last7Days = getLast7Days();
+      const promises = last7Days.map(async ({ date, dayName }) => {
+        const startOfDay = new Date(date);
+        const endOfDay = new Date(date);
+        endOfDay.setHours(23, 59, 59, 999);
+
+        const { count, error } = await supabase
+          .from('archived_sitegroup')
+          .select('*', { count: 'exact', head: true })
+          .gte('finished_at', startOfDay.toISOString())
+          .lte('finished_at', endOfDay.toISOString());
+
+        if (error) {
+          console.error(`Error fetching count for ${dayName}:`, error);
+          return { day: dayName, count: 0 };
+        }
+        return { day: dayName, count: count ?? 0 };
+      });
+
+      const results = await Promise.all(promises);
+      setDailyAccomplished(results);
+    } catch (error) {
+      console.error('Error fetching accomplished sites data:', error);
+    }
+  };
+
+  useEffect(() => {
+    const channel = supabase
+      .channel('archived_sitegroup_changes')
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'archived_sitegroup' },
+        () => {
+          fetchAccomplishedSitesData();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      channel.unsubscribe();
+    };
+  }, []);
+
   useEffect(() => {
     const channel = supabase
       .channel('admin_user_location_history_live')
@@ -1182,8 +1239,6 @@ export default function AdminDashboard({ onLogout, onNavigate }: AdminDashboardP
           if (onlineUserIdsForMap.indexOf(String(newRow.user_id)) === -1) return;
 
           setOnlineUserHistoryRows((prev) => {
-            // If rows are being UPDATED (single-row-per-user approach), replace the latest point for that user.
-            // If rows are being INSERTED (true history), append.
             let next: OnlineUserHistoryRow[];
             if (eventType === 'UPDATE') {
               const userId = String(newRow.user_id);
@@ -1192,7 +1247,6 @@ export default function AdminDashboard({ onLogout, onNavigate }: AdminDashboardP
             } else {
               next = prev.concat([newRow]);
             }
-            // cap per user to 300 points
             const byUser: Record<string, OnlineUserHistoryRow[]> = {};
             for (const r of next) {
               const id = String(r.user_id);
@@ -1221,7 +1275,6 @@ export default function AdminDashboard({ onLogout, onNavigate }: AdminDashboardP
     fetchData();
   }, []);
 
-  // Live updates for online/offline + movement (users.latitude/longitude updates)
   useEffect(() => {
     const channel = supabase
       .channel('admin_users_live_locations')
@@ -1255,7 +1308,6 @@ export default function AdminDashboard({ onLogout, onNavigate }: AdminDashboardP
         });
 
         setEmployees((prev) => {
-          // Keep employees list in sync for existing UI
           if (eventType === 'DELETE') {
             return prev.filter((u) => u.id !== id);
           }
@@ -1285,9 +1337,7 @@ export default function AdminDashboard({ onLogout, onNavigate }: AdminDashboardP
     };
   }, []);
 
-  // Set up real-time subscription for pending users
   useEffect(() => {
-    // Initial fetch of pending users count
     const fetchPendingCount = async () => {
       try {
         const { data, error } = await supabase
@@ -1308,7 +1358,6 @@ export default function AdminDashboard({ onLogout, onNavigate }: AdminDashboardP
 
     fetchPendingCount();
 
-    // Subscribe to real-time changes on the users table
     const subscription = supabase
       .channel('pending_users')
       .on(
@@ -1318,14 +1367,12 @@ export default function AdminDashboard({ onLogout, onNavigate }: AdminDashboardP
           schema: 'public',
           table: 'users',
         },
-        (payload) => {
-          // Recalculate pending users count on any user table change
+        () => {
           fetchPendingCount();
         }
       )
       .subscribe();
 
-    // Cleanup subscription on unmount
     return () => {
       subscription.unsubscribe();
     };
@@ -1335,29 +1382,39 @@ export default function AdminDashboard({ onLogout, onNavigate }: AdminDashboardP
     try {
       setLoading(true);
 
-      // Fetch users
       const { data: usersData } = await supabase
         .from('users')
         .select('*')
         .order('created_at', { ascending: false });
 
-      // Fetch sites
       const { data: sitesData } = await supabase
         .from('sites')
         .select('*')
         .order('created_at', { ascending: false });
 
-      // Count employees (non-admin users)
       const employeesCount = usersData?.filter((u) => u.role !== 'admin').length || 0;
-      const adminCount = usersData?.filter((u) => u.role === 'admin').length || 0;
       const onlineCount = usersData?.filter((u) => u.status === 'online').length || 0;
       const sitesCount = sitesData?.length || 0;
 
-      // Set statistics
+      const todayStart = new Date();
+      todayStart.setHours(0, 0, 0, 0);
+      const todayEnd = new Date();
+      todayEnd.setHours(23, 59, 59, 999);
+      const { count: messagesToday, error: messagesError } = await supabase
+        .from('messages')
+        .select('*', { count: 'exact', head: true })
+        .gte('created_at', todayStart.toISOString())
+        .lte('created_at', todayEnd.toISOString());
+
+      if (messagesError) {
+        console.error('Error fetching messages count:', messagesError);
+      }
+      const messagesTodayCount = messagesToday ?? 0;
+
       setStats([
         { label: 'Total Employees', value: employeesCount, icon: 'people', color: '#10b981' },
         { label: 'Active Sites', value: sitesCount, icon: 'location', color: '#14b8a6' },
-        { label: 'Messages Today', value: '1,847', icon: 'chatbubbles', color: '#f59e0b' },
+        { label: 'Messages Today', value: messagesTodayCount.toLocaleString(), icon: 'chatbubbles', color: '#f59e0b' },
         { label: 'Active Tracking', value: onlineCount, icon: 'map', color: '#3b82f6' },
       ]);
 
@@ -1370,7 +1427,6 @@ export default function AdminDashboard({ onLogout, onNavigate }: AdminDashboardP
         setSites(sitesData);
       }
 
-      // Fetch recent activities
       const { data: logsData } = await supabase
         .from('activity_logs')
         .select('*')
@@ -1380,6 +1436,8 @@ export default function AdminDashboard({ onLogout, onNavigate }: AdminDashboardP
       if (logsData) {
         setActivities((logsData as Activity[]) || []);
       }
+
+      await fetchAccomplishedSitesData();
     } catch (error) {
       console.error('Error fetching admin dashboard data:', error);
     } finally {
@@ -1427,7 +1485,6 @@ export default function AdminDashboard({ onLogout, onNavigate }: AdminDashboardP
     );
   }
 
-  // Render SiteManagement if selected
   if (activeTab === 'siteManagement') {
     return (
       <View className="flex-1 flex-row bg-stone-50">
@@ -1443,7 +1500,6 @@ export default function AdminDashboard({ onLogout, onNavigate }: AdminDashboardP
     );
   }
 
-  // Render ContactManagement if selected
   if (activeTab === 'walkieTalkie') {
     return (
       <View className="flex-1 flex-row bg-stone-50">
@@ -1459,7 +1515,6 @@ export default function AdminDashboard({ onLogout, onNavigate }: AdminDashboardP
     );
   }
 
-  // Render ActivityLogs if selected
   if (activeTab === 'activityLogs') {
     return (
       <View className="flex-1 flex-row bg-stone-50">
@@ -1475,7 +1530,6 @@ export default function AdminDashboard({ onLogout, onNavigate }: AdminDashboardP
     );
   }
 
-  // Render CompanyList if selected
   if (activeTab === 'companyList') {
     return (
       <View className="flex-1 flex-row bg-stone-50">
@@ -1491,7 +1545,6 @@ export default function AdminDashboard({ onLogout, onNavigate }: AdminDashboardP
     );
   }
 
-  // Render Employees if selected
   if (activeTab === 'employee') {
     return (
       <View className="flex-1 flex-row bg-stone-50">
@@ -1507,7 +1560,6 @@ export default function AdminDashboard({ onLogout, onNavigate }: AdminDashboardP
     );
   }
 
-  // Render EmployeeLogs if selected
   if (activeTab === 'employeeLogs') {
     return (
       <View className="flex-1 flex-row bg-stone-50">
@@ -1523,25 +1575,23 @@ export default function AdminDashboard({ onLogout, onNavigate }: AdminDashboardP
     );
   }
 
-// Render TechnicalSupport if selected
-if (activeTab === 'technicalSupport') {
-  return (
-    <View className="flex-1 flex-row bg-stone-50">
-      <AdminNavbar
-        activeTab={activeTab}
-        setActiveTab={setActiveTab}
-        onNavigate={onNavigate}
-        onLogout={onLogout}
-        pendingUsersCount={pendingUsersCount}
-      />
-      <TechnicalSupport
-        onNavigate={(page) => setActiveTab(page as typeof activeTab)}
-      />
-    </View>
-  );
-}
+  if (activeTab === 'technicalSupport') {
+    return (
+      <View className="flex-1 flex-row bg-stone-50">
+        <AdminNavbar
+          activeTab={activeTab}
+          setActiveTab={setActiveTab}
+          onNavigate={onNavigate}
+          onLogout={onLogout}
+          pendingUsersCount={pendingUsersCount}
+        />
+        <TechnicalSupport
+          onNavigate={(page) => setActiveTab(page as typeof activeTab)}
+        />
+      </View>
+    );
+  }
 
-  // Render Settings if selected
   if (activeTab === 'settings') {
     return (
       <View className="flex-1 flex-row bg-stone-50">
@@ -1567,12 +1617,10 @@ if (activeTab === 'technicalSupport') {
         pendingUsersCount={pendingUsersCount}
       />
 
-      {/* Main Content Area */}
       <ScrollView
         className="flex-1 bg-stone-50"
         showsVerticalScrollIndicator={false}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}>
-        {/* Header */}
         <View className="border-b border-stone-100 bg-white px-6 pb-4 pt-5">
           <View className="flex-row items-center justify-between">
             <View className="flex-1 flex-row items-center">
@@ -1604,7 +1652,6 @@ if (activeTab === 'technicalSupport') {
           </View>
         </View>
 
-        {/* Stats Grid */}
         <View className="px-6 pb-4 pt-6">
           <View className="flex-row flex-wrap gap-3">
             {stats.map((stat, index) => (
@@ -1616,9 +1663,8 @@ if (activeTab === 'technicalSupport') {
         </View>
 
         <View className="px-6 pb-6 lg:flex-row lg:gap-5">
-          {/* Left Column */}
           <View className="mb-5 flex-1 lg:mb-0">
-            {/* Chart Card */}
+            {/* Sites Accomplished Per Day Chart Card */}
             <View
               className="mb-5 rounded-xl border border-stone-100 bg-white p-5"
               style={{
@@ -1630,41 +1676,49 @@ if (activeTab === 'technicalSupport') {
               <View className="mb-5 flex-row items-center justify-between">
                 <View>
                   <Text className="text-sm font-semibold text-stone-900">
-                    Communication Activity
+                    Sites Accomplished Per Day
                   </Text>
-                  <Text className="mt-0.5 text-xs text-stone-400">Messages sent per day</Text>
+                  <Text className="mt-0.5 text-xs text-stone-400">
+                    Based on archived site groups
+                  </Text>
                 </View>
                 <View className="flex-row items-center rounded-lg border border-stone-100 bg-stone-50 px-3 py-1.5">
                   <Text className="mr-1 text-xs font-medium text-stone-600">Last 7 Days</Text>
                   <Ionicons name="chevron-down" size={13} color="#78716c" />
                 </View>
               </View>
-              {/* Bar chart with day labels */}
-              <View className="flex-row items-end justify-between gap-1" style={{ height: 120 }}>
-                {[
-                  { h: 45, day: 'Mon' },
-                  { h: 60, day: 'Tue' },
-                  { h: 75, day: 'Wed' },
-                  { h: 55, day: 'Thu' },
-                  { h: 85, day: 'Fri' },
-                  { h: 95, day: 'Sat' },
-                  { h: 70, day: 'Sun' },
-                ].map((bar, i) => (
-                  <View key={i} className="flex-1 items-center">
-                    <View
-                      className="w-full rounded-t-md"
-                      style={{
-                        height: `${bar.h}%`,
-                        backgroundColor: bar.h >= 85 ? '#10b981' : '#d1fae5',
-                      }}
-                    />
-                    <Text className="mt-1.5 text-xs font-medium text-stone-400">{bar.day}</Text>
-                  </View>
-                ))}
-              </View>
+
+              {dailyAccomplished.length === 0 ? (
+                <View className="h-32 items-center justify-center">
+                  <Text className="text-sm text-stone-400">No data available</Text>
+                </View>
+              ) : (
+                <View className="flex-row items-end justify-between gap-1" style={{ height: 120 }}>
+                  {dailyAccomplished.map((bar, i) => {
+                    const maxCount = Math.max(...dailyAccomplished.map(b => b.count), 1);
+                    const percentage = (bar.count / maxCount) * 100;
+                    const barHeight = Math.max(8, percentage);
+                    return (
+                      <View key={i} className="flex-1 items-center" style={{ height: '100%' }}>
+                        <View
+                          className="w-full rounded-t-md"
+                          style={{
+                            height: `${barHeight}%`,
+                            backgroundColor: bar.count > 0 ? '#10b981' : '#d1fae5',
+                            marginTop: 'auto',
+                          }}
+                        />
+                        <Text className="mt-1.5 text-xs font-medium text-stone-400">{bar.day}</Text>
+                        <Text className="mt-0.5 text-[10px] font-medium text-stone-500">
+                          {bar.count}
+                        </Text>
+                      </View>
+                    );
+                  })}
+                </View>
+              )}
             </View>
 
-            {/* Map Card */}
             <View
               className="rounded-xl border border-stone-100 bg-white p-5"
               style={{
@@ -1685,17 +1739,15 @@ if (activeTab === 'technicalSupport') {
                   </Text>
                 </View>
               </View>
-              {/* Pass only users, not history, to map */}
               <LiveLocationMap
                 heightClassName="h-48 lg:h-56"
                 sites={sites}
                 onlineUsers={onlineUsersForMap}
-                onlineUserHistory={[]} // No history, only live user data
+                onlineUserHistory={[]}
               />
             </View>
           </View>
 
-          {/* Right Column - Activity Feed */}
           <View className="lg:w-80">
             <View
               className="rounded-xl border border-stone-100 bg-white p-5"

@@ -11,7 +11,7 @@ import {
   ActivityIndicator,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import {
+import supabase, {
   getEmployees,
   getPendingUsers,
   approveUser,
@@ -49,19 +49,30 @@ export default function Employees({ onNavigate, pendingUsersCount = 0 }: Employe
   const [approvingUserId, setApprovingUserId] = useState<string | null>(null);
   const [denyingUserId, setDenyingUserId] = useState<string | null>(null);
 
-  useEffect(() => {
-    const fetchEmployees = async () => {
-      try {
-        const data = await getEmployees();
-        setEmployees(data || []);
-      } catch (err: any) {
-        setError(err.message || 'Failed to fetch employees');
-        console.error('Error fetching employees:', err);
-      } finally {
-        setLoading(false);
-      }
-    };
+  // Add employee form state
+  const [addForm, setAddForm] = useState({
+    fullName: '',
+    email: '',
+    phoneNumber: '',
+    password: '',
+    confirmPassword: '',
+    role: 'employee',
+  });
+  const [addingEmployee, setAddingEmployee] = useState(false);
+  const [formErrors, setFormErrors] = useState<Record<string, string>>({});
 
+  // Edit employee state
+  const [editEmployee, setEditEmployee] = useState<any>(null);
+  const [editForm, setEditForm] = useState({
+    fullName: '',
+    phoneNumber: '',
+    role: 'employee',
+    email: '',
+  });
+  const [updatingEmployee, setUpdatingEmployee] = useState(false);
+  const [editErrors, setEditErrors] = useState<Record<string, string>>({});
+
+  useEffect(() => {
     fetchEmployees();
   }, []);
 
@@ -70,6 +81,18 @@ export default function Employees({ onNavigate, pendingUsersCount = 0 }: Employe
       fetchPendingUsers();
     }
   }, [isUserManagementOpen]);
+
+  const fetchEmployees = async () => {
+    try {
+      const data = await getEmployees();
+      setEmployees(data || []);
+    } catch (err: any) {
+      setError(err.message || 'Failed to fetch employees');
+      console.error('Error fetching employees:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const fetchPendingUsers = async () => {
     setPendingLoading(true);
@@ -120,14 +143,143 @@ export default function Employees({ onNavigate, pendingUsersCount = 0 }: Employe
     return email.length > maxLength ? email.substring(0, maxLength) + '...' : email;
   };
 
-  // Sort employees: online first, then offline
+  const validateAddForm = () => {
+    const errors: Record<string, string> = {};
+    if (!addForm.fullName.trim()) errors.fullName = 'Full name is required';
+    if (!addForm.email.trim()) errors.email = 'Email is required';
+    else if (!/\S+@\S+\.\S+/.test(addForm.email)) errors.email = 'Email is invalid';
+    if (!addForm.password) errors.password = 'Password is required';
+    else if (addForm.password.length < 6) errors.password = 'Password must be at least 6 characters';
+    if (addForm.password !== addForm.confirmPassword) errors.confirmPassword = 'Passwords do not match';
+    if (!addForm.role) errors.role = 'Role is required';
+    setFormErrors(errors);
+    return Object.keys(errors).length === 0;
+  };
+
+  const handleAddEmployee = async () => {
+    if (!validateAddForm()) return;
+
+    setAddingEmployee(true);
+    try {
+      // 1. Create auth user
+      const { data: authData, error: signUpError } = await supabase.auth.signUp({
+        email: addForm.email.trim(),
+        password: addForm.password,
+        options: {
+          data: {
+            full_name: addForm.fullName.trim(),
+            phone_number: addForm.phoneNumber.trim(),
+            role: addForm.role,
+          },
+        },
+      });
+
+      if (signUpError) throw signUpError;
+      if (!authData.user) throw new Error('User creation failed');
+
+      const userId = authData.user.id;
+
+      // 2. Insert or update the user in public.users with is_approved = true
+      const { error: upsertError } = await supabase
+        .from('users')
+        .upsert({
+          id: userId,
+          email: addForm.email.trim(),
+          full_name: addForm.fullName.trim(),
+          phone_number: addForm.phoneNumber.trim(),
+          role: addForm.role,
+          is_approved: true,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        }, { onConflict: 'id' });
+
+      if (upsertError) throw upsertError;
+
+      // 3. Refresh the employee list
+      await fetchEmployees();
+
+      Alert.alert('Success', `Employee ${addForm.fullName} has been added.`);
+      setAddForm({
+        fullName: '',
+        email: '',
+        phoneNumber: '',
+        password: '',
+        confirmPassword: '',
+        role: 'employee',
+      });
+      setIsAddModalOpen(false);
+    } catch (err: any) {
+      console.error('Error adding employee:', err);
+      Alert.alert('Error', err.message || 'Failed to add employee');
+    } finally {
+      setAddingEmployee(false);
+    }
+  };
+
+  // Edit functions
+  const openEditModal = (employee: any) => {
+    setEditEmployee(employee);
+    setEditForm({
+      fullName: employee.full_name || '',
+      phoneNumber: employee.phone_number || '',
+      role: employee.role || 'employee',
+      email: employee.email || '',
+    });
+    setEditErrors({});
+    setIsEditModalOpen(true);
+  };
+
+  const validateEditForm = () => {
+    const errors: Record<string, string> = {};
+    if (!editForm.fullName.trim()) errors.fullName = 'Full name is required';
+    if (!editForm.role) errors.role = 'Role is required';
+    setEditErrors(errors);
+    return Object.keys(errors).length === 0;
+  };
+
+  const handleUpdateEmployee = async () => {
+    if (!validateEditForm() || !editEmployee) return;
+
+    setUpdatingEmployee(true);
+    try {
+      // Update public.users table
+      const { error: updateError } = await supabase
+        .from('users')
+        .update({
+          full_name: editForm.fullName.trim(),
+          phone_number: editForm.phoneNumber.trim() || null,
+          role: editForm.role,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', editEmployee.id);
+
+      if (updateError) throw updateError;
+
+      // Optionally update auth user metadata (if needed, but requires admin privilege)
+      // Since we can't update other user's metadata from client, we skip.
+      // The users table is the source of truth for the app.
+
+      // Refresh employee list
+      await fetchEmployees();
+
+      Alert.alert('Success', `Employee ${editForm.fullName} has been updated.`);
+      setIsEditModalOpen(false);
+      setEditEmployee(null);
+    } catch (err: any) {
+      console.error('Error updating employee:', err);
+      Alert.alert('Error', err.message || 'Failed to update employee');
+    } finally {
+      setUpdatingEmployee(false);
+    }
+  };
+
+  // Sorting and filtering
   const sortedEmployees = [...employees].sort((a, b) => {
     if (a.status === 'online' && b.status !== 'online') return -1;
     if (a.status !== 'online' && b.status === 'online') return 1;
     return 0;
   });
 
-  // Filter employees based on search query
   const filteredEmployees = sortedEmployees.filter(
     (emp) =>
       emp.full_name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -289,7 +441,6 @@ export default function Employees({ onNavigate, pendingUsersCount = 0 }: Employe
                 <View
                   key={emp.id}
                   className={`flex-row items-center px-6 py-3.5 ${idx !== filteredEmployees.length - 1 ? 'border-b border-stone-50' : ''}`}>
-                  {/* Employee name with avatar */}
                   <View className="flex-1 flex-row items-center gap-2.5">
                     <View className="h-8 w-8 items-center justify-center rounded-lg bg-emerald-50">
                       <Text className="text-xs font-bold text-emerald-600">
@@ -309,7 +460,6 @@ export default function Employees({ onNavigate, pendingUsersCount = 0 }: Employe
                   </View>
                   <Text className="flex-1 text-xs text-stone-500">{trimEmail(emp.email)}</Text>
                   <Text className="flex-1 text-xs text-stone-500">{emp.phone_number || '—'}</Text>
-                  {/* Status Badge */}
                   <View className="w-24 flex-row justify-center">
                     <View
                       className={`flex-row items-center gap-1 rounded-full px-2.5 py-1 ${emp.status === 'online' ? 'border border-emerald-100 bg-emerald-50' : 'border border-stone-100 bg-stone-50'}`}>
@@ -322,11 +472,10 @@ export default function Employees({ onNavigate, pendingUsersCount = 0 }: Employe
                       </Text>
                     </View>
                   </View>
-                  {/* Actions */}
                   <View className="w-28 flex-row items-center justify-center gap-1">
                     <TouchableOpacity
                       className="h-7 w-7 items-center justify-center rounded-lg bg-stone-50"
-                      onPress={() => setIsEditModalOpen(true)}>
+                      onPress={() => openEditModal(emp)}>
                       <Ionicons name="create-outline" size={14} color="#78716c" />
                     </TouchableOpacity>
                     <TouchableOpacity className="h-7 w-7 items-center justify-center rounded-lg bg-stone-50">
@@ -385,7 +534,7 @@ export default function Employees({ onNavigate, pendingUsersCount = 0 }: Employe
                   </View>
                   <TouchableOpacity
                     className="h-7 w-7 items-center justify-center rounded-lg bg-stone-50"
-                    onPress={() => setIsEditModalOpen(true)}>
+                    onPress={() => openEditModal(emp)}>
                     <Ionicons name="create-outline" size={14} color="#78716c" />
                   </TouchableOpacity>
                 </View>
@@ -407,8 +556,8 @@ export default function Employees({ onNavigate, pendingUsersCount = 0 }: Employe
         </View>
       </ScrollView>
 
-      {/* Add/Edit Modal */}
-      <Modal visible={isAddModalOpen || isEditModalOpen} transparent animationType="fade">
+      {/* Add Employee Modal */}
+      <Modal visible={isAddModalOpen} transparent animationType="fade">
         <View className="flex-1 items-center justify-center bg-black/40 px-5">
           <View
             className="w-full max-w-md rounded-2xl bg-white"
@@ -418,77 +567,246 @@ export default function Employees({ onNavigate, pendingUsersCount = 0 }: Employe
               shadowOpacity: 0.15,
               shadowRadius: 40,
             }}>
-            {/* Modal Header */}
             <View className="border-b border-stone-100 px-6 pb-4 pt-6">
-              <Text className="text-base font-bold text-stone-900">
-                {isAddModalOpen ? 'Add New Employee' : 'Edit Employee'}
-              </Text>
-              <Text className="mt-0.5 text-xs text-stone-400">
-                Fill in the employee details below
-              </Text>
+              <Text className="text-base font-bold text-stone-900">Add New Employee</Text>
+              <Text className="mt-0.5 text-xs text-stone-400">Fill in the employee details below</Text>
             </View>
-            {/* Modal Body */}
-            <View className="gap-4 px-6 py-5">
-              <View>
+
+            <ScrollView className="max-h-[70%] px-6 py-5">
+              <View className="mb-4">
                 <Text className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-stone-600">
-                  Full Name
+                  Full Name *
                 </Text>
                 <TextInput
                   placeholder="e.g. Juan Dela Cruz"
                   placeholderTextColor="#a8a29e"
                   className="rounded-lg border border-stone-100 bg-stone-50 px-3 py-2.5 text-sm text-stone-900"
+                  value={addForm.fullName}
+                  onChangeText={(text) => setAddForm({ ...addForm, fullName: text })}
                 />
+                {formErrors.fullName && <Text className="mt-1 text-xs text-red-500">{formErrors.fullName}</Text>}
               </View>
-              <View>
+
+              <View className="mb-4">
                 <Text className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-stone-600">
-                  Role
+                  Email *
                 </Text>
                 <TextInput
-                  placeholder="e.g. Field Worker"
+                  placeholder="e.g. juan@example.com"
                   placeholderTextColor="#a8a29e"
+                  autoCapitalize="none"
+                  keyboardType="email-address"
                   className="rounded-lg border border-stone-100 bg-stone-50 px-3 py-2.5 text-sm text-stone-900"
+                  value={addForm.email}
+                  onChangeText={(text) => setAddForm({ ...addForm, email: text })}
                 />
+                {formErrors.email && <Text className="mt-1 text-xs text-red-500">{formErrors.email}</Text>}
               </View>
-              <View>
+
+              <View className="mb-4">
                 <Text className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-stone-600">
-                  Site
+                  Phone Number
                 </Text>
                 <TextInput
-                  placeholder="Assign to site"
+                  placeholder="e.g. +1234567890"
                   placeholderTextColor="#a8a29e"
+                  keyboardType="phone-pad"
                   className="rounded-lg border border-stone-100 bg-stone-50 px-3 py-2.5 text-sm text-stone-900"
+                  value={addForm.phoneNumber}
+                  onChangeText={(text) => setAddForm({ ...addForm, phoneNumber: text })}
                 />
               </View>
-              <View>
+
+              <View className="mb-4">
                 <Text className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-stone-600">
-                  Company
+                  Password *
                 </Text>
                 <TextInput
-                  placeholder="Company name"
+                  placeholder="••••••••"
                   placeholderTextColor="#a8a29e"
+                  secureTextEntry
                   className="rounded-lg border border-stone-100 bg-stone-50 px-3 py-2.5 text-sm text-stone-900"
+                  value={addForm.password}
+                  onChangeText={(text) => setAddForm({ ...addForm, password: text })}
                 />
+                {formErrors.password && <Text className="mt-1 text-xs text-red-500">{formErrors.password}</Text>}
               </View>
-            </View>
-            {/* Modal Footer */}
+
+              <View className="mb-4">
+                <Text className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-stone-600">
+                  Confirm Password *
+                </Text>
+                <TextInput
+                  placeholder="••••••••"
+                  placeholderTextColor="#a8a29e"
+                  secureTextEntry
+                  className="rounded-lg border border-stone-100 bg-stone-50 px-3 py-2.5 text-sm text-stone-900"
+                  value={addForm.confirmPassword}
+                  onChangeText={(text) => setAddForm({ ...addForm, confirmPassword: text })}
+                />
+                {formErrors.confirmPassword && <Text className="mt-1 text-xs text-red-500">{formErrors.confirmPassword}</Text>}
+              </View>
+
+              <View className="mb-4">
+                <Text className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-stone-600">
+                  Role *
+                </Text>
+                <View className="flex-row rounded-lg border border-stone-100 bg-stone-50 p-1">
+                  {['admin', 'employee', 'technician'].map((role) => (
+                    <TouchableOpacity
+                      key={role}
+                      className={`flex-1 items-center rounded-md py-2 ${
+                        addForm.role === role ? 'bg-blue-600' : 'bg-transparent'
+                      }`}
+                      onPress={() => setAddForm({ ...addForm, role })}>
+                      <Text
+                        className={`text-sm font-medium capitalize ${
+                          addForm.role === role ? 'text-white' : 'text-stone-600'
+                        }`}>
+                        {role}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+                {formErrors.role && <Text className="mt-1 text-xs text-red-500">{formErrors.role}</Text>}
+              </View>
+            </ScrollView>
+
             <View className="flex-row gap-3 px-6 pb-6">
               <TouchableOpacity
                 className="flex-1 items-center rounded-lg border border-stone-100 bg-stone-50 py-3"
                 onPress={() => {
                   setIsAddModalOpen(false);
-                  setIsEditModalOpen(false);
+                  setAddForm({
+                    fullName: '',
+                    email: '',
+                    phoneNumber: '',
+                    password: '',
+                    confirmPassword: '',
+                    role: 'employee',
+                  });
+                  setFormErrors({});
                 }}>
                 <Text className="text-sm font-semibold text-stone-600">Cancel</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 className="flex-1 items-center rounded-lg bg-emerald-500 py-3"
-                style={{
-                  shadowColor: '#10b981',
-                  shadowOffset: { width: 0, height: 2 },
-                  shadowOpacity: 0.25,
-                  shadowRadius: 4,
+                onPress={handleAddEmployee}
+                disabled={addingEmployee}>
+                {addingEmployee ? (
+                  <ActivityIndicator size="small" color="white" />
+                ) : (
+                  <Text className="text-sm font-semibold text-white">Add Employee</Text>
+                )}
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Edit Employee Modal */}
+      <Modal visible={isEditModalOpen} transparent animationType="fade">
+        <View className="flex-1 items-center justify-center bg-black/40 px-5">
+          <View
+            className="w-full max-w-md rounded-2xl bg-white"
+            style={{
+              shadowColor: '#000',
+              shadowOffset: { width: 0, height: 20 },
+              shadowOpacity: 0.15,
+              shadowRadius: 40,
+            }}>
+            <View className="border-b border-stone-100 px-6 pb-4 pt-6">
+              <Text className="text-base font-bold text-stone-900">Edit Employee</Text>
+              <Text className="mt-0.5 text-xs text-stone-400">Update employee information</Text>
+            </View>
+
+            <ScrollView className="max-h-[70%] px-6 py-5">
+              <View className="mb-4">
+                <Text className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-stone-600">
+                  Full Name *
+                </Text>
+                <TextInput
+                  placeholder="Full name"
+                  placeholderTextColor="#a8a29e"
+                  className="rounded-lg border border-stone-100 bg-stone-50 px-3 py-2.5 text-sm text-stone-900"
+                  value={editForm.fullName}
+                  onChangeText={(text) => setEditForm({ ...editForm, fullName: text })}
+                />
+                {editErrors.fullName && <Text className="mt-1 text-xs text-red-500">{editErrors.fullName}</Text>}
+              </View>
+
+              <View className="mb-4">
+                <Text className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-stone-600">
+                  Email
+                </Text>
+                <TextInput
+                  placeholder="Email"
+                  placeholderTextColor="#a8a29e"
+                  editable={false}
+                  className="rounded-lg border border-stone-200 bg-stone-100 px-3 py-2.5 text-sm text-stone-500"
+                  value={editForm.email}
+                />
+                <Text className="mt-1 text-xs text-stone-400">Email cannot be changed</Text>
+              </View>
+
+              <View className="mb-4">
+                <Text className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-stone-600">
+                  Phone Number
+                </Text>
+                <TextInput
+                  placeholder="Phone number"
+                  placeholderTextColor="#a8a29e"
+                  keyboardType="phone-pad"
+                  className="rounded-lg border border-stone-100 bg-stone-50 px-3 py-2.5 text-sm text-stone-900"
+                  value={editForm.phoneNumber}
+                  onChangeText={(text) => setEditForm({ ...editForm, phoneNumber: text })}
+                />
+              </View>
+
+              <View className="mb-4">
+                <Text className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-stone-600">
+                  Role *
+                </Text>
+                <View className="flex-row rounded-lg border border-stone-100 bg-stone-50 p-1">
+                  {['admin', 'employee', 'technician'].map((role) => (
+                    <TouchableOpacity
+                      key={role}
+                      className={`flex-1 items-center rounded-md py-2 ${
+                        editForm.role === role ? 'bg-blue-600' : 'bg-transparent'
+                      }`}
+                      onPress={() => setEditForm({ ...editForm, role })}>
+                      <Text
+                        className={`text-sm font-medium capitalize ${
+                          editForm.role === role ? 'text-white' : 'text-stone-600'
+                        }`}>
+                        {role}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+                {editErrors.role && <Text className="mt-1 text-xs text-red-500">{editErrors.role}</Text>}
+              </View>
+            </ScrollView>
+
+            <View className="flex-row gap-3 px-6 pb-6">
+              <TouchableOpacity
+                className="flex-1 items-center rounded-lg border border-stone-100 bg-stone-50 py-3"
+                onPress={() => {
+                  setIsEditModalOpen(false);
+                  setEditEmployee(null);
+                  setEditErrors({});
                 }}>
-                <Text className="text-sm font-semibold text-white">Save Employee</Text>
+                <Text className="text-sm font-semibold text-stone-600">Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                className="flex-1 items-center rounded-lg bg-emerald-500 py-3"
+                onPress={handleUpdateEmployee}
+                disabled={updatingEmployee}>
+                {updatingEmployee ? (
+                  <ActivityIndicator size="small" color="white" />
+                ) : (
+                  <Text className="text-sm font-semibold text-white">Update Employee</Text>
+                )}
               </TouchableOpacity>
             </View>
           </View>
@@ -534,7 +852,6 @@ export default function Employees({ onNavigate, pendingUsersCount = 0 }: Employe
       <Modal visible={isUserManagementOpen} transparent animationType="slide">
         <View className="flex-1 bg-black/50 px-4 pt-16">
           <View className="max-h-[80%] flex-1 overflow-hidden rounded-2xl bg-white">
-            {/* Header */}
             <View className="flex-row items-center justify-between border-b border-stone-200 bg-stone-50 px-6 py-4">
               <Text className="text-xl font-bold text-stone-900">User Management</Text>
               <TouchableOpacity onPress={() => setIsUserManagementOpen(false)}>
@@ -542,7 +859,6 @@ export default function Employees({ onNavigate, pendingUsersCount = 0 }: Employe
               </TouchableOpacity>
             </View>
 
-            {/* Content */}
             <ScrollView className="flex-1" showsVerticalScrollIndicator={true}>
               {pendingLoading ? (
                 <View className="flex-1 items-center justify-center py-10">
@@ -557,7 +873,6 @@ export default function Employees({ onNavigate, pendingUsersCount = 0 }: Employe
               ) : (
                 pendingUsers.map((user: any) => (
                   <View key={user.id} className="border-b border-stone-100 px-6 py-4">
-                    {/* User Info */}
                     <View className="mb-3">
                       <Text className="text-base font-bold text-stone-900">
                         {user.full_name || 'N/A'}
@@ -567,8 +882,6 @@ export default function Employees({ onNavigate, pendingUsersCount = 0 }: Employe
                         <Text className="text-xs text-stone-500">{user.phone_number}</Text>
                       )}
                     </View>
-
-                    {/* Status Badge */}
                     <View className="mb-4 flex-row items-center">
                       <View className="rounded-lg bg-yellow-50 px-3 py-1">
                         <Text className="text-xs font-semibold text-yellow-700">
@@ -579,8 +892,6 @@ export default function Employees({ onNavigate, pendingUsersCount = 0 }: Employe
                         Signed up: {new Date(user.created_at).toLocaleDateString()}
                       </Text>
                     </View>
-
-                    {/* Action Buttons */}
                     <View className="flex-row gap-2">
                       <TouchableOpacity
                         className="flex-1 flex-row items-center justify-center rounded-lg bg-emerald-600 py-2"
