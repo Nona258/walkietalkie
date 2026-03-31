@@ -9,6 +9,7 @@ import {
   TextInput,
   Alert,
   Image,
+  ActivityIndicator,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
@@ -34,6 +35,14 @@ export default function Settings({ onNavigate }: SettingsProps) {
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   const [isNotificationOpen, setIsNotificationOpen] = useState(false);
   const [isEditMode, setIsEditMode] = useState(false);
+  const [isPasswordModalOpen, setIsPasswordModalOpen] = useState(false);
+  const [changingPassword, setChangingPassword] = useState(false);
+
+  // Password change fields
+  const [oldPassword, setOldPassword] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmNewPassword, setConfirmNewPassword] = useState('');
+  const [passwordError, setPasswordError] = useState<string | null>(null);
 
   // Profile data (will be loaded from authenticated user's `public.users` row)
   const [fullName, setFullName] = useState('');
@@ -232,6 +241,68 @@ export default function Settings({ onNavigate }: SettingsProps) {
     }
   };
 
+  // Password change handler
+  const handleChangePassword = async () => {
+    // Reset error
+    setPasswordError(null);
+
+    // Validation
+    if (!oldPassword.trim()) {
+      setPasswordError('Please enter your current password');
+      return;
+    }
+    if (!newPassword.trim()) {
+      setPasswordError('Please enter a new password');
+      return;
+    }
+    if (newPassword.length < 6) {
+      setPasswordError('New password must be at least 6 characters');
+      return;
+    }
+    if (newPassword !== confirmNewPassword) {
+      setPasswordError('New passwords do not match');
+      return;
+    }
+
+    setChangingPassword(true);
+
+    try {
+      // 1. Verify old password by signing in
+      const { error: signInError } = await supabase.auth.signInWithPassword({
+        email: email,
+        password: oldPassword,
+      });
+
+      if (signInError) {
+        setPasswordError('Current password is incorrect');
+        setChangingPassword(false);
+        return;
+      }
+
+      // 2. Update to new password
+      const { error: updateError } = await supabase.auth.updateUser({
+        password: newPassword,
+      });
+
+      if (updateError) {
+        throw updateError;
+      }
+
+      Alert.alert('Success', 'Your password has been changed successfully.');
+      // Reset modal and fields
+      setIsPasswordModalOpen(false);
+      setOldPassword('');
+      setNewPassword('');
+      setConfirmNewPassword('');
+      setPasswordError(null);
+    } catch (err: any) {
+      console.error('Password change error:', err);
+      Alert.alert('Error', err.message || 'Failed to change password');
+    } finally {
+      setChangingPassword(false);
+    }
+  };
+
   return (
     <View className="flex-1 bg-stone-50">
       <ScrollView className="flex-1 bg-stone-50">
@@ -340,12 +411,22 @@ export default function Settings({ onNavigate }: SettingsProps) {
                   </TouchableOpacity>
                 </View>
               ) : (
-                <TouchableOpacity
-                  className="flex-row items-center self-start rounded-lg bg-emerald-600 px-4 py-2"
-                  onPress={() => setIsEditMode(true)}>
-                  <Ionicons name="create-outline" size={16} color="white" />
-                  <Text className="ml-1.5 text-sm font-semibold text-white">Edit Profile</Text>
-                </TouchableOpacity>
+                <View className="flex-row gap-2.5">
+                  <TouchableOpacity
+                    className="flex-row items-center self-start rounded-lg bg-emerald-600 px-4 py-2"
+                    onPress={() => setIsEditMode(true)}>
+                    <Ionicons name="create-outline" size={16} color="white" />
+                    <Text className="ml-1.5 text-sm font-semibold text-white">Edit Profile</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    className="flex-row items-center self-start rounded-lg border border-stone-300 bg-white px-4 py-2"
+                    onPress={() => setIsPasswordModalOpen(true)}>
+                    <Ionicons name="lock-closed-outline" size={16} color="#57534e" />
+                    <Text className="ml-1.5 text-sm font-semibold text-stone-700">
+                      Change Password
+                    </Text>
+                  </TouchableOpacity>
+                </View>
               )}
             </View>
           </View>
@@ -368,6 +449,99 @@ export default function Settings({ onNavigate }: SettingsProps) {
             </TouchableOpacity>
           </View>
         </Pressable>
+      </Modal>
+
+      {/* Change Password Modal */}
+      <Modal visible={isPasswordModalOpen} transparent animationType="fade">
+        <View className="flex-1 items-center justify-center bg-black/40 px-5">
+          <View
+            className="w-full max-w-md rounded-2xl bg-white"
+            style={{
+              shadowColor: '#000',
+              shadowOffset: { width: 0, height: 20 },
+              shadowOpacity: 0.15,
+              shadowRadius: 40,
+            }}>
+            <View className="border-b border-stone-100 px-6 pb-4 pt-6">
+              <Text className="text-base font-bold text-stone-900">Change Password</Text>
+              <Text className="mt-0.5 text-xs text-stone-400">
+                Enter your current password and choose a new one
+              </Text>
+            </View>
+
+            <ScrollView className="max-h-[70%] px-6 py-5">
+              <View className="mb-4">
+                <Text className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-stone-600">
+                  Current Password *
+                </Text>
+                <TextInput
+                  placeholder="••••••••"
+                  placeholderTextColor="#a8a29e"
+                  secureTextEntry
+                  className="rounded-lg border border-stone-100 bg-stone-50 px-3 py-2.5 text-sm text-stone-900"
+                  value={oldPassword}
+                  onChangeText={setOldPassword}
+                />
+              </View>
+
+              <View className="mb-4">
+                <Text className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-stone-600">
+                  New Password *
+                </Text>
+                <TextInput
+                  placeholder="••••••••"
+                  placeholderTextColor="#a8a29e"
+                  secureTextEntry
+                  className="rounded-lg border border-stone-100 bg-stone-50 px-3 py-2.5 text-sm text-stone-900"
+                  value={newPassword}
+                  onChangeText={setNewPassword}
+                />
+              </View>
+
+              <View className="mb-4">
+                <Text className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-stone-600">
+                  Confirm New Password *
+                </Text>
+                <TextInput
+                  placeholder="••••••••"
+                  placeholderTextColor="#a8a29e"
+                  secureTextEntry
+                  className="rounded-lg border border-stone-100 bg-stone-50 px-3 py-2.5 text-sm text-stone-900"
+                  value={confirmNewPassword}
+                  onChangeText={setConfirmNewPassword}
+                />
+              </View>
+
+              {passwordError && (
+                <Text className="mb-2 text-xs text-red-500">{passwordError}</Text>
+              )}
+            </ScrollView>
+
+            <View className="flex-row gap-3 px-6 pb-6">
+              <TouchableOpacity
+                className="flex-1 items-center rounded-lg border border-stone-100 bg-stone-50 py-3"
+                onPress={() => {
+                  setIsPasswordModalOpen(false);
+                  setOldPassword('');
+                  setNewPassword('');
+                  setConfirmNewPassword('');
+                  setPasswordError(null);
+                }}>
+                <Text className="text-sm font-semibold text-stone-600">Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                className="flex-1 items-center rounded-lg bg-emerald-600 py-3"
+                onPress={handleChangePassword}
+                disabled={changingPassword}>
+                {changingPassword ? (
+                  <ActivityIndicator size="small" color="white" />
+                ) : (
+                  <Text className="text-sm font-semibold text-white">Update Password</Text>
+                )}
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
       </Modal>
 
       {/* Mobile Drawer */}

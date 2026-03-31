@@ -194,6 +194,18 @@ export async function approveUser(userId: string) {
 
 // Delete a user by ID (removes from users table)
 export async function deleteUserAccount(userId: string) {
+  // First, clear foreign key references that would prevent deletion
+  const { error: updateError } = await supabase
+    .from('users')
+    .update({
+      site_id: null,
+      archived_sitegroup_id: null,
+    })
+    .eq('id', userId);
+  
+  if (updateError) throw updateError;
+
+  // Then delete the user
   const { error } = await supabase.from('users').delete().eq('id', userId);
   if (error) throw error;
 

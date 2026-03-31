@@ -49,6 +49,11 @@ export default function Employees({ onNavigate, pendingUsersCount = 0 }: Employe
   const [approvingUserId, setApprovingUserId] = useState<string | null>(null);
   const [denyingUserId, setDenyingUserId] = useState<string | null>(null);
 
+  // Delete modal state
+  const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
+  const [employeeToDelete, setEmployeeToDelete] = useState<any>(null);
+  const [deletingEmployee, setDeletingEmployee] = useState(false);
+
   // Add employee form state
   const [addForm, setAddForm] = useState({
     fullName: '',
@@ -135,6 +140,34 @@ export default function Employees({ onNavigate, pendingUsersCount = 0 }: Employe
       Alert.alert('Error', 'Failed to delete user account');
     } finally {
       setDenyingUserId(null);
+    }
+  };
+
+  // New: open delete modal instead of showing Alert
+  const handleDeleteEmployee = (emp: any) => {
+    setEmployeeToDelete(emp);
+    setIsDeleteModalOpen(true);
+  };
+
+  // Actual deletion logic
+  const handleConfirmDelete = async () => {
+    if (!employeeToDelete) return;
+
+    setDeletingEmployee(true);
+    try {
+      await deleteUserAccount(employeeToDelete.id);
+      await fetchEmployees(); // Refresh list
+      Alert.alert(
+        'Success',
+        `Employee ${employeeToDelete.full_name} deleted successfully.\n\nNote: Please also delete this user from Supabase Auth in your dashboard to prevent "already registered" errors if they try to sign up again.`
+      );
+      setIsDeleteModalOpen(false);
+      setEmployeeToDelete(null);
+    } catch (err: any) {
+      console.error('Error deleting employee:', err);
+      Alert.alert('Error', err.message || 'Failed to delete employee');
+    } finally {
+      setDeletingEmployee(false);
     }
   };
 
@@ -254,10 +287,6 @@ export default function Employees({ onNavigate, pendingUsersCount = 0 }: Employe
         .eq('id', editEmployee.id);
 
       if (updateError) throw updateError;
-
-      // Optionally update auth user metadata (if needed, but requires admin privilege)
-      // Since we can't update other user's metadata from client, we skip.
-      // The users table is the source of truth for the app.
 
       // Refresh employee list
       await fetchEmployees();
@@ -478,10 +507,9 @@ export default function Employees({ onNavigate, pendingUsersCount = 0 }: Employe
                       onPress={() => openEditModal(emp)}>
                       <Ionicons name="create-outline" size={14} color="#78716c" />
                     </TouchableOpacity>
-                    <TouchableOpacity className="h-7 w-7 items-center justify-center rounded-lg bg-stone-50">
-                      <Ionicons name="eye-outline" size={14} color="#78716c" />
-                    </TouchableOpacity>
-                    <TouchableOpacity className="h-7 w-7 items-center justify-center rounded-lg bg-red-50">
+                    <TouchableOpacity
+                      className="h-7 w-7 items-center justify-center rounded-lg bg-red-50"
+                      onPress={() => handleDeleteEmployee(emp)}>
                       <Ionicons name="trash-outline" size={14} color="#ef4444" />
                     </TouchableOpacity>
                   </View>
@@ -652,7 +680,7 @@ export default function Employees({ onNavigate, pendingUsersCount = 0 }: Employe
                   Role *
                 </Text>
                 <View className="flex-row rounded-lg border border-stone-100 bg-stone-50 p-1">
-                  {['admin', 'employee', 'technician'].map((role) => (
+                  {['admin', 'employee'].map((role) => (
                     <TouchableOpacity
                       key={role}
                       className={`flex-1 items-center rounded-md py-2 ${
@@ -813,6 +841,68 @@ export default function Employees({ onNavigate, pendingUsersCount = 0 }: Employe
         </View>
       </Modal>
 
+      {/* Delete Employee Modal */}
+      <Modal visible={isDeleteModalOpen} transparent animationType="fade">
+        <View className="flex-1 items-center justify-center bg-black/40 px-5">
+          <View
+            className="w-full max-w-md rounded-2xl bg-white"
+            style={{
+              shadowColor: '#000',
+              shadowOffset: { width: 0, height: 20 },
+              shadowOpacity: 0.15,
+              shadowRadius: 40,
+            }}>
+            <View className="border-b border-stone-100 px-6 pb-4 pt-6">
+              <Text className="text-base font-bold text-stone-900">Delete Employee</Text>
+              <Text className="mt-0.5 text-xs text-stone-400">
+                This action cannot be undone.
+              </Text>
+            </View>
+
+            <View className="px-6 py-5">
+              <View className="mb-4 flex-row items-center gap-3">
+                <View className="h-12 w-12 items-center justify-center rounded-full bg-red-100">
+                  <Ionicons name="alert-circle" size={24} color="#ef4444" />
+                </View>
+                <View className="flex-1">
+                  <Text className="text-sm font-semibold text-stone-900">
+                    {employeeToDelete?.full_name || 'this employee'}
+                  </Text>
+                  <Text className="text-xs text-stone-500">{employeeToDelete?.email}</Text>
+                </View>
+              </View>
+              <Text className="mb-4 text-sm text-stone-600">
+                Are you sure you want to delete this employee? They will be permanently removed from the system.
+              </Text>
+              <Text className="mb-4 text-xs text-stone-500">
+                Note: After deletion, please also remove this user from Supabase Auth to prevent sign-up issues.
+              </Text>
+            </View>
+
+            <View className="flex-row gap-3 px-6 pb-6">
+              <TouchableOpacity
+                className="flex-1 items-center rounded-lg border border-stone-100 bg-stone-50 py-3"
+                onPress={() => {
+                  setIsDeleteModalOpen(false);
+                  setEmployeeToDelete(null);
+                }}>
+                <Text className="text-sm font-semibold text-stone-600">Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                className="flex-1 items-center rounded-lg bg-red-600 py-3"
+                onPress={handleConfirmDelete}
+                disabled={deletingEmployee}>
+                {deletingEmployee ? (
+                  <ActivityIndicator size="small" color="white" />
+                ) : (
+                  <Text className="text-sm font-semibold text-white">Delete</Text>
+                )}
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
       {/* Notification Modal */}
       <Modal visible={isNotificationOpen} transparent animationType="fade">
         <Pressable
@@ -848,31 +938,38 @@ export default function Employees({ onNavigate, pendingUsersCount = 0 }: Employe
         </Pressable>
       </Modal>
 
-      {/* User Management Modal */}
-      <Modal visible={isUserManagementOpen} transparent animationType="slide">
-        <View className="flex-1 bg-black/50 px-4 pt-16">
-          <View className="max-h-[80%] flex-1 overflow-hidden rounded-2xl bg-white">
-            <View className="flex-row items-center justify-between border-b border-stone-200 bg-stone-50 px-6 py-4">
+      {/* User Management Modal - Formal Centered */}
+      <Modal visible={isUserManagementOpen} transparent animationType="fade">
+        <View className="flex-1 items-center justify-center bg-black/40 px-4">
+          <View
+            className="w-full max-w-lg rounded-2xl bg-white"
+            style={{
+              shadowColor: '#000',
+              shadowOffset: { width: 0, height: 20 },
+              shadowOpacity: 0.15,
+              shadowRadius: 40,
+            }}>
+            <View className="flex-row items-center justify-between border-b border-stone-100 px-6 py-4">
               <Text className="text-xl font-bold text-stone-900">User Management</Text>
               <TouchableOpacity onPress={() => setIsUserManagementOpen(false)}>
                 <Ionicons name="close" size={24} color="#78716c" />
               </TouchableOpacity>
             </View>
 
-            <ScrollView className="flex-1" showsVerticalScrollIndicator={true}>
+            <ScrollView className="max-h-[70vh] px-6 py-4" showsVerticalScrollIndicator={true}>
               {pendingLoading ? (
-                <View className="flex-1 items-center justify-center py-10">
+                <View className="items-center justify-center py-10">
                   <ActivityIndicator size="large" color="#3b82f6" />
                   <Text className="mt-3 text-stone-600">Loading pending users...</Text>
                 </View>
               ) : pendingUsers.length === 0 ? (
-                <View className="flex-1 items-center justify-center py-10">
+                <View className="items-center justify-center py-10">
                   <Ionicons name="checkmark-circle" size={48} color="#10b981" />
                   <Text className="mt-3 text-stone-600">All users are approved</Text>
                 </View>
               ) : (
                 pendingUsers.map((user: any) => (
-                  <View key={user.id} className="border-b border-stone-100 px-6 py-4">
+                  <View key={user.id} className="mb-6 last:mb-0 rounded-xl border border-stone-100 p-4">
                     <View className="mb-3">
                       <Text className="text-base font-bold text-stone-900">
                         {user.full_name || 'N/A'}
@@ -883,7 +980,7 @@ export default function Employees({ onNavigate, pendingUsersCount = 0 }: Employe
                       )}
                     </View>
                     <View className="mb-4 flex-row items-center">
-                      <View className="rounded-lg bg-yellow-50 px-3 py-1">
+                      <View className="rounded-full bg-yellow-50 px-3 py-1">
                         <Text className="text-xs font-semibold text-yellow-700">
                           Pending Approval
                         </Text>
@@ -894,7 +991,7 @@ export default function Employees({ onNavigate, pendingUsersCount = 0 }: Employe
                     </View>
                     <View className="flex-row gap-2">
                       <TouchableOpacity
-                        className="flex-1 flex-row items-center justify-center rounded-lg bg-emerald-600 py-2"
+                        className="flex-1 flex-row items-center justify-center rounded-lg bg-emerald-600 py-2.5"
                         onPress={() => handleApproveUser(user.id)}
                         disabled={approvingUserId === user.id || denyingUserId === user.id}>
                         {approvingUserId === user.id ? (
@@ -907,7 +1004,7 @@ export default function Employees({ onNavigate, pendingUsersCount = 0 }: Employe
                         )}
                       </TouchableOpacity>
                       <TouchableOpacity
-                        className="flex-1 flex-row items-center justify-center rounded-lg bg-red-600 py-2"
+                        className="flex-1 flex-row items-center justify-center rounded-lg bg-red-600 py-2.5"
                         onPress={() => handleDenyUser(user.id)}
                         disabled={approvingUserId === user.id || denyingUserId === user.id}>
                         {denyingUserId === user.id ? (
