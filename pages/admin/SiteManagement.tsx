@@ -24,7 +24,6 @@ interface Site {
   branch_id?: string | number | null;
   start_time?: string | null;
   end_time?: string | null;
-  date_accomplished?: string | null;
   members_count?: number | null;
   status: string;
   leader_id?: string | null;
@@ -104,7 +103,6 @@ export default function SiteManagement({ onNavigate }: SiteManagementProps) {
   const [branch_id, setBranchId] = useState('');
   const [startTime, setStartTime] = useState('');
   const [endTime, setEndTime] = useState('');
-  const [dateAccomplished, setDateAccomplished] = useState('');
   const [membersCount, setMembersCount] = useState('');
   const [latitude, setLatitude] = useState<number | null>(null);
   const [longitude, setLongitude] = useState<number | null>(null);
@@ -714,9 +712,6 @@ export default function SiteManagement({ onNavigate }: SiteManagementProps) {
       case 'endTime':
         setEndTime(value);
         break;
-      case 'dateAccomplished':
-        setDateAccomplished(value);
-        break;
       case 'membersCount':
         setMembersCount(value);
         break;
@@ -777,7 +772,6 @@ export default function SiteManagement({ onNavigate }: SiteManagementProps) {
     setBranchId('');
     setStartTime('');
     setEndTime('');
-    setDateAccomplished('');
     setMembersCount('');
     setLeaderId('');
     setLatitude(null);
@@ -922,7 +916,6 @@ export default function SiteManagement({ onNavigate }: SiteManagementProps) {
           branch_id: branch_id || null,
           start_time: startTime || null,
           end_time: endTime || null,
-          date_accomplished: dateAccomplished || null,
           members_count: membersCount ? parseInt(membersCount) : null,
           leader_id: selectedLeaderId,
           status: selectedLeaderId ? 'Pending' : 'Active',
@@ -976,7 +969,6 @@ export default function SiteManagement({ onNavigate }: SiteManagementProps) {
     setBranchId(site.branch_id ? String(site.branch_id) : '');
     setStartTime((site as any).start_time || '');
     setEndTime((site as any).end_time || '');
-    setDateAccomplished((site as any).date_accomplished || '');
     setMembersCount(site.members_count ? String(site.members_count) : '');
     setLatitude(site.latitude || null);
     setLongitude(site.longitude || null);
@@ -1001,7 +993,6 @@ export default function SiteManagement({ onNavigate }: SiteManagementProps) {
         branch_id: branch_id || null,
         start_time: startTime || null,
         end_time: endTime || null,
-        date_accomplished: dateAccomplished || null,
         members_count: membersCount ? parseInt(membersCount) : null,
         latitude: latitude,
         longitude: longitude,
@@ -1790,25 +1781,7 @@ export default function SiteManagement({ onNavigate }: SiteManagementProps) {
                   </div>
                 </View>
 
-                <View className="mb-4 w-1/2 px-2">
-                  <Text className="mb-2 text-sm font-medium text-stone-700">Date Accomplished</Text>
-                  <div className={`rounded-xl border bg-white px-4 py-3`}>
-                    <input
-                      type="date"
-                      style={{
-                        width: '100%',
-                        background: 'transparent',
-                        border: 'none',
-                        fontSize: 16,
-                        color: '#44403c',
-                      }}
-                      value={dateAccomplished}
-                      onChange={(e) => handleFieldChange('dateAccomplished', e.target.value)}
-                    />
-                  </div>
-                </View>
-
-                <View className="mb-4 w-1/2 px-2">
+                <View className="mb-4 w-full px-2">
                   <Text className="mb-2 text-sm font-medium text-stone-700">
                     Employees to Deploy <Text className="text-red-500">*</Text>
                   </Text>
@@ -1834,7 +1807,7 @@ export default function SiteManagement({ onNavigate }: SiteManagementProps) {
                       onBlur={() => handleFieldBlur('membersCount', membersCount)}
                     />
                     <datalist id="members-list">
-                      {Array.from({ length: 50 }, (_, i) => i + 1).map((n) => (
+                      {Array.from({ length: 10 }, (_, i) => i + 1).map((n) => (
                         <option key={n} value={n}>
                           {n}
                         </option>
@@ -2122,24 +2095,6 @@ export default function SiteManagement({ onNavigate }: SiteManagementProps) {
                 </View>
 
                 <View className="mb-4 w-1/2 px-2">
-                  <Text className="mb-2 text-sm font-medium text-stone-700">Date Accomplished</Text>
-                  <div className={`rounded-xl border bg-white px-4 py-3`}>
-                    <input
-                      type="date"
-                      style={{
-                        width: '100%',
-                        background: 'transparent',
-                        border: 'none',
-                        fontSize: 16,
-                        color: '#44403c',
-                      }}
-                      value={dateAccomplished}
-                      onChange={(e) => handleFieldChange('dateAccomplished', e.target.value)}
-                    />
-                  </div>
-                </View>
-
-                <View className="mb-4 w-1/2 px-2">
                   <Text className="mb-2 text-sm font-medium text-stone-700">
                     Employees to Deploy
                   </Text>
@@ -2321,11 +2276,6 @@ export default function SiteManagement({ onNavigate }: SiteManagementProps) {
                         <Text style={{ fontSize: 13, color: '#6b7280', marginTop: 2 }}>
                           {selectedSite.branch || 'No branch selected'}
                         </Text>
-                        {(selectedSite as any).date_accomplished && (
-                          <Text style={{ fontSize: 13, color: '#6b7280', marginTop: 4 }}>
-                            Date: {(selectedSite as any).date_accomplished}
-                          </Text>
-                        )}
                         {((selectedSite as any).start_time || (selectedSite as any).end_time) && (
                           <Text
                             style={{

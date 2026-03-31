@@ -24,7 +24,6 @@ export interface Site {
   securityLevel: 'high' | 'medium' | 'low';
   startTime?: string | null;
   endTime?: string | null;
-  dateAccomplished?: string | null;
   membersCount?: number | null;
   createdAt?: string | null;
   finishedAt?: string | null;
@@ -80,7 +79,6 @@ export default function Sites({ onMapPress, onSiteMapPress }: SitesProps) {
     staffCount: memberCounts[item.id] || 0,
     createdAt: item.created_at || null,
     finishedAt: item.finished_at || null,
-    dateAccomplished: item.date_accomplished || null,
     membersCount: item.members_count ?? null,
   });
 
@@ -101,7 +99,7 @@ export default function Sites({ onMapPress, onSiteMapPress }: SitesProps) {
       const { data: allArchived, error } = await supabase
         .from('archived_sitegroup')
         .select(
-          `id, name, status, latitude, longitude, created_at, finished_at, date_accomplished, members_count,
+          `id, name, status, latitude, longitude, created_at, finished_at, members_count,
            company:company_id ( company_name ),
            branch:branch_id ( branch_name )`
         )
@@ -187,7 +185,7 @@ export default function Sites({ onMapPress, onSiteMapPress }: SitesProps) {
       const { data: joinableSites, error: joinableSitesError } = await supabase
         .from('sites')
         .select(
-          `id, name, status, latitude, longitude, created_at, finished_at, date_accomplished, members_count,
+          `id, name, status, latitude, longitude, created_at, finished_at, members_count,
            company:company_id ( company_name ),
            branch:branch_id ( branch_name )`
         )
@@ -201,7 +199,7 @@ export default function Sites({ onMapPress, onSiteMapPress }: SitesProps) {
       const { data: activeAvailable, error: activeError } = await supabase
         .from('sites')
         .select(
-          `id, name, status, latitude, longitude, created_at, finished_at, date_accomplished, members_count,
+          `id, name, status, latitude, longitude, created_at, finished_at, members_count,
            company:company_id ( company_name ),
            branch:branch_id ( branch_name )`
         )
@@ -245,7 +243,7 @@ export default function Sites({ onMapPress, onSiteMapPress }: SitesProps) {
         const { data: pendingAssigned, error: pendingAssignedError } = await supabase
           .from('sites')
           .select(
-            `id, name, status, latitude, longitude, created_at, finished_at, date_accomplished, members_count,
+            `id, name, status, latitude, longitude, created_at, finished_at, members_count,
              company:company_id ( company_name ),
              branch:branch_id ( branch_name )`
           )
@@ -264,7 +262,7 @@ export default function Sites({ onMapPress, onSiteMapPress }: SitesProps) {
         const { data: finishedAssigned, error: finishedAssignedError } = await supabase
           .from('archived_sitegroup')
           .select(
-            `id, name, status, latitude, longitude, created_at, finished_at, date_accomplished, members_count,
+            `id, name, status, latitude, longitude, created_at, finished_at, members_count,
              company:company_id ( company_name ),
              branch:branch_id ( branch_name )`
           )
@@ -293,7 +291,7 @@ export default function Sites({ onMapPress, onSiteMapPress }: SitesProps) {
         const { data: mySites, error: mySitesError } = await supabase
           .from('sites')
           .select(
-            `id, name, status, latitude, longitude, created_at, finished_at, date_accomplished, members_count,
+            `id, name, status, latitude, longitude, created_at, finished_at, members_count,
              company:company_id ( company_name ),
              branch:branch_id ( branch_name )`
           )
@@ -309,7 +307,7 @@ export default function Sites({ onMapPress, onSiteMapPress }: SitesProps) {
         const { data: finishedArchived, error: finishedArchivedError } = await supabase
           .from('archived_sitegroup')
           .select(
-            `id, name, status, latitude, longitude, created_at, finished_at, date_accomplished, members_count,
+            `id, name, status, latitude, longitude, created_at, finished_at, members_count,
              company:company_id ( company_name ),
              branch:branch_id ( branch_name )`
           )

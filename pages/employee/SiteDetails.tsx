@@ -455,6 +455,13 @@ export default function SiteDetails({
     })();
   }, [updateVisible, site?.id]);
 
+  // --- MODIFICATION: Clear issue description when "None" is selected (field will be hidden)
+  useEffect(() => {
+    if ((technicalIssue || '').trim().toLowerCase() === 'none') {
+      setIssueDescription('');
+    }
+  }, [technicalIssue]);
+
   const pickEvidencePhotos = async () => {
     try {
       const result = await ImagePicker.launchImageLibraryAsync({
@@ -556,12 +563,10 @@ export default function SiteDetails({
       if (fetchError || !siteRow) throw fetchError || new Error('Site not found');
 
       const nowIso = new Date().toISOString();
-      const today = nowIso.slice(0, 10);
       const archivedRow = {
         ...siteRow,
         status: 'Finished',
         updated_at: nowIso,
-        date_accomplished: today,
         finished_at: nowIso,
         finished_by: userId,
         starlink_serial: serial,
@@ -898,21 +903,24 @@ export default function SiteDetails({
                 )}
               </View>
 
-              <View className="mb-5">
-                <Text className="text-xs font-semibold text-gray-700">Issue Description</Text>
-                <Text className="mt-1 text-[11px] text-gray-500">{isNoneSelected ? 'Optional' : 'Required'}</Text>
-                <TextInput
-                  value={issueDescription}
-                  onChangeText={setIssueDescription}
-                  placeholder={issueDescriptionPlaceholder}
-                  placeholderTextColor="#9ca3af"
-                  multiline
-                  className="mt-2 min-h-[110px] rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3 font-semibold text-gray-900"
-                />
-                {!!updateTriedSubmit && !!validation.descError && (
-                  <Text className="mt-2 text-xs text-red-600">{validation.descError}</Text>
-                )}
-              </View>
+              {/* --- MODIFICATION: Hide description when "None" selected */}
+              {!isNoneSelected && (
+                <View className="mb-5">
+                  <Text className="text-xs font-semibold text-gray-700">Issue Description</Text>
+                  <Text className="mt-1 text-[11px] text-gray-500">Required</Text>
+                  <TextInput
+                    value={issueDescription}
+                    onChangeText={setIssueDescription}
+                    placeholder={issueDescriptionPlaceholder}
+                    placeholderTextColor="#9ca3af"
+                    multiline
+                    className="mt-2 min-h-[110px] rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3 font-semibold text-gray-900"
+                  />
+                  {!!updateTriedSubmit && !!validation.descError && (
+                    <Text className="mt-2 text-xs text-red-600">{validation.descError}</Text>
+                  )}
+                </View>
+              )}
 
               <View className="mb-6">
                 <View className="flex-row items-center justify-between">
@@ -1059,15 +1067,8 @@ export default function SiteDetails({
               </TouchableOpacity>
             </View>
 
-            {/* Site basic info */}
+            {/* Site basic info - Back button removed */}
             <View className="px-6 pt-6">
-              {!!onBack && (
-                <TouchableOpacity
-                  onPress={onBack}
-                  className="mb-4 self-start rounded-full border border-green-100 bg-green-50 px-4 py-2">
-                  <Text className="font-semibold text-green-600">Back to Sites</Text>
-                </TouchableOpacity>
-              )}
               <Text className="text-2xl font-extrabold text-gray-900">{site.name}</Text>
               {site.companyName && (
                 <Text className="mt-1 text-base text-gray-500">{site.companyName}</Text>
@@ -1083,7 +1084,7 @@ export default function SiteDetails({
                 </View>
                 <View className="flex-1">
                   <Text className="text-[10px] font-semibold tracking-widest text-gray-400">
-                    MAIN BRANCH
+                    COMPANY BRANCH
                   </Text>
                   <Text className="mt-1 text-base font-semibold text-gray-900">
                     {site.branchName || 'N/A'}
