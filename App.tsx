@@ -12,6 +12,7 @@ import Map from './pages/employee/Map';
 import Logs from './pages/employee/Logs';
 import Settings from './pages/employee/Settings';
 import EditProfile from './pages/employee/EditProfile';
+import ChangePassword from './pages/employee/ChangePassword';
 import Navbar from './components/Navbar';
 import TechnicalSupport from 'pages/admin/TechnicalSupport';
 import LiveLocationTracker from './components/LiveLocationTracker';
@@ -427,7 +428,10 @@ export default function App() {
             <Contacts onContactSelected={setSelectedContact} />
           ) : activeTab === 'sites' ? (
             <Sites
-              onMapPress={() => setActiveTab('map')}
+              onMapPress={() => {
+                setSelectedSite(null);
+                setActiveTab('map');
+              }}
               onSiteMapPress={(site) => {
                 setSelectedSite(site);
                 setActiveTab('map');
@@ -453,9 +457,12 @@ export default function App() {
               }}
               onBackToDashboard={() => setActiveTab('dashboard')}
               onNavigateToEditProfile={() => setActiveTab('edit-profile')}
+              onNavigateToChangePassword={() => setActiveTab('change-password')}
             />
           ) : activeTab === 'edit-profile' ? (
             <EditProfile onBackToSettings={() => setActiveTab('settings')} />
+          ) : activeTab === 'change-password' ? (
+            <ChangePassword onBackToSettings={() => setActiveTab('settings')} />
           ) : (
             <Dashboard
               onLogout={async () => {
@@ -471,6 +478,7 @@ export default function App() {
             !selectedContact &&
             activeTab !== 'settings' &&
             activeTab !== 'edit-profile' &&
+            activeTab !== 'change-password' &&
             activeTab !== 'map' && (
               <Navbar
                 activeTab={activeTab}

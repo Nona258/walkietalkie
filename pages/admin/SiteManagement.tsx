@@ -14,6 +14,7 @@ import { Ionicons } from '@expo/vector-icons';
 import SweetAlertModal from '../../components/SweetAlertModal';
 import '../../global.css';
 import supabase from '../../utils/supabase';
+import { notifyNewSiteCreated } from '../../utils/notifications';
 
 interface Site {
   id: string;
@@ -928,6 +929,17 @@ export default function SiteManagement({ onNavigate }: SiteManagementProps) {
     if (error) {
       showAlert('Error', error.message, 'error');
     } else {
+      // Best-effort: notify users about the newly created site.
+      try {
+        await notifyNewSiteCreated({
+          siteName: safeName,
+          leaderId: selectedLeaderId,
+          siteStatus: selectedLeaderId ? 'Pending' : 'Active',
+        });
+      } catch (e) {
+        console.warn('notifyNewSiteCreated failed:', (e as any)?.message || String(e));
+      }
+
       if (selectedLeaderId && insertedSite?.id) {
         const { error: leaderAssignError } = await supabase
           .from('users')

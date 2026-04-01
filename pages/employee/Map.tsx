@@ -56,7 +56,7 @@ export default function Map({ onBack, selectedSite }: { onBack?: () => void; sel
       const { data, error } = await supabase
         .from('sites')
         .select('id, name, latitude, longitude, company_id, branch_id, status')
-        .eq('status', 'Active');
+        .in('status', ['Active', 'Pending']);
 
       if (!error && data) {
         setSitesData(data || []);
@@ -84,8 +84,8 @@ export default function Map({ onBack, selectedSite }: { onBack?: () => void; sel
           // Handle INSERT, UPDATE, DELETE events
           if (payload.eventType === 'INSERT' || payload.eventType === 'UPDATE') {
             const newSite = payload.new as Site;
-            // Only add if status is Active
-            if (newSite.status === 'Active') {
+            // Show both Active and Pending sites on the map
+            if (newSite.status === 'Active' || newSite.status === 'Pending') {
               setSitesData((prevSites) => {
                 // Check if site already exists
                 const siteExists = prevSites.some((s) => s.id === newSite.id);
@@ -98,7 +98,7 @@ export default function Map({ onBack, selectedSite }: { onBack?: () => void; sel
                 }
               });
             } else {
-              // If status is not Active, remove it if it exists
+              // If status is not Active/Pending, remove it if it exists
               setSitesData((prevSites) => prevSites.filter((s) => s.id !== newSite.id));
             }
           } else if (payload.eventType === 'DELETE') {

@@ -8,6 +8,7 @@ import {
   Alert,
   StatusBar,
   Modal,
+  ActivityIndicator,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import supabase from '../../utils/supabase';
@@ -27,7 +28,7 @@ export interface Site {
   membersCount?: number | null;
   createdAt?: string | null;
   finishedAt?: string | null;
-  staffCount: number; // actual number of members from group_members
+  staffCount: number;
 }
 
 interface SitesProps {
@@ -59,7 +60,6 @@ export default function Sites({ onMapPress, onSiteMapPress }: SitesProps) {
       return {};
     }
     const counts: Record<string, number> = {};
-    // Count occurrences of each site_id
     (data || []).forEach((row: any) => {
       const siteId = row.site_id;
       counts[siteId] = (counts[siteId] || 0) + 1;
@@ -86,7 +86,6 @@ export default function Sites({ onMapPress, onSiteMapPress }: SitesProps) {
     fetchSites();
   }, []);
 
-  // When user switches to Finished tab, fetch ALL archived_sitegroup records
   useEffect(() => {
     if (activeList === 'Finished') {
       fetchAllArchived();
@@ -132,7 +131,6 @@ export default function Sites({ onMapPress, onSiteMapPress }: SitesProps) {
         return;
       }
 
-      // Load user's site_id (used for member Pending/Finished tabs)
       const { data: userRow, error: userRowError } = await supabase
         .from('users')
         .select('site_id')
@@ -142,9 +140,6 @@ export default function Sites({ onMapPress, onSiteMapPress }: SitesProps) {
       const userSiteId = userRow?.site_id ? String(userRow.site_id) : null;
       setCurrentUserSiteId(userSiteId);
 
-      // Resolve member site_id(s) for this user.
-      // Primary: group_members (survives even if users.site_id is cleared later)
-      // Fallback: users.site_id
       const memberSiteIds = new Set<string>();
       try {
         const { data: memberRows, error: memberErr } = await supabase
@@ -164,7 +159,6 @@ export default function Sites({ onMapPress, onSiteMapPress }: SitesProps) {
         memberSiteIds.add(userSiteId);
       }
 
-      // Determine if current user is a leader of any site
       const { data: leaderSites, error: leaderSitesError } = await supabase
         .from('sites')
         .select('id')
@@ -178,10 +172,6 @@ export default function Sites({ onMapPress, onSiteMapPress }: SitesProps) {
       const isLeader = leaderSiteIds.length > 0;
       setIsLeaderAny(isLeader);
 
-      // All Sites:
-      // - Leaders: see Active sites that are not yet assigned a leader (available) + other Pending sites (visibility)
-      // - Non-leaders: see Pending sites that are joinable (already has a leader assigned)
-      // Fetch Pending sites with leader assigned (joinable)
       const { data: joinableSites, error: joinableSitesError } = await supabase
         .from('sites')
         .select(
@@ -195,7 +185,6 @@ export default function Sites({ onMapPress, onSiteMapPress }: SitesProps) {
         .order('name', { ascending: true });
       if (joinableSitesError) throw joinableSitesError;
 
-      // Fetch Active sites with no leader assigned (available to claim)
       const { data: activeAvailable, error: activeError } = await supabase
         .from('sites')
         .select(
@@ -209,7 +198,6 @@ export default function Sites({ onMapPress, onSiteMapPress }: SitesProps) {
         .order('name', { ascending: true });
       if (activeError) throw activeError;
 
-      // Hide the site(s) the user already joined so it disappears from All Sites after accept.
       const filteredPending = (joinableSites || []).filter((s: any) => {
         if (memberSiteIds.size === 0) return true;
         return !memberSiteIds.has(String(s.id));
@@ -219,7 +207,6 @@ export default function Sites({ onMapPress, onSiteMapPress }: SitesProps) {
         return !memberSiteIds.has(String(s.id));
       });
 
-      // Combine Pending and Active sites
       const combined = [...filteredPending, ...filteredActive];
       const deduped: any[] = [];
       const seen = new Set<string>();
@@ -230,16 +217,11 @@ export default function Sites({ onMapPress, onSiteMapPress }: SitesProps) {
         deduped.push(row);
       }
 
-      // Fetch member counts for all sites we are about to display
       const allSiteIds = deduped.map(s => s.id);
       const memberCounts = await fetchMemberCounts(allSiteIds);
       setActiveSites(deduped.map(s => mapRowToSite(s, memberCounts)));
 
-      // Pending/Finished lists:
-      // - Leaders: their assigned site(s)
-      // - Non-leaders: only the site(s) linked to users.site_id or group_members
       if (isLeader) {
-        // Pending sites (still from sites table)
         const { data: pendingAssigned, error: pendingAssignedError } = await supabase
           .from('sites')
           .select(
@@ -253,12 +235,10 @@ export default function Sites({ onMapPress, onSiteMapPress }: SitesProps) {
           .order('name', { ascending: true });
         if (pendingAssignedError) throw pendingAssignedError;
 
-        // Fetch member counts for these sites
         const pendingIds = (pendingAssigned || []).map(s => s.id);
         const pendingCounts = await fetchMemberCounts(pendingIds);
         setPendingSites((pendingAssigned || []).map(s => mapRowToSite(s, pendingCounts)));
 
-        // Finished sites now from archived_sitegroup
         const { data: finishedAssigned, error: finishedAssignedError } = await supabase
           .from('archived_sitegroup')
           .select(
@@ -287,7 +267,6 @@ export default function Sites({ onMapPress, onSiteMapPress }: SitesProps) {
         }
 
         const siteIdList = Array.from(memberSiteIds);
-        // Pending sites from sites table
         const { data: mySites, error: mySitesError } = await supabase
           .from('sites')
           .select(
@@ -303,7 +282,6 @@ export default function Sites({ onMapPress, onSiteMapPress }: SitesProps) {
         const mappedSites = (mySites || []).map(s => mapRowToSite(s, memberCountsForMySites));
         setPendingSites(mappedSites.filter((s) => s.status === 'Pending'));
 
-        // Finished sites from archived_sitegroup for this user (as member)
         const { data: finishedArchived, error: finishedArchivedError } = await supabase
           .from('archived_sitegroup')
           .select(
@@ -344,9 +322,8 @@ export default function Sites({ onMapPress, onSiteMapPress }: SitesProps) {
 
   return (
     <View className="flex-1 bg-white">
-      <StatusBar barStyle="light-content" />
+      <StatusBar barStyle="dark-content" />
 
-      {/* Details Modal */}
       <Modal
         visible={!!selectedSite}
         animationType="slide"
@@ -365,61 +342,75 @@ export default function Sites({ onMapPress, onSiteMapPress }: SitesProps) {
         />
       </Modal>
 
-      {/* Header Section */}
-      <View className="border-b border-green-100 bg-white px-6 py-6 pt-12">
+      {/* Header */}
+      <View className="border-b border-gray-100 bg-white px-6 pb-6 pt-12">
         <View className="mb-6 flex-row items-center justify-between">
           <View>
             <Text className="text-3xl font-extrabold text-gray-900">Sites</Text>
-            <Text className="mt-1 text-xs font-semibold text-green-600">Manage your locations</Text>
+            <Text className="mt-1 text-sm text-gray-500">Manage your locations</Text>
           </View>
           <TouchableOpacity
             onPress={onMapPress}
-            className="rounded-full bg-green-100 p-3 active:scale-95">
-            <Ionicons name="map" size={24} color="#10b981" />
+            className="rounded-full bg-gray-100 p-3 active:scale-95">
+            <Ionicons name="map-outline" size={24} color="#10b981" />
           </TouchableOpacity>
         </View>
 
         {/* Search Bar */}
         <View
-          className={`flex-row items-center rounded-2xl border-2 bg-gray-100 px-4 py-3 ${searchText.length > 0 ? 'border-green-500' : 'border-gray-300'}`}>
-          <Ionicons name="search" size={20} color="#6b7280" />
+          className={`flex-row items-center rounded-xl border bg-gray-50 px-4 py-3 ${
+            searchText.length > 0 ? 'border-green-500' : 'border-gray-200'
+          }`}>
+          <Ionicons name="search-outline" size={20} color="#6b7280" />
           <TextInput
             placeholder="Search sites..."
             value={searchText}
             onChangeText={setSearchText}
-            className="ml-3 flex-1 text-base font-medium text-gray-900"
+            className="ml-3 flex-1 text-base text-gray-900"
             placeholderTextColor="#9ca3af"
           />
           {searchText.length > 0 && (
             <TouchableOpacity onPress={() => setSearchText('')}>
-              <Ionicons name="close-circle" size={20} color="#6b7280" />
+              <Ionicons name="close-circle" size={20} color="#9ca3af" />
             </TouchableOpacity>
           )}
         </View>
 
-        {/* Sites Filter Toggle (All Sites first) */}
-        <View className="mt-4 flex-row rounded-2xl border border-gray-200 bg-gray-100 p-1">
+        {/* Filter Tabs */}
+        <View className="mt-6 flex-row rounded-full bg-gray-100 p-1">
           <TouchableOpacity
             onPress={() => setActiveList('All')}
-            className={`flex-1 rounded-xl py-2 ${activeList === 'All' ? 'bg-white' : 'bg-transparent'}`}>
+            className={`flex-1 rounded-full py-2 ${
+              activeList === 'All' ? 'bg-green-500' : 'bg-transparent'
+            }`}>
             <Text
-              className={`text-center font-extrabold ${activeList === 'All' ? 'text-green-600' : 'text-gray-600'}`}>
+              className={`text-center font-semibold ${
+                activeList === 'All' ? 'text-white' : 'text-gray-600'
+              }`}>
               All Sites
             </Text>
           </TouchableOpacity>
           <TouchableOpacity
             onPress={() => setActiveList('Pending')}
-            className={`flex-1 rounded-xl py-2 ${activeList === 'Pending' ? 'bg-white' : 'bg-transparent'}`}>
+            className={`flex-1 rounded-full py-2 ${
+              activeList === 'Pending' ? 'bg-green-500' : 'bg-transparent'
+            }`}>
             <Text
-              className={`text-center font-extrabold ${activeList === 'Pending' ? 'text-green-600' : 'text-gray-600'}`}>
+              className={`text-center font-semibold ${
+                activeList === 'Pending' ? 'text-white' : 'text-gray-600'
+              }`}>
               Pending
             </Text>
           </TouchableOpacity>
           <TouchableOpacity
             onPress={() => setActiveList('Finished')}
-            className={`flex-1 rounded-xl py-2 ${activeList === 'Finished' ? 'bg-white' : 'bg-transparent'}`}>
+            className={`flex-1 rounded-full py-2 ${
+              activeList === 'Finished' ? 'bg-green-500' : 'bg-transparent'
+            }`}>
             <Text
-              className={`text-center font-extrabold ${activeList === 'Finished' ? 'text-green-600' : 'text-gray-600'}`}>
+              className={`text-center font-semibold ${
+                activeList === 'Finished' ? 'text-white' : 'text-gray-600'
+              }`}>
               Finished
             </Text>
           </TouchableOpacity>
@@ -435,79 +426,66 @@ export default function Sites({ onMapPress, onSiteMapPress }: SitesProps) {
         <View className="px-6 py-6 pb-28">
           {loading ? (
             <View className="items-center justify-center py-16">
-              <Text className="mt-4 text-base font-semibold text-gray-500">Loading sites...</Text>
+              <ActivityIndicator size="large" color="#10b981" />
+              <Text className="mt-4 text-base text-gray-500">Loading sites...</Text>
             </View>
           ) : filteredSites.length > 0 ? (
-            <View className="gap-4">
+            <View className="space-y-4">
               {filteredSites.map((site) => (
                 <TouchableOpacity
                   key={site.id}
                   onPress={() => handleSitePress(site)}
-                  className="rounded-3xl border-2 border-green-100 bg-white p-5 shadow-md shadow-green-200 active:scale-95">
-                  {/* Top Section - Icon and Basic Info */}
-                  <View className="mb-5 flex-row items-start">
-                    {/* Location Icon */}
+                  className="rounded-2xl border border-gray-100 bg-white p-5 active:scale-[0.98]">
+                  {/* Header row: site name + status dot */}
+                  <View className="mb-3 flex-row items-center justify-between">
+                    <Text className="flex-1 text-lg font-bold text-gray-900">{site.name}</Text>
+                    <View
+                      className={`h-2.5 w-2.5 rounded-full ${
+                        site.status === 'Finished' ? 'bg-gray-400' : 'bg-green-500'
+                      }`}
+                    />
+                  </View>
+
+                  {/* Company name (if any) */}
+                  {site.companyName && (
+                    <Text className="mb-3 text-sm text-gray-500">{site.companyName}</Text>
+                  )}
+
+                  {/* Location / Branch info */}
+                  <View className="mb-3 flex-row items-center">
+                    <Ionicons name="location-outline" size={16} color="#9ca3af" />
+                    <Text className="ml-2 flex-1 text-sm text-gray-600" numberOfLines={2}>
+                      {site.branchName || 'Location not specified'}
+                    </Text>
+                  </View>
+
+                  {/* Staff count row */}
+                  <View className="mt-1 flex-row items-center justify-between border-t border-gray-100 pt-3">
+                    <View className="flex-row items-center">
+                      <Ionicons name="people-outline" size={18} color="#6b7280" />
+                      <Text className="ml-2 text-sm text-gray-600">
+                        {site.staffCount} {site.staffCount === 1 ? 'member' : 'members'}
+                      </Text>
+                    </View>
                     <TouchableOpacity
                       onPress={() => onSiteMapPress?.(site)}
-                      className={`h-14 w-14 rounded-2xl ${site.status === 'Finished' ? 'bg-gray-400' : 'bg-green-500'} mr-4 items-center justify-center active:scale-95`}>
-                      <Ionicons name="location" size={26} color="white" />
+                      className="flex-row items-center">
+                      <Text className="mr-1 text-sm text-green-600">View on map</Text>
+                      <Ionicons name="chevron-forward-outline" size={16} color="#10b981" />
                     </TouchableOpacity>
-
-                    {/* Site Info with Company & Branch */}
-                    <View className="flex-1">
-                      <View className="mb-1 flex-row items-center">
-                        <Text className="flex-1 text-lg font-extrabold text-gray-900">
-                          {site.name}
-                        </Text>
-                        <View
-                          className={`h-3 w-3 rounded-full ${site.status === 'Finished' ? 'bg-gray-400' : 'bg-green-500'}`}
-                        />
-                      </View>
-
-                      {/* Company name (if available) */}
-                      {site.companyName && (
-                        <Text className="text-base font-bold text-gray-700">
-                          {site.companyName}
-                        </Text>
-                      )}
-                    </View>
-                  </View>
-
-                  {/* Staff Count Section */}
-                  <View className="mb-4 items-center justify-center rounded-2xl border border-green-200 bg-green-50 p-4">
-                    <Text className="text-xs font-semibold uppercase text-gray-500">
-                      Staff Count
-                    </Text>
-                    <Text className="mt-2 text-2xl font-extrabold text-gray-900">
-                      {site.staffCount}
-                    </Text>
-                  </View>
-
-                  {/* Coordinates Section (beside house icon) */}
-                  <View className="flex-row items-center">
-                    <Ionicons name="home-outline" size={16} color="#6b7280" />
-                    {/* Branch name (if available) */}
-                    {site.branchName && (
-                      <Text
-                        className="ml-2 mt-0.5  flex-1 text-sm font-semibold text-green-600"
-                        numberOfLines={1}>
-                        {site.branchName}
-                      </Text>
-                    )}
-                    <Ionicons name="chevron-forward" size={20} color="#10b981" />
                   </View>
                 </TouchableOpacity>
               ))}
             </View>
           ) : (
             <View className="items-center justify-center py-16">
-              <Ionicons name="location-outline" size={48} color="#10b981" />
-              <Text className="mt-4 text-base font-semibold text-gray-500">
+              <Ionicons name="location-outline" size={48} color="#d1d5db" />
+              <Text className="mt-4 text-center text-base text-gray-500">
                 {activeList === 'All'
                   ? 'No pending sites to join'
                   : activeList === 'Pending'
-                    ? 'No pending sites assigned'
-                    : 'No finished sites found'}
+                  ? 'No pending sites assigned'
+                  : 'No finished sites found'}
               </Text>
             </View>
           )}

@@ -874,47 +874,42 @@ export default function Contacts({ onContactSelected, currentUserId }: ContactsP
 
         {/* Search Bar */}
         <View
-          className={`mb-4 flex-row items-center rounded-2xl border-2 bg-gray-100 px-4 py-3 ${searchText.length > 0 ? 'border-green-500' : 'border-gray-300'}`}>
-          <Ionicons name="search" size={20} color="#6b7280" />
+          className={`flex-row items-center rounded-xl border bg-gray-50 px-4 py-3 ${
+            searchText.length > 0 ? 'border-green-500' : 'border-gray-200'
+          }`}>
+          <Ionicons name="search-outline" size={20} color="#6b7280" />
           <TextInput
-            placeholder="Search by name, email, or phone..."
+            placeholder="Search contacts..."
             value={searchText}
             onChangeText={setSearchText}
-            className="ml-3 flex-1 text-base font-medium text-gray-900"
+            className="ml-3 flex-1 text-base text-gray-900"
             placeholderTextColor="#9ca3af"
           />
           {searchText.length > 0 && (
             <TouchableOpacity onPress={() => setSearchText('')}>
-              <Ionicons name="close-circle" size={20} color="#6b7280" />
+              <Ionicons name="close-circle" size={20} color="#9ca3af" />
             </TouchableOpacity>
           )}
         </View>
 
-        {/* Filter Buttons */}
-        <View className="-mx-6 flex-row gap-2 px-6">
+        {/* Filter Tabs (matches Sites style) */}
+        <View className="mt-4 flex-row rounded-full bg-gray-100 p-1">
           {[
-            { label: 'All', value: 'all', icon: 'people' },
-            { label: 'Online', value: 'online', icon: 'radio-button-on' },
-            { label: 'Unread', value: 'unread', icon: 'mail-unread' },
-            { label: 'Teams', value: 'teams', icon: 'people-circle' },
-            { label: 'Archived', value: 'archived', icon: 'archive' },
+            { label: 'All', value: 'all' },
+            { label: 'Online', value: 'online' },
+            { label: 'Unread', value: 'unread' },
+            { label: 'Teams', value: 'teams' },
+            { label: 'Archived', value: 'archived' },
           ].map((filter) => (
             <TouchableOpacity
               key={filter.value}
               onPress={() => setFilterType(filter.value as FilterType)}
-              className={`flex-1 flex-row items-center justify-center gap-1 rounded-full border-2 px-3 py-2 transition-all ${
-                filterType === filter.value
-                  ? 'border-green-500 bg-green-500 shadow-md shadow-green-300'
-                  : 'border-green-200 bg-white'
+              className={`flex-1 rounded-full py-2 ${
+                filterType === filter.value ? 'bg-green-500' : 'bg-transparent'
               }`}>
-              <Ionicons
-                name={filter.icon as any}
-                size={14}
-                color={filterType === filter.value ? 'white' : '#10b981'}
-              />
               <Text
-                className={`text-xs font-bold ${
-                  filterType === filter.value ? 'text-white' : 'text-green-700'
+                className={`text-center text-xs font-semibold ${
+                  filterType === filter.value ? 'text-white' : 'text-gray-600'
                 }`}>
                 {filter.label}
               </Text>
@@ -1244,7 +1239,7 @@ export default function Contacts({ onContactSelected, currentUserId }: ContactsP
             filteredContacts.map((contact) => (
               <TouchableOpacity
                 key={contact.id}
-                className="mb-4 flex-row items-center rounded-2xl border-2 border-green-100 bg-white px-4 py-4 shadow-sm shadow-green-100 active:scale-95 active:bg-green-50"
+                className="mb-4 flex-row items-center rounded-2xl border border-gray-200 bg-white px-4 py-4 shadow-sm shadow-gray-200 active:scale-95 active:bg-green-50"
                 onPress={() => {
                   const now = new Date().toISOString();
                   // Record when this chat was opened (marks all current messages as read)
