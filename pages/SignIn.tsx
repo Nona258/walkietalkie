@@ -171,9 +171,9 @@ export default function SignIn({ onNavigateToSignUp, onSignInSuccess }: SignInPr
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         className="flex-1 overflow-hidden">
-        <View className="flex-1 justify-center overflow-hidden px-8">
+        <View className="justify-center flex-1 px-8 overflow-hidden">
           {/* Logo */}
-          <View className="mb-10 items-center">
+          <View className="items-center mb-10">
             <View className="mb-6 h-20 w-20 items-center justify-center rounded-3xl bg-[#10b981] shadow-lg shadow-[#10b981]/30">
               <Ionicons name="radio" size={38} color="#ffffff" />
             </View>
@@ -188,10 +188,10 @@ export default function SignIn({ onNavigateToSignUp, onSignInSuccess }: SignInPr
           {/* Form */}
           <View className="mt-2">
             {/* Email Input */}
-            <View className="mb-4 flex-row items-center rounded-xl border border-green-300 bg-white px-3 py-3">
+            <View className="flex-row items-center px-3 py-3 mb-4 bg-white border border-green-300 rounded-xl">
               <Ionicons name="mail-outline" size={20} color="#10b981" />
               <TextInput
-                className="ml-2 flex-1 text-base outline-none"
+                className="flex-1 ml-2 text-base outline-none"
                 placeholder="Email address"
                 placeholderTextColor="#9ca3af"
                 keyboardType="email-address"
@@ -202,10 +202,10 @@ export default function SignIn({ onNavigateToSignUp, onSignInSuccess }: SignInPr
             </View>
 
             {/* Password Input */}
-            <View className="mb-3 flex-row items-center rounded-xl border border-green-300 bg-white px-3 py-3">
+            <View className="flex-row items-center px-3 py-3 mb-3 bg-white border border-green-300 rounded-xl">
               <Ionicons name="lock-closed-outline" size={20} color="#10b981" />
               <TextInput
-                className="ml-2 flex-1 text-base outline-none"
+                className="flex-1 ml-2 text-base outline-none"
                 placeholder="Password"
                 placeholderTextColor="#9ca3af"
                 secureTextEntry={!showPassword}
@@ -223,13 +223,13 @@ export default function SignIn({ onNavigateToSignUp, onSignInSuccess }: SignInPr
 
             {/* Error Message */}
             {error ? (
-              <View className="mt-2 rounded-xl bg-red-50 px-4 py-3">
+              <View className="px-4 py-3 mt-2 rounded-xl bg-red-50">
                 <Text className="text-sm text-red-500">{error}</Text>
               </View>
             ) : null}
 
             {/* Forgot Password */}
-            <TouchableOpacity className="mb-8 mt-2 self-end">
+            <TouchableOpacity className="self-end mt-2 mb-8">
               <Text className="text-sm font-semibold text-[#10b981]">Forgot password?</Text>
             </TouchableOpacity>
 
@@ -248,7 +248,7 @@ export default function SignIn({ onNavigateToSignUp, onSignInSuccess }: SignInPr
             </TouchableOpacity>
 
             {/* Sign Up Link */}
-            <View className="mt-2 flex-row items-center justify-center">
+            <View className="flex-row items-center justify-center mt-2">
               <Text className="text-base text-[#6b7280]">{"Don't have an account?"} </Text>
               <TouchableOpacity onPress={onNavigateToSignUp}>
                 <Text className="text-base font-bold text-[#10b981]">Sign Up</Text>
@@ -268,20 +268,20 @@ export default function SignIn({ onNavigateToSignUp, onSignInSuccess }: SignInPr
 
       {/* Approval Pending Modal */}
       <Modal visible={showApprovalPendingModal} transparent animationType="fade">
-        <View className="flex-1 items-center justify-center bg-black/50 px-6">
-          <View className="w-full max-w-sm items-center rounded-2xl bg-white p-8">
+        <View className="items-center justify-center flex-1 px-6 bg-black/50">
+          <View className="items-center w-full max-w-sm p-8 bg-white rounded-2xl">
             <View className="mb-4">
               <Ionicons name="time-outline" size={56} color="#f59e0b" />
             </View>
-            <Text className="mb-3 text-center text-2xl font-bold text-stone-900">
+            <Text className="mb-3 text-2xl font-bold text-center text-stone-900">
               Approval Pending
             </Text>
-            <Text className="mb-6 text-center leading-6 text-stone-600">
+            <Text className="mb-6 leading-6 text-center text-stone-600">
               Your account is still pending approval from the administrator. Please check back
               later.
             </Text>
-            <View className="mb-6 w-full rounded-xl border border-yellow-200 bg-yellow-50 px-4 py-3">
-              <Text className="text-center text-xs font-semibold text-yellow-800">
+            <View className="w-full px-4 py-3 mb-6 border border-yellow-200 rounded-xl bg-yellow-50">
+              <Text className="text-xs font-semibold text-center text-yellow-800">
                 ⏱️ You will be able to access the app once your account is approved
               </Text>
             </View>

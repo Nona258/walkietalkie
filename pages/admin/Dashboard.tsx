@@ -1102,6 +1102,7 @@ export default function AdminDashboard({ onLogout, onNavigate }: AdminDashboardP
     | 'technicalSupport'
     | 'settings'
   >('dashboard');
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [loading, setLoading] = useState(true);
   const [stats, setStats] = useState<StatCard[]>([]);
@@ -1491,8 +1492,14 @@ export default function AdminDashboard({ onLogout, onNavigate }: AdminDashboardP
           onNavigate={onNavigate}
           onLogout={onLogout}
           pendingUsersCount={pendingUsersCount}
+          isMobileMenuOpen={isMobileMenuOpen}
+          setIsMobileMenuOpen={setIsMobileMenuOpen}
         />
-        <SiteManagement onNavigate={setActiveTab} />
+        <SiteManagement
+          onNavigate={setActiveTab}
+          isMobileMenuOpen={isMobileMenuOpen}
+          setIsMobileMenuOpen={setIsMobileMenuOpen}
+        />
       </View>
     );
   }
@@ -1506,8 +1513,14 @@ export default function AdminDashboard({ onLogout, onNavigate }: AdminDashboardP
           onNavigate={onNavigate}
           onLogout={onLogout}
           pendingUsersCount={pendingUsersCount}
+          isMobileMenuOpen={isMobileMenuOpen}
+          setIsMobileMenuOpen={setIsMobileMenuOpen}
         />
-        <ContactManagement onNavigate={setActiveTab} />
+        <ContactManagement
+          onNavigate={setActiveTab}
+          isMobileMenuOpen={isMobileMenuOpen}
+          setIsMobileMenuOpen={setIsMobileMenuOpen}
+        />
       </View>
     );
   }
@@ -1521,8 +1534,14 @@ export default function AdminDashboard({ onLogout, onNavigate }: AdminDashboardP
           onNavigate={onNavigate}
           onLogout={onLogout}
           pendingUsersCount={pendingUsersCount}
+          isMobileMenuOpen={isMobileMenuOpen}
+          setIsMobileMenuOpen={setIsMobileMenuOpen}
         />
-        <ActivityLogs onNavigate={setActiveTab} />
+        <ActivityLogs
+          onNavigate={setActiveTab}
+          isMobileMenuOpen={isMobileMenuOpen}
+          setIsMobileMenuOpen={setIsMobileMenuOpen}
+        />
       </View>
     );
   }
@@ -1536,8 +1555,14 @@ export default function AdminDashboard({ onLogout, onNavigate }: AdminDashboardP
           onNavigate={onNavigate}
           onLogout={onLogout}
           pendingUsersCount={pendingUsersCount}
+          isMobileMenuOpen={isMobileMenuOpen}
+          setIsMobileMenuOpen={setIsMobileMenuOpen}
         />
-        <CompanyList onNavigate={setActiveTab} />
+        <CompanyList
+          onNavigate={setActiveTab}
+          isMobileMenuOpen={isMobileMenuOpen}
+          setIsMobileMenuOpen={setIsMobileMenuOpen}
+        />
       </View>
     );
   }
@@ -1551,8 +1576,15 @@ export default function AdminDashboard({ onLogout, onNavigate }: AdminDashboardP
           onNavigate={onNavigate}
           onLogout={onLogout}
           pendingUsersCount={pendingUsersCount}
+          isMobileMenuOpen={isMobileMenuOpen}
+          setIsMobileMenuOpen={setIsMobileMenuOpen}
         />
-        <Employees onNavigate={setActiveTab} pendingUsersCount={pendingUsersCount} />
+        <Employees
+          onNavigate={setActiveTab}
+          pendingUsersCount={pendingUsersCount}
+          isMobileMenuOpen={isMobileMenuOpen}
+          setIsMobileMenuOpen={setIsMobileMenuOpen}
+        />
       </View>
     );
   }
@@ -1566,8 +1598,13 @@ export default function AdminDashboard({ onLogout, onNavigate }: AdminDashboardP
           onNavigate={onNavigate}
           onLogout={onLogout}
           pendingUsersCount={pendingUsersCount}
+          isMobileMenuOpen={isMobileMenuOpen}
+          setIsMobileMenuOpen={setIsMobileMenuOpen}
         />
-        <EmployeeLogs />
+        <EmployeeLogs
+          isMobileMenuOpen={isMobileMenuOpen}
+          setIsMobileMenuOpen={setIsMobileMenuOpen}
+        />
       </View>
     );
   }
@@ -1581,9 +1618,13 @@ export default function AdminDashboard({ onLogout, onNavigate }: AdminDashboardP
           onNavigate={onNavigate}
           onLogout={onLogout}
           pendingUsersCount={pendingUsersCount}
+          isMobileMenuOpen={isMobileMenuOpen}
+          setIsMobileMenuOpen={setIsMobileMenuOpen}
         />
         <TechnicalSupport
           onNavigate={(page) => setActiveTab(page as typeof activeTab)}
+          isMobileMenuOpen={isMobileMenuOpen}
+          setIsMobileMenuOpen={setIsMobileMenuOpen}
         />
       </View>
     );
@@ -1598,8 +1639,14 @@ export default function AdminDashboard({ onLogout, onNavigate }: AdminDashboardP
           onNavigate={onNavigate}
           onLogout={onLogout}
           pendingUsersCount={pendingUsersCount}
+          isMobileMenuOpen={isMobileMenuOpen}
+          setIsMobileMenuOpen={setIsMobileMenuOpen}
         />
-        <Settings onNavigate={setActiveTab} />
+        <Settings
+          onNavigate={setActiveTab}
+          isMobileMenuOpen={isMobileMenuOpen}
+          setIsMobileMenuOpen={setIsMobileMenuOpen}
+        />
       </View>
     );
   }
@@ -1612,21 +1659,25 @@ export default function AdminDashboard({ onLogout, onNavigate }: AdminDashboardP
         onNavigate={onNavigate}
         onLogout={onLogout}
         pendingUsersCount={pendingUsersCount}
+        isMobileMenuOpen={isMobileMenuOpen}
+        setIsMobileMenuOpen={setIsMobileMenuOpen}
       />
 
       <ScrollView
         className="flex-1 bg-stone-50"
         showsVerticalScrollIndicator={false}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}>
-        <View className="px-6 pt-5 pb-4 bg-white border-b border-stone-100">
+        <View className="px-5 pt-4 pb-3 bg-white border-b border-stone-200">
           <View className="flex-row items-center justify-between">
             <View className="flex-row items-center flex-1">
-              <TouchableOpacity className="items-center justify-center mr-3 h-9 w-9 lg:hidden">
-                <Ionicons name="menu" size={22} color="#44403c" />
+              <TouchableOpacity
+                className="items-center justify-center mr-3 h-9 w-9 lg:hidden"
+                onPress={() => setIsMobileMenuOpen(true)}>
+                <Ionicons name="menu" size={28} color="#237227" />
               </TouchableOpacity>
               <View className="flex-1">
-                <Text className="mb-1 text-xl font-light lg:text-3xl text-stone-900">Dashboard</Text>
-                <Text className="mt-0.5 text-md font-light text-stone-500">
+                <Text className="text-lg font-bold text-stone-900 lg:text-2xl">Dashboard</Text>
+                <Text className="mt-0.5 text-xs text-stone-500 lg:text-sm">
                   Overview & analytics
                 </Text>
               </View>
@@ -1634,7 +1685,7 @@ export default function AdminDashboard({ onLogout, onNavigate }: AdminDashboardP
           </View>
         </View>
 
-        <View className="px-6 pt-6 pb-4">
+        <View className="px-5 pt-6 pb-4 lg:px-8">
           <View className="flex-row flex-wrap gap-3">
             {stats.map((stat, index) => (
               <View key={index} style={{ width: isWebView ? '23.5%' : '48%' }}>
@@ -1644,7 +1695,7 @@ export default function AdminDashboard({ onLogout, onNavigate }: AdminDashboardP
           </View>
         </View>
 
-        <View className="px-6 pb-6 lg:flex-row lg:gap-5">
+        <View className="px-5 pb-6 lg:px-8 lg:flex-row lg:gap-5">
           <View className="flex-1 mb-5 lg:mb-0">
             {/* Sites Accomplished Per Day Chart Card */}
             <View

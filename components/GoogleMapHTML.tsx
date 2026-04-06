@@ -28,7 +28,8 @@ export const googleMapHtml = `
           let userMarker = null;
           let searchMarker = null;
           let siteMarkers = [];
-          let sitePolylines = [];
+          let sitePolylinesById = {}; // { [siteId]: google.maps.Polyline }
+          let siteRoutesById = {}; // { [siteId]: Array<{lat:number,lng:number}> }
           let geocoder = null;
           let userProvince = 'Lanao del Norte'; // Default to Lanao del Norte
           let userLocation = null; // Store user's current location
@@ -38,8 +39,6 @@ export const googleMapHtml = `
           let pendingSitesData = null; // Store sites to reload when user location becomes available
           let currentSitesData = null; // Store current sites data for polyline redraw
           let lastPolylineUpdate = 0; // Track last polyline update time to avoid excessive redraws
-          let lastUserLocation = null; // Track last user location used for polyline
-          let minDistanceForRedraw = 100; // Increased from 50 to 100 meters to reduce redraws
           let lastPositionUpdate = 0; // Track last position update to debounce
           let locationUpdateThrottle = 1000; // Only update positions once per second
           
@@ -58,6 +57,19 @@ export const googleMapHtml = `
                       Math.sin(dLng / 2) * Math.sin(dLng / 2);
             const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
             return R * c;
+          }
+
+          function updateAllSitePolylines() {
+            if (!userLocation) return;
+            const origin = { lat: userLocation.lat, lng: userLocation.lng };
+            Object.keys(sitePolylinesById).forEach((siteId) => {
+              const polyline = sitePolylinesById[siteId];
+              const routePoints = siteRoutesById[siteId];
+              if (!polyline || !routePoints || routePoints.length === 0) return;
+              // Keep the existing route geometry, but pin the start to latest user location
+              const nextPath = [origin, ...routePoints.slice(1)];
+              polyline.setPath(nextPath);
+            });
           }
           
           // Function to create a static directional marker without pulsing
@@ -229,21 +241,12 @@ export const googleMapHtml = `
                     }, 100);
                   }
                 }
-                
-                // Redraw polylines to keep them connected to current employee location
-                if (currentSitesData && currentSitesData.length > 0) {
-                  const now = Date.now();
-                  // Update polyline every 2 seconds to keep it connected to GPS marker
-                  if (now - lastPolylineUpdate > 2000) {
-                    // Always redraw when enough time has passed (no distance check needed)
-                    lastPolylineUpdate = now;
-                    lastUserLocation = { ...userLocation };
-                    window.setTimeout(() => {
-                      window.dispatchEvent(new MessageEvent('message', {
-                        data: { type: 'loadSites', sites: currentSitesData }
-                      }));
-                    }, 100);
-                  }
+
+                // Keep all site polylines connected to the latest user location
+                const now2 = Date.now();
+                if (now2 - lastPolylineUpdate > 1000) {
+                  lastPolylineUpdate = now2;
+                  updateAllSitePolylines();
                 }
               },
               function(error) {
@@ -383,10 +386,10 @@ export const googleMapHtml = `
                 return;
               }
               
-              // Check if sites data actually changed (compare IDs)
-              const sitesChanged = !currentSitesData || 
-                currentSitesData.length !== sites.length ||
-                sites.some((site, idx) => !currentSitesData[idx] || currentSitesData[idx].id !== site.id);
+              // Check if sites data actually changed (compare IDs, ignore ordering)
+              const prevIds = (currentSitesData || []).map(s => s.id).slice().sort().join('|');
+              const nextIds = (sites || []).map(s => s.id).slice().sort().join('|');
+              const sitesChanged = prevIds !== nextIds;
               
               // Only redraw if sites changed or this is the first load
               if (!sitesChanged) {
@@ -401,8 +404,11 @@ export const googleMapHtml = `
               siteMarkers = [];
               
               // Clear existing polylines
-              sitePolylines.forEach(polyline => polyline.setMap(null));
-              sitePolylines = [];
+              Object.keys(sitePolylinesById).forEach((siteId) => {
+                sitePolylinesById[siteId]?.setMap(null);
+              });
+              sitePolylinesById = {};
+              siteRoutesById = {};
               
               const directionsService = new google.maps.DirectionsService();
               
@@ -492,22 +498,27 @@ export const googleMapHtml = `
                         
                         // Draw route polyline for this site
                         // Use the ORIGINAL calculated route from Google Directions
-                        const pathPoints = route.overview_path;
-                        
-                        // Start polyline from current user location (always the latest)
-                        const fullPath = [currentUserLocation, ...pathPoints];
-                        
-                        // Ensure destination is included
+                        const overviewPath = (route.overview_path || []).map((p) => ({ lat: p.lat(), lng: p.lng() }));
+                        // Persist route geometry per-site so we can keep the start "tracking" the user
+                        siteRoutesById[site.id] = overviewPath;
+
+                        // Build path: pin start to latest user position, keep route geometry after first point
+                        const fullPath = [{ lat: currentUserLocation.lat, lng: currentUserLocation.lng }, ...overviewPath.slice(1)];
+
+                        // Ensure destination is included (for safety)
                         const lastPoint = fullPath[fullPath.length - 1];
-                        if (!lastPoint || lastPoint.lat() !== site.latitude || lastPoint.lng() !== site.longitude) {
+                        if (!lastPoint || lastPoint.lat !== site.latitude || lastPoint.lng !== site.longitude) {
                           fullPath.push({ lat: site.latitude, lng: site.longitude });
                         }
-                        
-                        // Remove old polyline for this site if exists
-                        if (sitePolylines.length > sites.indexOf(site)) {
-                          sitePolylines[sites.indexOf(site)]?.setMap(null);
+
+                        // Create or update polyline for this site
+                        const existingPolyline = sitePolylinesById[site.id];
+                        if (existingPolyline) {
+                          existingPolyline.setPath(fullPath);
+                          existingPolyline.setMap(map);
+                          return;
                         }
-                        
+
                         const sitePolyline = new google.maps.Polyline({
                           path: fullPath,
                           geodesic: true,
@@ -517,14 +528,48 @@ export const googleMapHtml = `
                           map: map,
                           zIndex: 5  // Ensure polyline is visible
                         });
-                        
-                        // Store polyline reference - update or append
-                        const siteIndex = sites.indexOf(site);
-                        if (siteIndex < sitePolylines.length) {
-                          sitePolylines[siteIndex] = sitePolyline;
+
+                        sitePolylinesById[site.id] = sitePolyline;
+                      } else {
+                        // Fallback: draw a straight tracking line if directions is unavailable
+                        const origin = { lat: currentUserLocation.lat, lng: currentUserLocation.lng };
+                        const dest = { lat: site.latitude, lng: site.longitude };
+
+                        const straightDistanceM = calculateDistance(origin.lat, origin.lng, dest.lat, dest.lng);
+                        if (straightDistanceM < 1000) {
+                          distanceText = Math.round(straightDistanceM) + 'm';
                         } else {
-                          sitePolylines.push(sitePolyline);
+                          distanceText = (straightDistanceM / 1000).toFixed(1) + 'km';
                         }
+
+                        siteMarker.setTitle(site.name + ' - ' + distanceText);
+                        infoContent = '<div style="font-family: sans-serif; padding: 12px; width: 220px;">' +
+                          '<strong style="font-size: 16px; display: block; margin-bottom: 8px;">' + site.name + '</strong>' +
+                          '<div style="font-size: 12px; color: #6b7280;">Route unavailable</div>' +
+                          '<div style="margin-top: 8px; font-size: 18px; font-weight: 700; color: #ef4444;">' + distanceText + '</div>' +
+                          '<div style="font-size: 12px; color: #6b7280; margin-top: 2px;">straight-line distance</div>' +
+                          '</div>';
+                        infoWindow.setContent(infoContent);
+
+                        // Store minimal route so the line keeps tracking as the user moves
+                        siteRoutesById[site.id] = [origin, dest];
+
+                        const existingPolyline = sitePolylinesById[site.id];
+                        if (existingPolyline) {
+                          existingPolyline.setPath([origin, dest]);
+                          existingPolyline.setMap(map);
+                          return;
+                        }
+
+                        sitePolylinesById[site.id] = new google.maps.Polyline({
+                          path: [origin, dest],
+                          geodesic: true,
+                          strokeColor: '#ef4444',
+                          strokeOpacity: 1,
+                          strokeWeight: 6,
+                          map: map,
+                          zIndex: 5
+                        });
                       }
                     });
                   }

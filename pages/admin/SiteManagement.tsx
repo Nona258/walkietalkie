@@ -128,6 +128,9 @@ export default function SiteManagement({ onNavigate, isMobileMenuOpen, setIsMobi
   const [detailModalVisible, setDetailModalVisible] = useState(false);
   const [selectedArchivedSite, setSelectedArchivedSite] = useState<any>(null);
 
+  // Mobile card expansion state - track which card shows the map
+  const [expandedCardId, setExpandedCardId] = useState<string | null>(null);
+
   // Helper function to convert a stored path to a public URL
   const getPublicImageUrl = (path: string): string => {
     if (path.startsWith('http://') || path.startsWith('https://')) {
@@ -1615,7 +1618,7 @@ export default function SiteManagement({ onNavigate, isMobileMenuOpen, setIsMobi
                 </Text>
                 <TextInput
                   className={`border bg-white ${
-                    touched.siteName && errors.siteName ? 'border-red-500' : 'border-[#237227]'
+                    touched.siteName && errors.siteName ? 'border-red-500' : 'border-stone-300'
                   } rounded-xl px-4 py-3 text-sm text-stone-900`}
                   id="site-name-input"
                   nativeID="site-name-input"
@@ -1654,7 +1657,7 @@ export default function SiteManagement({ onNavigate, isMobileMenuOpen, setIsMobi
                 </Text>
                 <View
                   className={`border bg-white ${
-                    touched.company && errors.company ? 'border-red-500' : 'border-[#237227]'
+                    touched.company && errors.company ? 'border-red-500' : 'border-stone-300'
                   } rounded-xl px-4 py-3`}>
                   <select
                     style={{
@@ -1687,7 +1690,7 @@ export default function SiteManagement({ onNavigate, isMobileMenuOpen, setIsMobi
                 <Text className="mb-2 text-sm font-medium text-stone-700">Branch/Department</Text>
                 <View
                   className={`border bg-white ${
-                    touched.branch_id && errors.branch_id ? 'border-red-500' : 'border-[#237227]'
+                    touched.branch_id && errors.branch_id ? 'border-red-500' : 'border-stone-300'
                   } rounded-xl px-4 py-3`}>
                   <select
                     style={{
@@ -1721,7 +1724,7 @@ export default function SiteManagement({ onNavigate, isMobileMenuOpen, setIsMobi
               <View className="flex-row flex-wrap -mx-2">
                 <View className="w-1/2 px-2 mb-4">
                   <Text className="mb-2 text-sm font-medium text-stone-700">Start Time</Text>
-                  <div className={`rounded-xl border border-[#237227] bg-white px-4 py-3`}>
+                  <div className={`rounded-xl border border-stone-300 bg-white px-4 py-3`}>
                     <input
                       type="time"
                       style={{
@@ -1739,7 +1742,7 @@ export default function SiteManagement({ onNavigate, isMobileMenuOpen, setIsMobi
 
                 <View className="w-1/2 px-2 mb-4">
                   <Text className="mb-2 text-sm font-medium text-stone-700">End Time</Text>
-                  <div className={`rounded-xl border border-[#237227] bg-white px-4 py-3`}>
+                  <div className={`rounded-xl border border-stone-300 bg-white px-4 py-3`}>
                     <input
                       type="time"
                       style={{
@@ -1763,7 +1766,7 @@ export default function SiteManagement({ onNavigate, isMobileMenuOpen, setIsMobi
                     className={`border bg-white ${
                       touched.membersCount && errors.membersCount
                         ? 'border-red-500'
-                        : 'border-[#237227]'
+                        : 'border-stone-300'
                     } rounded-xl px-4 py-3`}>
                     <input
                       list="members-list"
@@ -1801,7 +1804,7 @@ export default function SiteManagement({ onNavigate, isMobileMenuOpen, setIsMobi
                 <Text className="mb-2 text-sm font-medium text-stone-700">
                   Group Leader (Optional)
                 </Text>
-                <View className="px-4 py-3 bg-white border rounded-xl border-[#237227]">
+                <View className="px-4 py-3 bg-white border rounded-xl border-stone-300">
                   <select
                     style={{
                       width: '100%',
@@ -1929,7 +1932,7 @@ export default function SiteManagement({ onNavigate, isMobileMenuOpen, setIsMobi
                 </Text>
                 <TextInput
                   className={`border bg-white ${
-                    touched.siteName && errors.siteName ? 'border-red-500' : 'border-[#237227]' 
+                    touched.siteName && errors.siteName ? 'border-red-500' : 'border-stone-300' 
                   } rounded-xl px-4 py-3 text-sm text-stone-900`}
                   placeholder="e.g., Downtown Office"
                   placeholderTextColor="#a8a29e"
@@ -1967,7 +1970,7 @@ export default function SiteManagement({ onNavigate, isMobileMenuOpen, setIsMobi
                 </Text>
                 <View
                   className={`border bg-white ${
-                    touched.company && errors.company ? 'border-red-500' : 'border-[#237227]'
+                    touched.company && errors.company ? 'border-red-500' : 'border-stone-300'
                   } rounded-xl px-4 py-3`}>
                   <select
                     style={{
@@ -2002,7 +2005,7 @@ export default function SiteManagement({ onNavigate, isMobileMenuOpen, setIsMobi
                 </Text>
                 <View
                   className={`border bg-white ${
-                    touched.branch_id && errors.branch_id ? 'border-red-500' : 'border-[#237227]'
+                    touched.branch_id && errors.branch_id ? 'border-red-500' : 'border-stone-300'
                   } rounded-xl px-4 py-3`}>
                   <select
                     style={{
@@ -2034,7 +2037,7 @@ export default function SiteManagement({ onNavigate, isMobileMenuOpen, setIsMobi
               <View className="flex-row flex-wrap -mx-2">
                 <View className="w-1/2 px-2 mb-4">
                   <Text className="mb-2 text-sm font-medium text-stone-700">Start Time</Text>
-                  <div className={`rounded-xl border border-[#237227] bg-white px-4 py-3`}>
+                  <div className={`rounded-xl border border-stone-300 bg-white px-4 py-3`}>
                     <input
                       type="time"
                       style={{
@@ -2052,7 +2055,7 @@ export default function SiteManagement({ onNavigate, isMobileMenuOpen, setIsMobi
 
                 <View className="w-1/2 px-2 mb-4">
                   <Text className="mb-2 text-sm font-medium text-stone-700">End Time</Text>
-                  <div className={`rounded-xl border border-[#237227] bg-white px-4 py-3`}>
+                  <div className={`rounded-xl border border-stone-300 bg-white px-4 py-3`}>
                     <input
                       type="time"
                       style={{
@@ -2076,7 +2079,7 @@ export default function SiteManagement({ onNavigate, isMobileMenuOpen, setIsMobi
                     className={`border bg-white ${
                       touched.membersCount && errors.membersCount
                         ? 'border-red-500'
-                        : 'border-[#237227]'
+                        : 'border-stone-300'
                     } rounded-xl px-4 py-3`}>
                     <input
                       list="members-list"

@@ -15,6 +15,8 @@ interface ActivityLogsProps {
       | 'employee'
       | 'settings'
   ) => void;
+  isMobileMenuOpen?: boolean;
+  setIsMobileMenuOpen?: (open: boolean) => void;
 }
 
 interface Activity {
@@ -30,8 +32,7 @@ interface Activity {
   icon?: string | null;
 }
 
-export default function ActivityLogs({ onNavigate }: ActivityLogsProps) {
-  const [, setIsDrawerOpen] = useState(false);
+export default function ActivityLogs({ onNavigate, isMobileMenuOpen, setIsMobileMenuOpen }: ActivityLogsProps) {
   const [isNotificationOpen, setIsNotificationOpen] = useState(false);
   const [activities, setActivities] = useState<Activity[]>([]);
   const [loading, setLoading] = useState(true);
@@ -97,11 +98,11 @@ export default function ActivityLogs({ onNavigate }: ActivityLogsProps) {
             <View className="flex-row items-center flex-1">
               <TouchableOpacity
                 className="items-center justify-center mr-3 h-9 w-9 lg:hidden"
-                onPress={() => setIsDrawerOpen(true)}>
-                <Ionicons name="menu" size={24} color="#44403c" />
+                onPress={() => setIsMobileMenuOpen?.(true)}>
+                <Ionicons name="menu" size={28} color="#237227" />
               </TouchableOpacity>
               <View className="flex-1">
-                <Text className="mb-1 text-xl font-light lg:text-3xl text-stone-900">Activity Logs</Text>
+                <Text className="text-lg font-bold text-stone-900 lg:text-2xl">Activity Logs</Text>
                 <Text className="mt-0.5 text-xs text-stone-500 lg:text-sm">
                   Welcome back, Administrator
                 </Text>

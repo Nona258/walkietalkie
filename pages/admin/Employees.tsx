@@ -69,11 +69,11 @@ function ActionBtn({ icon, onPress, danger }: { icon: any; onPress: () => void; 
       onPress={onPress}
       hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
       className={
-        `w-7 h-7 rounded-full items-center justify-center ` +
-        (danger ? 'bg-[#ef4444]' : 'bg-[#237227]')
+        `w-8 h-8 rounded-full items-center justify-center bg-[#f8fafb] border ` +
+        (danger ? 'border-[#ef4444]' : 'border-[#237227]')
       }
     >
-      <Ionicons name={icon} size={13} color="#f8fafb" />
+      <Ionicons name={icon} size={14} color={danger ? '#ef4444' : '#237227'} />
     </TouchableOpacity>
   );
 }
@@ -91,9 +91,16 @@ interface EmployeesProps {
       | 'settings'
   ) => void;
   pendingUsersCount?: number;
+  isMobileMenuOpen?: boolean;
+  setIsMobileMenuOpen?: (open: boolean) => void;
 }
 
-export default function Employees({ onNavigate, pendingUsersCount = 0 }: EmployeesProps) {
+export default function Employees({
+  onNavigate,
+  pendingUsersCount = 0,
+  isMobileMenuOpen,
+  setIsMobileMenuOpen,
+}: EmployeesProps) {
   const PAGE_SIZE = 10;
   const windowWidth = Dimensions.get('window').width;
   const isWebView = windowWidth > 900;
@@ -102,7 +109,6 @@ export default function Employees({ onNavigate, pendingUsersCount = 0 }: Employe
   const subtitleSize = isWebView ? 'text-[16px]' : 'text-[12px]';
 
   // UI-only states for visibility
-  const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   const [isNotificationOpen, setIsNotificationOpen] = useState(false);
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
@@ -408,29 +414,28 @@ export default function Employees({ onNavigate, pendingUsersCount = 0 }: Employe
     <View className="flex-1 bg-[#f8fafb]">
       <ScrollView className="flex-1" showsVerticalScrollIndicator={false}>
         {/* ── Top Header ───────────────────────────────────────────────────── */}
-        <View className={`bg-[#f8fafb] ${pageX} pt-[18px] pb-4 border-b border-[#e5e7eb] flex-row items-center justify-between`}>
-          <View className="flex-row items-center flex-1">
-            {!isWebView && (
+        <View className="px-5 pt-4 pb-3 bg-white border-b border-stone-200 lg:px-8">
+          <View className="flex-row items-center justify-between">
+            <View className="flex-row items-center flex-1">
               <TouchableOpacity
-                onPress={() => setIsDrawerOpen(true)}
-                className="items-center justify-center w-10 h-10 mr-3"
-              >
+                onPress={() => setIsMobileMenuOpen?.(true)}
+                className="items-center justify-center mr-3 h-9 w-9 lg:hidden">
                 <Ionicons name="menu" size={28} color="#237227" />
               </TouchableOpacity>
-            )}
-            <View className="flex-1">
-              <Text className={`${titleSize} font-light text-[#1a2e1b] leading-[26px]`}>
-                Employee Management
-              </Text>
-              <Text className={`${subtitleSize} text-black mt-[1px]`}>
-                Welcome back, Administrator
-              </Text>
+              <View className="flex-1">
+                <Text className="text-lg font-bold text-stone-900 lg:text-2xl">
+                  Employee Management
+                </Text>
+                <Text className="mt-0.5 text-xs text-stone-500 lg:text-sm">
+                  Welcome back, Administrator
+                </Text>
+              </View>
             </View>
           </View>
         </View>
 
         {/* ── Page Body ────────────────────────────────────────────────────── */}
-        <View className={`${pageX} ${isWebView ? 'pt-6' : 'pt-4'} pb-12 w-full`}>
+        <View className="w-full px-5 pt-4 pb-12 lg:px-8 lg:pt-6">
           <View className="bg-white rounded-[14px] border border-[#e5e7eb] overflow-hidden w-full">
             {/* Toolbar */}
             <View className={`${isWebView ? 'px-5' : 'px-4'} py-[14px] border-b border-[#e5e7eb] gap-3`}>
@@ -596,7 +601,7 @@ export default function Employees({ onNavigate, pendingUsersCount = 0 }: Employe
                           <View className="flex-1 gap-2">
                             <View className="flex-row items-start justify-between">
                               <View className="flex-1">
-                                <Text className="text-[14px] font-semibold text-[#1a2e1b]">{emp.full_name || 'N/A'}</Text>
+                                <Text className="text-[14px] font-semibold text-[#237227]">{emp.full_name || 'N/A'}</Text>
                                 <Text className="text-[14px] text-black mt-0.5 capitalize">{emp.role || 'N/A'}</Text>
                               </View>
                               <StatusPill status={emp.status} />
@@ -614,14 +619,14 @@ export default function Employees({ onNavigate, pendingUsersCount = 0 }: Employe
                             <View className="flex-row gap-2 mt-1">
                               <TouchableOpacity
                                 onPress={() => openEditModal(emp)}
-                                className="flex-1 flex-row items-center justify-center gap-[5px] py-2 rounded-[7px] bg-[#000000] border border-[#237227]"
+                                className="flex-1 flex-row items-center justify-center gap-[5px] py-2 rounded-full bg-[#f8fafb] border border-[#237227]"
                               >
                                 <Ionicons name="create-outline" size={14} color="#237227" />
-                                <Text className="text-[14px] font-semibold text-stone-900">Edit</Text>
+                                <Text className="text-[14px] font-semibold text-[#237227]">Edit</Text>
                               </TouchableOpacity>
                               <TouchableOpacity
                                 onPress={() => handleDeleteEmployee(emp)}
-                                className="flex-1 flex-row items-center justify-center gap-[5px] py-2 rounded-[7px] bg-[#f8fafb] border border-[#ef4444]"
+                                className="flex-1 flex-row items-center justify-center gap-[5px] py-2 rounded-full bg-[#f8fafb] border border-[#ef4444]"
                               >
                                 <Ionicons name="trash-outline" size={14} color="#ef4444" />
                                 <Text className="text-[14px] font-semibold text-[#ef4444]">Delete</Text>

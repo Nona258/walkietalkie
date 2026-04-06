@@ -126,35 +126,28 @@ export default function Settings({ onNavigate, isMobileMenuOpen, setIsMobileMenu
         contentContainerStyle={SCROLL_CONTENT_CONTAINER_STYLE}
       >
         {/* ── Top Header ─────────────────────────────────────────────────────── */}
-        <View
-          className={`${isWebView ? 'px-6' : 'px-4'} pt-[18px] pb-4 border-b border-[#e5e7eb] flex-row items-center justify-between bg-white`}
-        >
-          <View className="flex-row items-center flex-1">
-            {!isWebView && (
+        <View className="px-5 pt-4 pb-3 bg-white border-b border-stone-200 lg:px-8">
+          <View className="flex-row items-center justify-between">
+            <View className="flex-row items-center flex-1">
               <TouchableOpacity
                 onPress={openMenu}
-                className="items-center justify-center w-10 h-10 mr-3"
-              >
+                className="items-center justify-center mr-3 h-9 w-9 lg:hidden">
                 <Ionicons name="menu" size={28} color={COLORS.green} />
               </TouchableOpacity>
-            )}
-            <View className="flex-1">
-              <Text
-                className={`${isWebView ? 'text-[30px]' : 'text-[20px]'} font-light text-[#1a2e1b] leading-[26px]`}
-              >
-                Account Settings
-              </Text>
-              <Text
-                className={`${isWebView ? 'text-base' : 'text-xs'} mt-[1px] text-black`}
-              >
-                Welcome back, Administrator
-              </Text>
+              <View className="flex-1">
+                <Text className="text-lg font-bold text-stone-900 lg:text-2xl">
+                  Account Settings
+                </Text>
+                <Text className="mt-0.5 text-xs text-stone-500 lg:text-sm">
+                  Welcome back, Administrator
+                </Text>
+              </View>
             </View>
           </View>
         </View>
 
         {/* ── Page Body ────────────────────────────────────────────────────── */}
-        <View className={`${isWebView ? 'px-6 py-6' : 'px-4 py-4'} w-full`}>
+        <View className="px-5 py-4 lg:px-8 lg:py-6 w-full">
           <View className={`${isWebView ? 'flex-row' : 'flex-col'} items-stretch ${isWebView ? 'gap-5' : 'gap-4'}`}>
             {/* ── LEFT COLUMN — Profile Card ───────────────────────────────── */}
             <View className={isWebView ? 'w-[280px] shrink-0 self-stretch' : 'w-full'}>

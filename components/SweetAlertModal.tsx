@@ -34,7 +34,7 @@ export default function SweetAlertModal({
   const iconMap = {
     success: { name: 'checkmark-circle' as const, color: '#10b981' },
     error: { name: 'close-circle' as const, color: '#ef4444' },
-    warning: { name: 'warning' as const, color: '#f59e0b' },
+    warning: { name: 'warning' as const, color: '#ef4444' },
     info: { name: 'information-circle' as const, color: '#3b82f6' },
   };
 
@@ -53,7 +53,7 @@ export default function SweetAlertModal({
           {/* Icon */}
           <View
             className="items-center justify-center w-20 h-20 mb-5 rounded-full"
-            style={{ backgroundColor: palette.green }}>
+            style={{ backgroundColor: icon.color }}>
             <Ionicons name={icon.name} size={48} color={palette.cloudmist} />
           </View>
 
@@ -71,10 +71,11 @@ export default function SweetAlertModal({
           <View className="flex-row w-full gap-3">
             {showCancelButton && onCancel && (
               <TouchableOpacity
-                className="flex-1 items-center rounded-2xl border border-gray-200 py-3.5"
+                className="flex-1 items-center rounded-2xl border py-3.5"
+                style={{ borderColor: palette.green }}
                 onPress={onCancel}
                 activeOpacity={0.8}>
-                <Text className="text-base font-semibold text-[#6b7280]">{cancelText}</Text>
+                <Text className="text-base font-semibold text-stone-900">{cancelText}</Text>
               </TouchableOpacity>
             )}
             <TouchableOpacity

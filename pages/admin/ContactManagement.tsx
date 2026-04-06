@@ -1365,17 +1365,17 @@ export default function ContactManagement({ onNavigate, isMobileMenuOpen, setIsM
         <View
           className={`${!showContactList ? 'hidden lg:flex' : 'flex'} flex-1 flex-col border-r border-gray-100 bg-white lg:w-80 lg:flex-none`}>
           {/* Panel header */}
-          <View className="px-4 pt-5 pb-3 bg-white border-b border-gray-100">
+          <View className="px-5 pt-4 pb-3 bg-white border-b border-gray-100 lg:px-6">
             <View className="flex-row items-center justify-between mb-3">
               <View className="flex-row items-center gap-2">
                 {setIsMobileMenuOpen && (
                   <TouchableOpacity
-                    className="items-center justify-center w-8 h-8 lg:hidden"
+                    className="items-center justify-center mr-1 h-9 w-9 lg:hidden"
                     onPress={() => setIsMobileMenuOpen(true)}>
-                    <Ionicons name="menu" size={25} color="#237227" />
+                    <Ionicons name="menu" size={28} color="#237227" />
                   </TouchableOpacity>
                 )}
-                <Text className="text-lg font-bold text-gray-900">Messages</Text>
+                <Text className="text-lg font-bold text-gray-900 lg:text-xl">Messages</Text>
                 <View className="bg-[#237227] px-2 py-0.5 rounded-full">
                   <Text className="text-xs font-bold text-[#f8fafb]">{contacts.length}</Text>
                 </View>

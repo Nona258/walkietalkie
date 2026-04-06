@@ -2,10 +2,12 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
+  Dimensions,
   Platform,
   RefreshControl,
   ScrollView,
   Text,
+  TextInput,
   TouchableOpacity,
   View,
 } from 'react-native';
@@ -41,6 +43,12 @@ function timetzToDisplay(t: string | null | undefined) {
 function formatCreatedAt(ts: string) {
   const d = new Date(ts);
   if (Number.isNaN(d.getTime())) return ts;
+  return d.toLocaleDateString();
+}
+
+function formatCreatedAtFull(ts: string) {
+  const d = new Date(ts);
+  if (Number.isNaN(d.getTime())) return ts;
   return `${d.toLocaleDateString()} ${d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
 }
 
@@ -66,7 +74,7 @@ function buildAttendanceHtml(rows: AttendanceWithUserRow[]) {
 
       return `
 				<tr>
-					<td>${escapeHtml(formatCreatedAt(r.created_at))}</td>
+					<td>${escapeHtml(formatCreatedAtFull(r.created_at))}</td>
 					<td>${escapeHtml(fullName)}</td>
 					<td>${escapeHtml(role)}</td>
 					<td>${escapeHtml(start)}</td>
@@ -120,12 +128,105 @@ function buildAttendanceHtml(rows: AttendanceWithUserRow[]) {
 	`;
 }
 
-export default function EmployeeLogs({ onBack }: { onBack?: () => void }) {
+function EmployeeAvatar({ name }: { name: string }) {
+  const initials =
+    name
+      ?.split(' ')
+      .map((w) => w[0])
+      .join('')
+      .toUpperCase()
+      .slice(0, 2) || '?';
+
+  return (
+    <View className="w-8 h-8 rounded-full bg-[#237227] items-center justify-center border border-[#f0f4f0]">
+      <Text className="text-[11px] font-bold text-[#f8fafb]">{initials}</Text>
+    </View>
+  );
+}
+
+function StatusPill({ status }: { status: string }) {
+  const statusLower = (status || '').toLowerCase();
+  const isPresent = statusLower === 'present';
+  const isLate = statusLower === 'late';
+  const isAbsent = statusLower === 'absent';
+
+  return (
+    <View
+      className={
+        `flex-row items-center gap-[5px] px-2 py-[3px] rounded-full border self-start ` +
+        (isPresent
+          ? 'bg-[#e8f5e9] border-[#237227]'
+          : isLate
+            ? 'bg-[#fef3c7] border-[#fbbf24]'
+            : isAbsent
+              ? 'bg-[#fef2f2] border-[#fca5a5]'
+              : 'bg-[#f3f4f6] border-[#e5e7eb]')
+      }
+    >
+      <View
+        className={`w-[6px] h-[6px] rounded-full ${
+          isPresent
+            ? 'bg-[#237227]'
+            : isLate
+              ? 'bg-[#d97706]'
+              : isAbsent
+                ? 'bg-[#ef4444]'
+                : 'bg-[#8fa88f]'
+        }`}
+      />
+      <Text
+        className={`text-[10px] font-semibold ${
+          isPresent
+            ? 'text-[#237227]'
+            : isLate
+              ? 'text-[#d97706]'
+              : isAbsent
+                ? 'text-[#ef4444]'
+                : 'text-[#8fa88f]'
+        }`}
+      >
+        {status || '—'}
+      </Text>
+    </View>
+  );
+}
+
+function ColHeader({ label, className }: { label: string; className?: string }) {
+  return (
+    <View className={className}>
+      <Text className="text-[11px] font-semibold text-[#8fa88f] uppercase tracking-[0.5px]">
+        {label}
+      </Text>
+    </View>
+  );
+}
+
+export default function EmployeeLogs({
+  onBack,
+  setIsDrawerOpen,
+  isMobileMenuOpen,
+  setIsMobileMenuOpen,
+}: {
+  onBack?: () => void;
+  setIsDrawerOpen?: (open: boolean) => void;
+  isMobileMenuOpen?: boolean;
+  setIsMobileMenuOpen?: (open: boolean) => void;
+}) {
+  const PAGE_SIZE = 10;
+
+  const windowWidth = Dimensions.get('window').width;
+  const isWebView = windowWidth > 900;
+  const pageX = isWebView ? 'px-6' : 'px-4';
+  const titleSize = isWebView ? 'text-[30px]' : 'text-[20px]';
+  const subtitleSize = isWebView ? 'text-[16px]' : 'text-[12px]';
+
   const [rows, setRows] = useState<AttendanceWithUserRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [exporting, setExporting] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [currentPage, setCurrentPage] = useState(1);
 
   const fetchRows = useCallback(async () => {
     setError(null);
@@ -177,7 +278,6 @@ export default function EmployeeLogs({ onBack }: { onBack?: () => void }) {
         w.document.write(html);
         w.document.close();
         w.focus();
-        // Browser print dialog allows "Save as PDF".
         w.print();
         return;
       }
@@ -203,125 +303,318 @@ export default function EmployeeLogs({ onBack }: { onBack?: () => void }) {
     }
   }, [rows]);
 
+  const filteredRows = useMemo(() => {
+    const query = searchQuery.toLowerCase();
+    return rows.filter(
+      (r) =>
+        r.users?.full_name?.toLowerCase().includes(query) ||
+        r.users?.role?.toLowerCase().includes(query) ||
+        r.status?.toLowerCase().includes(query) ||
+        formatCreatedAt(r.created_at).toLowerCase().includes(query)
+    );
+  }, [rows, searchQuery]);
+
+  const totalPages = useMemo(() => {
+    return Math.max(1, Math.ceil(filteredRows.length / PAGE_SIZE));
+  }, [filteredRows.length]);
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchQuery]);
+
+  useEffect(() => {
+    setCurrentPage((p) => Math.min(Math.max(p, 1), totalPages));
+  }, [totalPages]);
+
+  const paginatedRows = useMemo(() => {
+    const start = (currentPage - 1) * PAGE_SIZE;
+    return filteredRows.slice(start, start + PAGE_SIZE);
+  }, [filteredRows, currentPage]);
+
+  const showingCount = useMemo(() => {
+    if (filteredRows.length === 0) return 0;
+    const end = currentPage * PAGE_SIZE;
+    return Math.min(end, filteredRows.length);
+  }, [filteredRows.length, currentPage]);
+
   const summary = useMemo(() => {
     const now = new Date().toLocaleString();
     return `${rows.length} records • Updated ${now}`;
   }, [rows.length]);
 
   return (
-    <View className="flex-1 bg-stone-50">
+    <View className="flex-1 bg-[#f8fafb]">
       <ScrollView
-        className="flex-1 bg-stone-50"
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}>
-        {/* Header */}
-        <View className="border-b border-stone-100 bg-white px-6 pb-4 pt-5">
+        className="flex-1"
+        showsVerticalScrollIndicator={false}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+      >
+        {/* ── Top Header ───────────────────────────────────────────────────── */}
+        <View className="px-4 pt-4 pb-3 bg-white border-b border-stone-200 lg:px-8">
           <View className="flex-row items-center justify-between">
-            <View className="flex-row items-center">
-              {onBack && (
-                <TouchableOpacity
-                  className="mr-3 h-9 w-9 items-center justify-center rounded-lg border border-stone-100 bg-stone-50"
-                  onPress={onBack}
-                  activeOpacity={0.8}>
-                  <Ionicons name="arrow-back" size={18} color="#44403c" />
-                </TouchableOpacity>
+            <View className="flex-row items-center flex-1">
+              {!isWebView && (
+                onBack ? (
+                  <TouchableOpacity
+                    onPress={onBack}
+                    className="items-center justify-center mr-3 h-9 w-9"
+                    accessible={true}
+                    accessibilityLabel="Go back">
+                    <Ionicons name="arrow-back" size={26} color="#237227" />
+                  </TouchableOpacity>
+                ) : setIsDrawerOpen ? (
+                  <TouchableOpacity
+                    onPress={() => setIsDrawerOpen(true)}
+                    className="items-center justify-center mr-3 h-9 w-9"
+                    accessible={true}
+                    accessibilityLabel="Open menu">
+                    <Ionicons name="menu" size={26} color="#237227" />
+                  </TouchableOpacity>
+                ) : setIsMobileMenuOpen ? (
+                  <TouchableOpacity
+                    onPress={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
+                    className="items-center justify-center mr-3 h-9 w-9"
+                    accessible={true}
+                    accessibilityLabel="Toggle menu">
+                    <Ionicons name="menu" size={26} color="#237227" />
+                  </TouchableOpacity>
+                ) : null
               )}
-              <View>
-                <Text className="text-xl font-bold tracking-tight text-stone-900">
+              <View className="flex-1">
+                <Text className="text-base font-bold text-stone-900 lg:text-2xl">
                   Attendance Logs
                 </Text>
-                <Text className="mt-0.5 text-xs font-medium text-stone-400">{summary}</Text>
+                <Text className="mt-0.5 text-[11px] text-stone-500 lg:text-sm">{summary}</Text>
               </View>
             </View>
-
-            <TouchableOpacity
-              className={`flex-row items-center rounded-xl px-3 py-2 lg:px-4 lg:py-2.5 ${canExport ? 'bg-emerald-600' : 'bg-stone-300'}`}
-              onPress={exportToPdf}
-              disabled={!canExport}
-              activeOpacity={0.8}>
-              <Ionicons name="download-outline" size={18} color="white" />
-              <Text className="ml-1 text-xs font-semibold text-white lg:text-sm">
-                {exporting ? 'Exporting…' : 'Export PDF'}
-              </Text>
-            </TouchableOpacity>
           </View>
         </View>
 
-        <View className="px-6 pb-6 pt-4">
-          {loading ? (
-            <View className="items-center justify-center rounded-xl border border-stone-100 bg-white p-6">
-              <ActivityIndicator size="small" color="#10b981" />
-              <Text className="mt-3 text-sm text-stone-500">Loading attendance…</Text>
-            </View>
-          ) : error ? (
-            <View className="rounded-xl border border-red-100 bg-red-50 p-6">
-              <Text className="text-sm font-semibold text-red-600">Error: {error}</Text>
-              <TouchableOpacity
-                className="mt-4 flex-row items-center self-start rounded-lg bg-white px-3 py-2"
-                onPress={fetchRows}
-                activeOpacity={0.8}>
-                <Ionicons name="refresh" size={16} color="#44403c" />
-                <Text className="ml-2 text-sm font-medium text-stone-700">Retry</Text>
-              </TouchableOpacity>
-            </View>
-          ) : rows.length === 0 ? (
-            <View className="items-center justify-center rounded-xl border border-stone-100 bg-white p-8">
-              <View className="mb-3 h-12 w-12 items-center justify-center rounded-xl bg-stone-50">
-                <Ionicons name="time-outline" size={22} color="#d6d3d1" />
-              </View>
-              <Text className="text-sm font-medium text-stone-500">No attendance found</Text>
-            </View>
-          ) : (
-            <View className="gap-3">
-              {rows.map((r) => (
-                <View
-                  key={String(r.id)}
-                  className="rounded-xl border border-stone-100 bg-white p-4"
-                  style={{
-                    shadowColor: '#000',
-                    shadowOffset: { width: 0, height: 1 },
-                    shadowOpacity: 0.05,
-                    shadowRadius: 4,
-                  }}>
-                  <View className="flex-row items-start justify-between">
-                    <View className="flex-1">
-                      <Text className="text-sm font-semibold text-stone-900">
-                        {r.users?.full_name || 'Unknown'}
-                      </Text>
-                      <Text className="mt-0.5 text-xs font-medium text-stone-400">
-                        {(r.users?.role || '—').toString()} • {formatCreatedAt(r.created_at)}
-                      </Text>
-                    </View>
-                    <View className="rounded-full bg-stone-100 px-2 py-1">
-                      <Text className="text-[10px] font-semibold text-stone-600">
-                        {(r.status || '—').toString()}
-                      </Text>
-                    </View>
-                  </View>
-
-                  <View className="mt-3 flex-row flex-wrap gap-3">
-                    <View className="min-w-[90px]">
-                      <Text className="text-[11px] font-medium text-stone-400">Start</Text>
-                      <Text className="text-sm font-semibold text-stone-800">
-                        {timetzToDisplay(r.employee_start_time)}
-                      </Text>
-                    </View>
-                    <View className="min-w-[90px]">
-                      <Text className="text-[11px] font-medium text-stone-400">End</Text>
-                      <Text className="text-sm font-semibold text-stone-800">
-                        {timetzToDisplay(r.employee_end_time)}
-                      </Text>
-                    </View>
-                    <View className="min-w-[90px]">
-                      <Text className="text-[11px] font-medium text-stone-400">Total</Text>
-                      <Text className="text-sm font-semibold text-stone-800">
-                        {r.total_hours || '—'}
-                      </Text>
-                    </View>
+        {/* ── Page Body — full width, no maxWidth cap ─────────────────────── */}
+        <View className="w-full px-3 pt-3 pb-12 lg:px-8 lg:pt-6">
+          {/* ── Table — stretches full width ─────────────────────────────── */}
+          <View className="bg-white rounded-[14px] border border-[#e5e7eb] overflow-hidden w-full shadow-sm">
+            {/* Toolbar */}
+            <View className={`${isWebView ? 'px-5' : 'px-3'} py-3 border-b border-[#e5e7eb] gap-3`}>
+              <View className="flex-row items-center justify-between">
+                <View className="flex-row items-center gap-[10px] flex-1">
+                  <Ionicons name="time-outline" size={16} color="#237227" />
+                  <Text className="text-[13px] lg:text-[14px] font-bold text-[#1a2e1b]">All Records</Text>
+                  <View className="px-2 py-[2px] rounded-full bg-[#e8f5e9] border border-[#f0f4f0]">
+                    <Text className="text-[11px] font-semibold text-[#237227]">{filteredRows.length}</Text>
                   </View>
                 </View>
-              ))}
+                {isWebView && (
+                  <TouchableOpacity
+                    onPress={exportToPdf}
+                    disabled={!canExport}
+                    className={`flex-row items-center gap-2 px-4 py-2 rounded-lg ${
+                      canExport ? 'bg-[#237227]' : 'bg-[#d6d3d1]'
+                    }`}
+                  >
+                    <Ionicons name="download-outline" size={16} color="#ffffff" />
+                    <Text className="text-[13px] font-semibold text-white">Export PDF</Text>
+                  </TouchableOpacity>
+                )}
+              </View>
+
+              {/* Search and Export Row */}
+              <View className="flex-row items-center gap-2">
+                {/* Search Input */}
+                <View className="flex-1 flex-row items-center bg-[#f8fafb] border border-[#e5e7eb] rounded-lg px-3 py-2">
+                  <Ionicons name="search-outline" size={16} color="#8fa88f" />
+                  <TextInput
+                    placeholder="Search by name, role, status..."
+                    placeholderTextColor="#8fa88f"
+                    value={searchQuery}
+                    onChangeText={setSearchQuery}
+                    className="flex-1 ml-2 text-[13px] text-[#1a2e1b] outline-none"
+                  />
+                  {searchQuery.length > 0 && (
+                    <TouchableOpacity onPress={() => setSearchQuery('')}>
+                      <Ionicons name="close-circle" size={16} color="#8fa88f" />
+                    </TouchableOpacity>
+                  )}
+                </View>
+
+                {/* Mobile Export Button */}
+                {!isWebView && (
+                  <TouchableOpacity
+                    onPress={exportToPdf}
+                    disabled={!canExport}
+                    className={`w-10 h-10 rounded-lg items-center justify-center ${
+                      canExport ? 'bg-[#237227]' : 'bg-[#d6d3d1]'
+                    }`}
+                    accessible={true}
+                    accessibilityLabel="Export to PDF">
+                    <Ionicons name="download-outline" size={18} color="#ffffff" />
+                  </TouchableOpacity>
+                )}
+              </View>
             </View>
-          )}
+
+            {/* Loading / Error / Empty */}
+            {loading ? (
+              <View className="items-center py-[60px] gap-[10px]">
+                <ActivityIndicator size="large" color="#237227" />
+                <Text className="text-[14px] text-[#8fa88f]">Loading attendance logs...</Text>
+              </View>
+            ) : error ? (
+              <View className="items-center py-[60px] gap-[10px]">
+                <View className="w-12 h-12 rounded-[12px] bg-[#fef2f2] items-center justify-center">
+                  <Ionicons name="alert-circle-outline" size={22} color="#ef4444" />
+                </View>
+                <Text className="text-[14px] font-semibold text-[#1a2e1b]">Error loading data</Text>
+                <Text className="text-[12px] text-[#8fa88f]">{error}</Text>
+              </View>
+            ) : filteredRows.length === 0 ? (
+              <View className="items-center py-[60px] gap-[10px]">
+                <View className="w-12 h-12 rounded-[12px] bg-[#e8f5e9] items-center justify-center">
+                  <Ionicons name="time-outline" size={22} color="#237227" />
+                </View>
+                <Text className="text-[14px] font-semibold text-[#1a2e1b]">No attendance logs found</Text>
+                <Text className="text-[12px] text-[#8fa88f]">
+                  {searchQuery ? 'Try a different search term.' : 'No records available yet.'}
+                </Text>
+              </View>
+            ) : (
+              <>
+                {/* Column Headers (Desktop only) */}
+                {isWebView && (
+                  <View className="flex-row items-center px-5 py-[10px] bg-[#f8fafb] border-b border-[#e5e7eb]">
+                    <ColHeader label="Date" className="flex-[2]" />
+                    <ColHeader label="Employee" className="flex-[3]" />
+                    <ColHeader label="Role" className="flex-[2]" />
+                    <ColHeader label="Start Time" className="flex-[2]" />
+                    <ColHeader label="End Time" className="flex-[2]" />
+                    <ColHeader label="Total Hours" className="flex-[2]" />
+                    <ColHeader label="Status" className="flex-1" />
+                  </View>
+                )}
+
+                {/* Rows */}
+                {isWebView
+                  ? paginatedRows.map((r, index) => (
+                      <View
+                        key={String(r.id)}
+                        className={
+                          `flex-row items-center px-5 py-[13px] bg-white ` +
+                          (index === paginatedRows.length - 1 ? '' : 'border-b border-[#f0f4f0]')
+                        }
+                      >
+                        <View className="flex-[2]">
+                          <Text className="text-[12px] text-black">{formatCreatedAt(r.created_at)}</Text>
+                        </View>
+                        <View className="flex-[3] flex-row items-center gap-[10px]">
+                          <EmployeeAvatar name={r.users?.full_name || 'Unknown'} />
+                          <Text className="text-[13px] font-semibold text-[#1a2e1b]">
+                            {r.users?.full_name || 'Unknown'}
+                          </Text>
+                        </View>
+                        <View className="flex-[2]">
+                          <Text className="text-[12px] text-black">{r.users?.role || 'N/A'}</Text>
+                        </View>
+                        <View className="flex-[2]">
+                          <Text className="text-[12px] text-black">{timetzToDisplay(r.employee_start_time)}</Text>
+                        </View>
+                        <View className="flex-[2]">
+                          <Text className="text-[12px] text-black">{timetzToDisplay(r.employee_end_time)}</Text>
+                        </View>
+                        <View className="flex-[2]">
+                          <Text className="text-[12px] text-black">{r.total_hours || '—'}</Text>
+                        </View>
+                        <View className="flex-1">
+                          <StatusPill status={r.status || '—'} />
+                        </View>
+                      </View>
+                    ))
+                  : paginatedRows.map((r, index) => (
+                      <View
+                        key={String(r.id)}
+                        className={
+                          `p-3 bg-white ` +
+                          (index === paginatedRows.length - 1 ? '' : 'border-b border-[#f0f4f0]')
+                        }
+                      >
+                        <View className="flex-row items-start gap-2.5">
+                          <EmployeeAvatar name={r.users?.full_name || 'Unknown'} />
+                          <View className="flex-1 gap-1.5">
+                            <View className="flex-row items-start justify-between gap-2">
+                              <View className="flex-1 min-w-0">
+                                <Text className="text-[13px] font-semibold text-[#1a2e1b]" numberOfLines={1}>
+                                  {r.users?.full_name || 'Unknown'}
+                                </Text>
+                                <Text className="text-[12px] text-[#6b7280] mt-0.5">{r.users?.role || 'N/A'}</Text>
+                              </View>
+                              <StatusPill status={r.status || '—'} />
+                            </View>
+                            <View className="gap-1.5 mt-1">
+                              <View className="flex-row items-center gap-[6px]">
+                                <Ionicons name="calendar-outline" size={12} color="#8fa88f" />
+                                <Text className="text-[12px] text-[#374151] flex-1">
+                                  {formatCreatedAt(r.created_at)}
+                                </Text>
+                              </View>
+                              <View className="flex-row items-center gap-[6px]">
+                                <Ionicons name="time-outline" size={12} color="#8fa88f" />
+                                <Text className="text-[12px] text-[#374151] flex-1" numberOfLines={1}>
+                                  {timetzToDisplay(r.employee_start_time)} - {timetzToDisplay(r.employee_end_time)}
+                                </Text>
+                              </View>
+                              <View className="flex-row items-center gap-[6px]">
+                                <Ionicons name="hourglass-outline" size={12} color="#8fa88f" />
+                                <Text className="text-[12px] text-[#374151]">{r.total_hours || '—'} hours</Text>
+                              </View>
+                            </View>
+                          </View>
+                        </View>
+                      </View>
+                    ))}
+              </>
+            )}
+
+            {/* Table Footer */}
+            {!loading && !error && filteredRows.length > 0 && (
+              <View
+                className={`flex-row items-center justify-between ${isWebView ? 'px-5' : 'px-3'} py-3 border-t border-[#f0f4f0] bg-[#f8fafb]`}
+              >
+                <Text className={`${isWebView ? 'text-[12px]' : 'text-[11px]'} text-[#6b7280] flex-1`} numberOfLines={1}>
+                  Showing {showingCount} of {filteredRows.length}
+                </Text>
+                <View className="flex-row gap-2">
+                  <TouchableOpacity
+                    onPress={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                    disabled={currentPage <= 1}
+                    className={
+                      `w-8 h-8 rounded-lg border border-[#e5e7eb] bg-white items-center justify-center ${
+                        currentPage <= 1 ? 'opacity-40' : ''
+                      }`
+                    }
+                    accessible={true}
+                    accessibilityLabel="Previous page">
+                    <Ionicons name={'chevron-back-outline' as any} size={14} color="#4b6b4d" />
+                  </TouchableOpacity>
+                  <View className="px-3 h-8 rounded-lg bg-[#e8f5e9] border border-[#237227] items-center justify-center min-w-[60px]">
+                    <Text className="text-[11px] font-semibold text-[#237227]">
+                      {currentPage} / {totalPages}
+                    </Text>
+                  </View>
+                  <TouchableOpacity
+                    onPress={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                    disabled={currentPage >= totalPages}
+                    className={
+                      `w-8 h-8 rounded-lg border border-[#e5e7eb] bg-white items-center justify-center ${
+                        currentPage >= totalPages ? 'opacity-40' : ''
+                      }`
+                    }
+                    accessible={true}
+                    accessibilityLabel="Next page">
+                    <Ionicons name={'chevron-forward-outline' as any} size={14} color="#4b6b4d" />
+                  </TouchableOpacity>
+                </View>
+              </View>
+            )}
+          </View>
         </View>
       </ScrollView>
     </View>
