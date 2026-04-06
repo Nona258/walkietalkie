@@ -1,5 +1,5 @@
 // pages/signup.tsx
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -22,18 +22,92 @@ interface SignUpProps {
   onSignUpSuccess: (user: any) => void;
 }
 
+function getPasswordValidationError(value: string): string | null {
+  const password = value ?? '';
+
+  if (password === '123456') return 'Password cannot be 123456.';
+
+  if (password.length < 8) return 'Password must be at least 8 characters.';
+  if (!/[A-Za-z]/.test(password)) return 'Password must include at least one letter.';
+  if (!/\d/.test(password)) return 'Password must include at least one number.';
+  if (!/[^A-Za-z0-9]/.test(password))
+    return 'Password must include at least one special character (e.g. ! @ #).';
+
+  return null;
+}
+
+type PasswordStrength = {
+  label: 'Low' | 'Medium' | 'Strong';
+  percent: number;
+  barClassName: string;
+  textClassName: string;
+};
+
+function getPasswordStrength(value: string): PasswordStrength {
+  const password = value ?? '';
+
+  const hasLetter = /[A-Za-z]/.test(password);
+  const hasNumber = /\d/.test(password);
+  const hasSpecial = /[^A-Za-z0-9]/.test(password);
+  const len = password.length;
+
+  let score = 0;
+  if (len >= 8) score += 1;
+  if (len >= 12) score += 1;
+  if (hasLetter) score += 1;
+  if (hasNumber) score += 1;
+  if (hasSpecial) score += 1;
+
+  if (score >= 5) {
+    return {
+      label: 'Strong',
+      percent: 100,
+      barClassName: 'bg-green-500',
+      textClassName: 'text-green-600',
+    };
+  }
+
+  if (score >= 3) {
+    return {
+      label: 'Medium',
+      percent: 66,
+      barClassName: 'bg-yellow-500',
+      textClassName: 'text-yellow-600',
+    };
+  }
+
+  return {
+    label: 'Low',
+    percent: password.length ? 33 : 0,
+    barClassName: 'bg-red-500',
+    textClassName: 'text-red-500',
+  };
+}
+
+type FieldKey = 'fullName' | 'email' | 'phoneNumber' | 'password' | 'confirmPassword';
+type FieldErrors = Partial<Record<FieldKey, string>>;
+
 export default function SignUp({ onNavigateToSignIn, onSignUpSuccess }: SignUpProps) {
+  const fullNameRef = useRef<TextInput>(null);
+  const emailRef = useRef<TextInput>(null);
+  const phoneNumberRef = useRef<TextInput>(null);
+  const passwordRef = useRef<TextInput>(null);
+  const confirmPasswordRef = useRef<TextInput>(null);
+
   const [fullName, setFullName] = useState('');
   const [email, setEmail] = useState('');
   const [phoneNumber, setPhoneNumber] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
+  const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [showEulaModal, setShowEulaModal] = useState(false);
   const [eulaLoading, setEulaLoading] = useState(false);
   const [signedUpUser, setSignedUpUser] = useState<any>(null);
+
+  const passwordStrength = getPasswordStrength(password);
 
   const [alertVisible, setAlertVisible] = useState(false);
   const [alertConfig, setAlertConfig] = useState({
@@ -44,19 +118,88 @@ export default function SignUp({ onNavigateToSignIn, onSignUpSuccess }: SignUpPr
     onConfirm: () => setAlertVisible(false),
   });
 
+  const showFieldError = (
+    field: FieldKey,
+    label: string,
+    message: string,
+    ref?: React.RefObject<TextInput | null>
+  ) => {
+    setFieldErrors((prev) => ({ ...prev, [field]: message }));
+    Alert.alert('Error', `${label}: ${message}`);
+    if (ref?.current) {
+      requestAnimationFrame(() => ref.current?.focus());
+    }
+  };
+
+  const clearFieldError = (field: FieldKey) => {
+    setFieldErrors((prev) => {
+      if (!prev[field]) return prev;
+      const next = { ...prev };
+      delete next[field];
+      return next;
+    });
+  };
+
   const handleSignUp = async () => {
-    if (!fullName.trim()) return Alert.alert('Error', 'Please enter your full name.');
-    if (!email.trim()) return Alert.alert('Error', 'Please enter your email.');
-    if (!phoneNumber.trim()) return Alert.alert('Error', 'Please enter your phone number.');
-    if (!/^\d{10,}$/.test(phoneNumber.trim()))
-      return Alert.alert('Error', 'Please enter a valid phone number (at least 10 digits).');
-    if (!password) return Alert.alert('Error', 'Please enter a password.');
-    if (password.length < 6) return Alert.alert('Error', 'Password must be at least 6 characters.');
-    if (password !== confirmPassword) return Alert.alert('Error', 'Passwords do not match.');
+    setFieldErrors({});
+
+    if (!fullName.trim()) {
+      return showFieldError('fullName', 'Full Name', 'Please enter your full name.', fullNameRef);
+    }
+
+    if (!email.trim()) {
+      return showFieldError('email', 'Email', 'Please enter your email.', emailRef);
+    }
 
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRegex.test(email.trim()))
-      return Alert.alert('Error', 'Please enter a valid email address.');
+    if (!emailRegex.test(email.trim())) {
+      return showFieldError('email', 'Email', 'Please enter a valid email address.', emailRef);
+    }
+
+    if (!phoneNumber.trim()) {
+      return showFieldError(
+        'phoneNumber',
+        'Phone Number',
+        'Please enter your phone number.',
+        phoneNumberRef
+      );
+    }
+
+    if (!/^\d{10,}$/.test(phoneNumber.trim())) {
+      return showFieldError(
+        'phoneNumber',
+        'Phone Number',
+        'Please enter a valid phone number (at least 10 digits).',
+        phoneNumberRef
+      );
+    }
+
+    if (!password) {
+      return showFieldError('password', 'Password', 'Please enter a password.', passwordRef);
+    }
+
+    const passwordError = getPasswordValidationError(password);
+    if (passwordError) {
+      return showFieldError('password', 'Password', passwordError, passwordRef);
+    }
+
+    if (!confirmPassword) {
+      return showFieldError(
+        'confirmPassword',
+        'Confirm Password',
+        'Please confirm your password.',
+        confirmPasswordRef
+      );
+    }
+
+    if (password !== confirmPassword) {
+      return showFieldError(
+        'confirmPassword',
+        'Confirm Password',
+        'Passwords do not match.',
+        confirmPasswordRef
+      );
+    }
 
     setLoading(true);
 
@@ -272,51 +415,88 @@ export default function SignUp({ onNavigateToSignIn, onSignUpSuccess }: SignUpPr
           </View>
 
           {/* Full Name */}
-          <View className="mb-4 flex-row items-center rounded-xl border border-green-300 px-3 py-3">
+          <View
+            className={`mb-1 flex-row items-center rounded-xl border px-3 py-3 ${
+              fieldErrors.fullName ? 'border-red-300' : 'border-green-300'
+            }`}>
             <Ionicons name="person-outline" size={20} color="#4ade80" />
             <TextInput
               className="ml-2 flex-1"
               placeholder="Full Name"
               autoCapitalize="words"
+              ref={fullNameRef}
               value={fullName}
-              onChangeText={setFullName}
+              onChangeText={(text) => {
+                setFullName(text);
+                clearFieldError('fullName');
+              }}
             />
           </View>
+          {!!fieldErrors.fullName && (
+            <Text className="mb-3 text-xs text-red-500">{fieldErrors.fullName}</Text>
+          )}
 
           {/* Email */}
-          <View className="mb-4 flex-row items-center rounded-xl border border-green-300 px-3 py-3">
+          <View
+            className={`mb-1 flex-row items-center rounded-xl border px-3 py-3 ${
+              fieldErrors.email ? 'border-red-300' : 'border-green-300'
+            }`}>
             <Ionicons name="mail-outline" size={20} color="#4ade80" />
             <TextInput
               className="ml-2 flex-1"
               placeholder="Email address"
               keyboardType="email-address"
               autoCapitalize="none"
+              ref={emailRef}
               value={email}
-              onChangeText={setEmail}
+              onChangeText={(text) => {
+                setEmail(text);
+                clearFieldError('email');
+              }}
             />
           </View>
+          {!!fieldErrors.email && (
+            <Text className="mb-3 text-xs text-red-500">{fieldErrors.email}</Text>
+          )}
 
           {/* Phone Number */}
-          <View className="mb-4 flex-row items-center rounded-xl border border-green-300 px-3 py-3">
+          <View
+            className={`mb-1 flex-row items-center rounded-xl border px-3 py-3 ${
+              fieldErrors.phoneNumber ? 'border-red-300' : 'border-green-300'
+            }`}>
             <Ionicons name="call-outline" size={20} color="#4ade80" />
             <TextInput
               className="ml-2 flex-1"
               placeholder="Phone Number"
               keyboardType="phone-pad"
+              ref={phoneNumberRef}
               value={phoneNumber}
-              onChangeText={setPhoneNumber}
+              onChangeText={(text) => {
+                setPhoneNumber(text);
+                clearFieldError('phoneNumber');
+              }}
             />
           </View>
+          {!!fieldErrors.phoneNumber && (
+            <Text className="mb-3 text-xs text-red-500">{fieldErrors.phoneNumber}</Text>
+          )}
 
           {/* Password */}
-          <View className="mb-4 flex-row items-center rounded-xl border border-green-300 px-3 py-3">
+          <View
+            className={`mb-1 flex-row items-center rounded-xl border px-3 py-3 ${
+              fieldErrors.password ? 'border-red-300' : 'border-green-300'
+            }`}>
             <Ionicons name="lock-closed-outline" size={20} color="#4ade80" />
             <TextInput
               className="ml-2 flex-1"
               placeholder="Password"
               secureTextEntry={!showPassword}
+              ref={passwordRef}
               value={password}
-              onChangeText={setPassword}
+              onChangeText={(text) => {
+                setPassword(text);
+                clearFieldError('password');
+              }}
             />
             <TouchableOpacity onPress={() => setShowPassword(!showPassword)}>
               <Ionicons
@@ -326,16 +506,39 @@ export default function SignUp({ onNavigateToSignIn, onSignUpSuccess }: SignUpPr
               />
             </TouchableOpacity>
           </View>
+          {!!password && (
+            <View className="mb-3">
+              <View className="h-2 w-full overflow-hidden rounded-full bg-gray-200">
+                <View
+                  className={`h-2 ${passwordStrength.barClassName}`}
+                  style={{ width: `${passwordStrength.percent}%` }}
+                />
+              </View>
+              <Text className={`mt-1 text-xs ${passwordStrength.textClassName}`}>
+                Password strength: {passwordStrength.label}
+              </Text>
+            </View>
+          )}
+          {!!fieldErrors.password && (
+            <Text className="mb-3 text-xs text-red-500">{fieldErrors.password}</Text>
+          )}
 
           {/* Confirm Password */}
-          <View className="mb-6 flex-row items-center rounded-xl border border-green-300 px-3 py-3">
+          <View
+            className={`mb-1 flex-row items-center rounded-xl border px-3 py-3 ${
+              fieldErrors.confirmPassword ? 'border-red-300' : 'border-green-300'
+            }`}>
             <Ionicons name="lock-closed-outline" size={20} color="#4ade80" />
             <TextInput
               className="ml-2 flex-1"
               placeholder="Confirm Password"
               secureTextEntry={!showConfirmPassword}
+              ref={confirmPasswordRef}
               value={confirmPassword}
-              onChangeText={setConfirmPassword}
+              onChangeText={(text) => {
+                setConfirmPassword(text);
+                clearFieldError('confirmPassword');
+              }}
             />
             <TouchableOpacity onPress={() => setShowConfirmPassword(!showConfirmPassword)}>
               <Ionicons
@@ -345,6 +548,11 @@ export default function SignUp({ onNavigateToSignIn, onSignUpSuccess }: SignUpPr
               />
             </TouchableOpacity>
           </View>
+          {!!fieldErrors.confirmPassword && (
+            <Text className="mb-6 text-xs text-red-500">{fieldErrors.confirmPassword}</Text>
+          )}
+
+          {!fieldErrors.confirmPassword && <View className="mb-6" />}
 
           {/* Button */}
           <TouchableOpacity

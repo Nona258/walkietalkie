@@ -2106,7 +2106,7 @@ export default function SiteManagement({ onNavigate }: SiteManagementProps) {
                   </div>
                 </View>
 
-                <View className="mb-4 w-1/2 px-2">
+                <View className="mb-4 w-full px-2">
                   <Text className="mb-2 text-sm font-medium text-stone-700">
                     Employees to Deploy
                   </Text>
