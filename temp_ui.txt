@@ -1,0 +1,294 @@
+  return (
+    <View className="flex-1 bg-[#f8fafb]">
+      <ScrollView className="flex-1" showsVerticalScrollIndicator={false}>
+        {/* ── Top Header ───────────────────────────────────────────────────── */}
+        <View className={`bg-[#f8fafb] ${pageX} pt-[18px] pb-4 border-b border-[#e5e7eb] flex-row items-center justify-between`}>
+          <View className="flex-row items-center flex-1">
+            {!isWebView && setIsMobileMenuOpen && (
+              <TouchableOpacity
+                onPress={() => setIsMobileMenuOpen(true)}
+                className="items-center justify-center w-10 h-10 mr-3"
+              >
+                <Ionicons name="menu" size={28} color="#237227" />
+              </TouchableOpacity>
+            )}
+            <View className="flex-1">
+              <Text className={`${titleSize} font-light text-[#1a2e1b] leading-[26px]`}>
+                Employee Management
+              </Text>
+              <Text className={`${subtitleSize} text-black mt-[1px]`}>
+                Welcome back, Administrator
+              </Text>
+            </View>
+          </View>
+          <View className="flex-row items-center gap-[10px]">
+            <TouchableOpacity
+              onPress={() => setIsNotificationOpen(true)}
+              className="w-10 h-10 rounded-full bg-[#f8fafb] items-center justify-center relative"
+            >
+              <Ionicons name="notifications-outline" size={20} color="#4b6b4d" />
+              <View className="absolute top-2 right-2 w-2 h-2 rounded-full bg-[#237227]" />
+            </TouchableOpacity>
+          </View>
+        </View>
+
+        {/* ── Page Body — full width, no maxWidth cap ─────────────────────── */}
+        <View className={`${pageX} ${isWebView ? 'pt-6' : 'pt-4'} pb-12 w-full`}>
+          {/* ── Table — stretches full width ─────────────────────────────── */}
+          <View className="bg-white rounded-[14px] border border-[#e5e7eb] overflow-hidden w-full">
+            {/* Toolbar */}
+            <View className={`${isWebView ? 'px-5' : 'px-4'} py-[14px] border-b border-[#e5e7eb] gap-3`}>
+              <View className="flex-row items-center justify-between">
+                <View className="flex-row items-center gap-[10px]">
+                  <Ionicons name="people-outline" size={16} color="#237227" />
+                  <Text className="text-[14px] font-bold text-[#1a2e1b]">All Employees</Text>
+                  <View className="px-2 py-[2px] rounded-full bg-[#e8f5e9] border border-[#f0f4f0]">
+                    <Text className="text-[11px] font-semibold text-[#237227]">{filteredEmployees.length}</Text>
+                  </View>
+                </View>
+                {isWebView && (
+                  <View className="flex-row gap-2">
+                    <TouchableOpacity
+                      onPress={() => setIsUserManagementOpen(true)}
+                      className="flex-row items-center gap-[5px] px-[14px] h-[34px] bg-[#237227] rounded-lg relative"
+                    >
+                      <Ionicons name="people" size={14} color="#f8fafb" />
+                      <Text className="text-[12px] font-semibold text-[#f8fafb]">User Mgmt</Text>
+                      {pendingUsersCount > 0 && (
+                        <View className="absolute -top-2 -right-2 min-w-[20px] h-[20px] rounded-full bg-[#ef4444] items-center justify-center px-1">
+                          <Text className="text-[10px] font-bold text-white">
+                            {pendingUsersCount > 99 ? '99+' : pendingUsersCount}
+                          </Text>
+                        </View>
+                      )}
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      onPress={() => {
+                        resetForm();
+                        setIsAddModalOpen(true);
+                      }}
+                      className="flex-row items-center gap-[5px] px-[14px] h-[34px] bg-[#237227] rounded-lg"
+                    >
+                      <Ionicons name="person-add-outline" size={14} color="#ffffff" />
+                      <Text className="text-[12px] font-semibold text-white">Add Employee</Text>
+                    </TouchableOpacity>
+                  </View>
+                )}
+              </View>
+
+              <View className="flex-row items-center gap-[10px]">
+                <View className="flex-1 flex-row items-center bg-[#f8fafb] border border-[#e5e7eb] rounded-lg px-[10px] h-9 gap-[6px]">
+                  <Ionicons name="search-outline" size={13} color="#8fa88f" />
+                  <TextInput
+                    value={searchQuery}
+                    onChangeText={setSearchQuery}
+                    placeholder="Search employees…"
+                    placeholderTextColor="#8fa88f"
+                    className="flex-1 text-[13px] text-[#1a2e1b]"
+                  />
+                  {searchQuery.length > 0 && (
+                    <TouchableOpacity onPress={() => setSearchQuery('')}>
+                      <Ionicons name="close-circle" size={13} color="#8fa88f" />
+                    </TouchableOpacity>
+                  )}
+                </View>
+
+                {!isWebView && (
+                  <View className="flex-row gap-2">
+                    <TouchableOpacity
+                      onPress={() => setIsUserManagementOpen(true)}
+                      className="w-9 h-9 bg-[#237227] rounded-lg items-center justify-center relative"
+                    >
+                      <Ionicons name="people" size={18} color="#f8fafb" />
+                      {pendingUsersCount > 0 && (
+                        <View className="absolute -top-[6px] -right-[6px] min-w-[18px] h-[18px] rounded-full bg-[#ef4444] items-center justify-center px-[3px]">
+                          <Text className="text-[9px] font-bold text-white">
+                            {pendingUsersCount > 9 ? '9+' : pendingUsersCount}
+                          </Text>
+                        </View>
+                      )}
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      onPress={() => {
+                        resetForm();
+                        setIsAddModalOpen(true);
+                      }}
+                      className="w-9 h-9 bg-[#237227] rounded-lg items-center justify-center"
+                    >
+                      <Ionicons name="person-add-outline" size={18} color="#ffffff" />
+                    </TouchableOpacity>
+                  </View>
+                )}
+              </View>
+            </View>
+
+            {/* Loading / Error / Empty */}
+            {loading ? (
+              <View className="items-center py-[60px] gap-[10px]">
+                <ActivityIndicator size="large" color="#237227" />
+                <Text className="text-[14px] text-[#8fa88f]">Loading employees...</Text>
+              </View>
+            ) : error ? (
+              <View className="items-center py-[60px] gap-[10px]">
+                <View className="w-12 h-12 rounded-[12px] bg-[#fef2f2] items-center justify-center">
+                  <Ionicons name="alert-circle-outline" size={22} color="#ef4444" />
+                </View>
+                <Text className="text-[14px] font-semibold text-[#1a2e1b]">Error loading data</Text>
+                <Text className="text-[12px] text-[#8fa88f]">{error}</Text>
+              </View>
+            ) : filteredEmployees.length === 0 ? (
+              <View className="items-center py-[60px] gap-[10px]">
+                <View className="w-12 h-12 rounded-[12px] bg-[#e8f5e9] items-center justify-center">
+                  <Ionicons name="people-outline" size={22} color="#237227" />
+                </View>
+                <Text className="text-[14px] font-semibold text-[#1a2e1b]">No employees found</Text>
+                <Text className="text-[12px] text-[#8fa88f]">
+                  {searchQuery ? 'Try a different search term.' : 'Add your first employee to get started.'}
+                </Text>
+              </View>
+            ) : (
+              <>
+                {/* Column Headers (Desktop only) */}
+                {isWebView && (
+                  <View className="flex-row items-center px-5 py-[10px] bg-[#f8fafb] border-b border-[#e5e7eb]">
+                    <ColHeader label="Employee" className="flex-[3]" />
+                    <ColHeader label="Role" className="flex-[2]" />
+                    <ColHeader label="Email" className="flex-[3]" />
+                    <ColHeader label="Phone" className="flex-[2]" />
+                    <ColHeader label="Status" className="flex-1" />
+                    <View className="w-[96px]">
+                      <Text className="text-[11px] font-semibold text-[#8fa88f] uppercase tracking-[0.5px]">Actions</Text>
+                    </View>
+                  </View>
+                )}
+
+                {/* Rows */}
+                {isWebView
+                  ? paginatedEmployees.map((emp, index) => (
+                      <View
+                        key={emp.id}
+                        className={
+                          `flex-row items-center px-5 py-[13px] bg-white ` +
+                          (index === paginatedEmployees.length - 1 ? '' : 'border-b border-[#f0f4f0]')
+                        }
+                      >
+                        <View className="flex-[3] flex-row items-center gap-[10px]">
+                          <EmployeeAvatar name={emp.full_name} />
+                          <Text className="text-[13px] font-semibold text-[#1a2e1b]">{emp.full_name || 'N/A'}</Text>
+                        </View>
+                        <View className="flex-[2]">
+                          <Text className="text-[12px] text-black">{emp.role || 'N/A'}</Text>
+                        </View>
+                        <View className="flex-[3]">
+                          <Text className="text-[12px] text-black">{trimEmail(emp.email)}</Text>
+                        </View>
+                        <View className="flex-[2]">
+                          <Text className="text-[12px] text-black">{emp.phone_number || 'N/A'}</Text>
+                        </View>
+                        <View className="flex-1">
+                          <StatusPill status={emp.status} />
+                        </View>
+                        <View className="w-[96px] flex-row items-center gap-[6px]">
+                          <ActionBtn icon="create-outline" onPress={() => openEdit(emp)} />
+                          <ActionBtn icon="eye-outline" onPress={() => openView(emp)} />
+                          <ActionBtn icon="trash-outline" onPress={() => openDelete(emp)} danger />
+                        </View>
+                      </View>
+                    ))
+                  : paginatedEmployees.map((emp, index) => (
+                      <TouchableOpacity
+                        key={emp.id}
+                        onPress={() => openView(emp)}
+                        activeOpacity={0.7}
+                        className={
+                          `p-4 bg-white ` + (index === paginatedEmployees.length - 1 ? '' : 'border-b border-[#f0f4f0]')
+                        }
+                      >
+                        <View className="flex-row items-start gap-3">
+                          <EmployeeAvatar name={emp.full_name} />
+                          <View className="flex-1 gap-2">
+                            <View className="flex-row items-start justify-between">
+                              <View className="flex-1">
+                                <Text className="text-[14px] font-semibold text-[#1a2e1b]">{emp.full_name || 'N/A'}</Text>
+                                <Text className="text-[14px] text-black mt-0.5">{emp.role || 'N/A'}</Text>
+                              </View>
+                              <StatusPill status={emp.status} />
+                            </View>
+                            <View className="gap-[6px]">
+                              <View className="flex-row items-center gap-[6px]">
+                                <Ionicons name="mail-outline" size={13} color="#8fa88f" />
+                                <Text className="text-[14px] text-black flex-1">{emp.email || 'N/A'}</Text>
+                              </View>
+                              <View className="flex-row items-center gap-[6px]">
+                                <Ionicons name="call-outline" size={13} color="#8fa88f" />
+                                <Text className="text-[14px] text-black">{emp.phone_number || 'N/A'}</Text>
+                              </View>
+                              {emp.company && (
+                                <View className="flex-row items-center gap-[6px]">
+                                  <Ionicons name="business-outline" size={13} color="#8fa88f" />
+                                  <Text className="text-[14px] text-black">{emp.company}</Text>
+                                </View>
+                              )}
+                            </View>
+                            <View className="flex-row gap-2 mt-1">
+                              <TouchableOpacity
+                                onPress={(e: any) => {
+                                  e.stopPropagation?.();
+                                  openEdit(emp);
+                                }}
+                                className="flex-1 flex-row items-center justify-center gap-[5px] py-2 rounded-[7px] bg-[#237227] border border-[#237227]"
+                              >
+                                <Ionicons name="create-outline" size={14} color="#ffffff" />
+                                <Text className="text-[14px] font-semibold text-white">Edit</Text>
+                              </TouchableOpacity>
+                              <TouchableOpacity
+                                onPress={(e: any) => {
+                                  e.stopPropagation?.();
+                                  openDelete(emp);
+                                }}
+                                className="flex-1 flex-row items-center justify-center gap-[5px] py-2 rounded-[7px] bg-[#fef2f2] border border-[#fecaca]"
+                              >
+                                <Ionicons name="trash-outline" size={14} color="#ef4444" />
+                                <Text className="text-[14px] font-semibold text-[#ef4444]">Delete</Text>
+                              </TouchableOpacity>
+                            </View>
+                          </View>
+                        </View>
+                      </TouchableOpacity>
+                    ))}
+              </>
+            )}
+
+            {/* Table Footer */}
+            {!loading && !error && filteredEmployees.length > 0 && (
+              <View className={`flex-row items-center justify-between ${isWebView ? 'px-5' : 'px-4'} py-3 border-t border-[#f0f4f0] bg-[#f8fafb]`}>
+                <Text className={`${isWebView ? 'text-[12px]' : 'text-[14px]'} text-black`}>
+                  Showing {showingCount} of {filteredEmployees.length} employees
+                </Text>
+                <View className="flex-row gap-[6px]">
+                  <TouchableOpacity
+                    onPress={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                    disabled={currentPage <= 1}
+                    className={
+                      "w-7 h-7 rounded-[7px] border border-[#e5e7eb] bg-white items-center justify-center " +
+                      (currentPage <= 1 ? 'opacity-50' : '')
+                    }
+                  >
+                    <Ionicons name={'chevron-back-outline' as any} size={13} color="#4b6b4d" />
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    onPress={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                    disabled={currentPage >= totalPages}
+                    className={
+                      "w-7 h-7 rounded-[7px] border border-[#e5e7eb] bg-white items-center justify-center " +
+                      (currentPage >= totalPages ? 'opacity-50' : '')
+                    }
+                  >
+                    <Ionicons name={'chevron-forward-outline' as any} size={13} color="#4b6b4d" />
+                  </TouchableOpacity>
+                </View>
+              </View>
+            )}
+          </View>
+        </View>
+      </ScrollView>

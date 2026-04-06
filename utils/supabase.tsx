@@ -192,8 +192,39 @@ export async function approveUser(userId: string) {
   return data;
 }
 
-// Delete a user by ID (removes from users table)
+// Delete a user by ID (removes from users table and dependent rows that don't cascade)
 export async function deleteUserAccount(userId: string) {
+  if (!userId) throw new Error('userId required');
+
+  // Clean up dependent rows that use RESTRICT FKs (no ON DELETE CASCADE/SET NULL)
+  // so the user row can be removed safely.
+  const { error: attendanceError } = await supabase
+    .from('user_attendances')
+    .delete()
+    .eq('user_id', userId);
+  if (attendanceError) throw attendanceError;
+
+  const { error: eulaError } = await supabase
+    .from('eula_acceptance')
+    .delete()
+    .eq('user_id', userId);
+  if (eulaError) throw eulaError;
+
+  const { error: groupMembersError } = await supabase
+    .from('group_members')
+    .delete()
+    .eq('user_id', userId);
+  if (groupMembersError) throw groupMembersError;
+
+  // Sites.leader_id has a FK without ON DELETE behavior, so null out any references
+  // before deleting the user.
+  const { error: sitesLeaderError } = await supabase
+    .from('sites')
+    .update({ leader_id: null })
+    .eq('leader_id', userId);
+  if (sitesLeaderError) throw sitesLeaderError;
+
+  // Now delete the user row itself. Other FKs use ON DELETE CASCADE/SET NULL.
   const { error } = await supabase.from('users').delete().eq('id', userId);
   if (error) throw error;
 

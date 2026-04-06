@@ -1,389 +1,510 @@
-import React, { useState } from 'react';
-import {
-  View,
-  Text,
-  ScrollView,
-  TouchableOpacity,
-  Modal,
-  Pressable,
-  TextInput,
-  Alert,
-  Image,
-} from 'react-native';
+import React, { useMemo, useState } from 'react';
+import { View, Text, ScrollView, TouchableOpacity, Modal, Pressable, TextInput, Dimensions } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import * as ImagePicker from 'expo-image-picker';
-import * as ImageManipulator from 'expo-image-manipulator';
-import supabase, { getCurrentUser } from '../../utils/supabase';
 import '../../global.css';
 
+// ─── Design Tokens ─────────────────────────────────────────────────────────────
+const COLORS = {
+  green: '#237227',
+  greenLight: '#237227',
+  cloudMist: '#f8fafb',
+  white: '#ffffff',
+  border: '#e5e7eb',
+  borderLight: '#f0f4f0',
+  textPrimary: '#1a2e1b',
+  textSecondary: '#4b6b4d',
+  textMuted: '#8fa88f',
+};
+
+const SCROLL_CONTENT_CONTAINER_STYLE = { flexGrow: 1 } as const;
+
 interface SettingsProps {
-  onNavigate: (
-    page:
-      | 'dashboard'
-      | 'siteManagement'
-      | 'walkieTalkie'
-      | 'activityLogs'
-      | 'companyList'
-      | 'employee'
-      | 'settings'
-  ) => void;
+  onNavigate: (page: 'dashboard' | 'siteManagement' | 'walkieTalkie' | 'activityLogs' | 'companyList' | 'employee' | 'settings') => void;
+  isMobileMenuOpen?: boolean;
+  setIsMobileMenuOpen?: (open: boolean) => void;
 }
 
-export default function Settings({ onNavigate }: SettingsProps) {
-  // UI State remains to keep the design interactive
+function LabeledInput({
+  label,
+  value,
+  onChangeText,
+  editable,
+  icon,
+  placeholder,
+  secureTextEntry,
+}: {
+  label: string;
+  value: string;
+  onChangeText: (t: string) => void;
+  editable: boolean;
+  icon: string;
+  placeholder?: string;
+  secureTextEntry?: boolean;
+}) {
+  return (
+    <View className="gap-1.5">
+      <Text className="text-sm font-semibold text-[#4b6b4d]">{label}</Text>
+      <View
+        className={
+          'flex-row items-center gap-2 px-3 h-10 rounded-[9px] border ' +
+          (editable ? 'bg-white border-[#237227]' : 'bg-[#f8fafb] border-[#e5e7eb]')
+        }
+      >
+        <Ionicons name={icon as any} size={14} color={editable ? COLORS.green : COLORS.textMuted} />
+        <TextInput
+          value={value}
+          onChangeText={onChangeText}
+          editable={editable}
+          placeholder={placeholder}
+          placeholderTextColor={COLORS.textMuted}
+          secureTextEntry={secureTextEntry}
+          className={'flex-1 text-sm ' + (editable ? 'text-[#1a2e1b]' : 'text-[#8fa88f]')}
+        />
+        {!editable && <Ionicons name="lock-closed-outline" size={12} color={COLORS.textMuted} />}
+      </View>
+    </View>
+  );
+}
+
+export default function Settings({ onNavigate, isMobileMenuOpen, setIsMobileMenuOpen }: SettingsProps) {
+  const windowWidth = Dimensions.get('window').width;
+  const isWebView = windowWidth > 900;
+
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
+  const hasSharedMobileMenu = typeof setIsMobileMenuOpen === 'function';
+  const openMenu = () => {
+    if (setIsMobileMenuOpen) return setIsMobileMenuOpen(true);
+    return setIsDrawerOpen(true);
+  };
+  const closeMenu = () => {
+    if (setIsMobileMenuOpen) return setIsMobileMenuOpen(false);
+    return setIsDrawerOpen(false);
+  };
+
   const [isNotificationOpen, setIsNotificationOpen] = useState(false);
   const [isEditMode, setIsEditMode] = useState(false);
+  const [isSaved, setIsSaved] = useState(false);
 
-  // Profile data (will be loaded from authenticated user's `public.users` row)
-  const [fullName, setFullName] = useState('');
-  const [email, setEmail] = useState('');
-  const [initials, setInitials] = useState('');
-  const [profilePicture, setProfilePicture] = useState<string | null>(null);
-  const [newImageUri, setNewImageUri] = useState<string | null>(null);
-  const [newImageSelected, setNewImageSelected] = useState(false);
-  const [imageFileName, setImageFileName] = useState<string | null>(null);
+  const [fullName, setFullName] = useState('Admin User');
+  const [email, setEmail] = useState('admin@company.com');
+  const [phone, setPhone] = useState('+1 555-0100');
+  const [role] = useState('Super Administrator');
+  const [currentPassword, setCurrentPassword] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
 
-  React.useEffect(() => {
-    const loadProfile = async () => {
-      try {
-        // try to get DB-backed profile
-        const user = await getCurrentUser();
-        if (user) {
-          setFullName(user.user_metadata?.full_name || 'Admin User');
-          setEmail(user.email || '');
-          const name = user.user_metadata?.full_name || user.email || 'AD';
-          const initialsComputed = name
-            .split(' ')
-            .map((p: string) => p[0])
-            .join('')
-            .toUpperCase()
-            .slice(0, 2);
-          setInitials(initialsComputed || 'AD');
-          // If you have profile_picture_url in user_metadata, use it
-          if (user.user_metadata?.profile_picture_url) {
-            setProfilePicture(`${user.user_metadata.profile_picture_url}?t=${Date.now()}`);
-          }
-        } else {
-          // fallback to auth metadata
-          const {
-            data: { user: fallbackUser },
-          } = await supabase.auth.getUser();
-          setFullName(fallbackUser?.user_metadata?.full_name || 'Admin User');
-          setEmail(fallbackUser?.email || '');
-          const name = fallbackUser?.user_metadata?.full_name || fallbackUser?.email || 'AD';
-          const initialsComputed = name
-            .split(' ')
-            .map((p: string) => p[0])
-            .join('')
-            .toUpperCase()
-            .slice(0, 2);
-          setInitials(initialsComputed || 'AD');
-        }
-      } catch (err) {
-        console.error('Failed to load admin profile:', err);
-        const {
-          data: { user },
-        } = await supabase.auth.getUser();
-        setFullName(user?.user_metadata?.full_name || 'Admin User');
-        setEmail(user?.email || '');
-        const name = user?.user_metadata?.full_name || user?.email || 'AD';
-        const initialsComputed = name
-          .split(' ')
-          .map((p: string) => p[0])
-          .join('')
-          .toUpperCase()
-          .slice(0, 2);
-        setInitials(initialsComputed || 'AD');
-      }
-    };
+  const initials = useMemo(
+    () =>
+      fullName
+        .split(' ')
+        .filter(Boolean)
+        .map((w) => w[0])
+        .join('')
+        .toUpperCase()
+        .slice(0, 2) || 'AD',
+    [fullName]
+  );
 
-    loadProfile();
-  }, []);
-
-  const requestImagePickerPermission = async () => {
-    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (status !== 'granted') {
-      Alert.alert(
-        'Permission needed',
-        'Please allow access to your photo library to upload a profile picture'
-      );
-    }
+  const handleSave = () => {
+    setIsEditMode(false);
+    setIsSaved(true);
+    setTimeout(() => setIsSaved(false), 2500);
   };
 
-  const pickImage = async () => {
-    try {
-      await requestImagePickerPermission();
-      const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ImagePicker.MediaTypeOptions.Images,
-        allowsEditing: true,
-        quality: 0.8,
-      });
-
-      if (!result.canceled && result.assets && result.assets[0]) {
-        const asset = result.assets[0];
-        const { width, height, uri } = asset as any;
-        // Resize if large
-        const actions: any[] = [];
-        if (width > 1200 || height > 1200) {
-          const scale = Math.min(1200 / width, 1200 / height);
-          actions.push({
-            resize: { width: Math.round(width * scale), height: Math.round(height * scale) },
-          });
-        }
-
-        const manipulated =
-          actions.length > 0
-            ? await ImageManipulator.manipulateAsync(uri, actions, {
-                compress: 0.85,
-                format: ImageManipulator.SaveFormat.JPEG,
-              })
-            : { uri };
-
-        const fileName = `admin_${Date.now()}.jpg`;
-        setImageFileName(fileName);
-        setNewImageUri(manipulated.uri);
-        setProfilePicture(manipulated.uri);
-        setNewImageSelected(true);
-      }
-    } catch (err) {
-      console.error('Image pick error:', err);
-      Alert.alert('Error', 'Failed to pick image');
-    }
-  };
-
-  const uploadProfilePicture = async (userId: string): Promise<string | null> => {
-    if (!newImageUri || !imageFileName) return null;
-    try {
-      const response = await fetch(newImageUri);
-      const blob = await response.blob();
-
-      const { data, error } = await supabase.storage
-        .from('profile_picture')
-        .upload(imageFileName, blob, { contentType: 'image/jpeg', upsert: true });
-
-      if (error) {
-        console.error('Upload error:', error);
-        throw error;
-      }
-
-      const { data: urlData } = supabase.storage
-        .from('profile_picture')
-        .getPublicUrl(imageFileName);
-      return urlData?.publicUrl || null;
-    } catch (err) {
-      console.error('Upload failed:', err);
-      return null;
-    }
-  };
-
-  const handleSaveChanges = async () => {
-    try {
-      setIsEditMode(false); // optimistically close edit UI
-      // get current user id
-      const user = await getCurrentUser();
-      const userId = user?.id;
-      if (!userId) {
-        Alert.alert('Error', 'Could not resolve current user');
-        return;
-      }
-
-      let publicUrl = user?.user_metadata?.profile_picture_url || null;
-      if (newImageSelected && newImageUri) {
-        const uploaded = await uploadProfilePicture(userId);
-        if (uploaded) {
-          publicUrl = uploaded;
-        }
-      }
-
-      // Update public.users row
-      const { error } = await supabase
-        .from('users')
-        .update({ full_name: fullName, profile_picture_url: publicUrl })
-        .eq('id', userId);
-
-      if (error) {
-        console.error('Failed to update users row:', error);
-        Alert.alert('Error', 'Failed to save changes');
-        return;
-      }
-
-      // update auth metadata full_name for consistency
-      try {
-        await supabase.auth.updateUser({ data: { full_name: fullName } });
-      } catch (err) {
-        console.warn('Failed to update auth metadata:', err);
-      }
-
-      // clear image selection flag
-      setNewImageSelected(false);
-      setNewImageUri(null);
-      setImageFileName(null);
-
-      // update local displayed image to the new public URL (with cache-buster)
-      if (publicUrl) {
-        setProfilePicture(`${publicUrl}?t=${Date.now()}`);
-      }
-
-      Alert.alert('Success', 'Profile updated');
-    } catch (err) {
-      console.error('Save error:', err);
-      Alert.alert('Error', 'An error occurred while saving changes');
-    }
+  const handleCancel = () => {
+    setIsEditMode(false);
+    setCurrentPassword('');
+    setNewPassword('');
+    setConfirmPassword('');
   };
 
   return (
-    <View className="flex-1 bg-stone-50">
-      <ScrollView className="flex-1 bg-stone-50">
-        <View className="border-b border-stone-200 bg-white px-5 pb-3 pt-4">
-          <View className="flex-row items-center justify-between">
-            <View className="flex-1 flex-row items-center">
+    <View className="flex-1 bg-[#f8fafb]">
+      <ScrollView
+        className="flex-1"
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={SCROLL_CONTENT_CONTAINER_STYLE}
+      >
+        {/* ── Top Header ─────────────────────────────────────────────────────── */}
+        <View
+          className={`${isWebView ? 'px-6' : 'px-4'} pt-[18px] pb-4 border-b border-[#e5e7eb] flex-row items-center justify-between bg-white`}
+        >
+          <View className="flex-row items-center flex-1">
+            {!isWebView && (
               <TouchableOpacity
-                className="mr-3 h-9 w-9 items-center justify-center lg:hidden"
-                onPress={() => setIsDrawerOpen(true)}>
-                <Ionicons name="menu" size={24} color="#44403c" />
+                onPress={openMenu}
+                className="items-center justify-center w-10 h-10 mr-3"
+              >
+                <Ionicons name="menu" size={28} color={COLORS.green} />
               </TouchableOpacity>
-              <View className="flex-1">
-                <Text className="text-lg font-bold text-stone-900 lg:text-2xl">
-                  Account Settings
-                </Text>
-                <Text className="mt-0.5 text-xs text-stone-500 lg:text-sm">
-                  Welcome back, Administrator
-                </Text>
-              </View>
-            </View>
-
-            <View className="flex-row items-center gap-2.5">
-              <TouchableOpacity
-                className="h-9 w-9 items-center justify-center rounded-full bg-stone-100"
-                onPress={() => setIsNotificationOpen(true)}>
-                <View className="absolute right-1.5 top-1.5 h-2 w-2 rounded-full bg-red-500" />
-                <Ionicons name="notifications-outline" size={18} color="#57534e" />
-              </TouchableOpacity>
-
-              <View className="h-9 w-9 items-center justify-center rounded-full bg-emerald-100">
-                <Text className="text-xs font-semibold text-emerald-700">{initials}</Text>
-              </View>
-              <View className="ml-2 hidden lg:flex">
-                <Text className="text-sm font-semibold text-stone-900">{fullName}</Text>
-                <Text className="text-xs text-stone-500">Super Admin</Text>
-              </View>
+            )}
+            <View className="flex-1">
+              <Text
+                className={`${isWebView ? 'text-[30px]' : 'text-[20px]'} font-light text-[#1a2e1b] leading-[26px]`}
+              >
+                Account Settings
+              </Text>
+              <Text
+                className={`${isWebView ? 'text-base' : 'text-xs'} mt-[1px] text-black`}
+              >
+                Welcome back, Administrator
+              </Text>
             </View>
           </View>
         </View>
 
-        <View className="px-5 pb-6 pt-3 lg:px-8 lg:pt-4">
-          <View className="max-w-2xl overflow-hidden rounded-2xl border border-stone-200 bg-white">
-            <View className="border-b border-stone-100 px-4 pb-2.5 pt-3 lg:px-5 lg:pt-4">
-              <Text className="mb-0.5 text-base font-bold text-stone-900">Account Settings</Text>
-              <Text className="text-xs text-stone-500">Manage your admin account</Text>
-            </View>
-
-            <View className="px-4 py-3 lg:px-5 lg:py-4">
-              <View className="mb-4">
-                <View className="flex-row items-center">
-                  <View className="mr-3 h-14 w-14 items-center justify-center overflow-hidden rounded-2xl bg-emerald-100 lg:h-16 lg:w-16">
-                    {profilePicture ? (
-                      <Image
-                        source={{ uri: profilePicture }}
-                        style={{ width: 64, height: 64, borderRadius: 12 }}
-                      />
-                    ) : (
-                      <Text className="text-lg font-bold text-emerald-700 lg:text-xl">
-                        {initials}
-                      </Text>
-                    )}
+        {/* ── Page Body ────────────────────────────────────────────────────── */}
+        <View className={`${isWebView ? 'px-6 py-6' : 'px-4 py-4'} w-full`}>
+          <View className={`${isWebView ? 'flex-row' : 'flex-col'} items-stretch ${isWebView ? 'gap-5' : 'gap-4'}`}>
+            {/* ── LEFT COLUMN — Profile Card ───────────────────────────────── */}
+            <View className={isWebView ? 'w-[280px] shrink-0 self-stretch' : 'w-full'}>
+              <View
+                className={`bg-white border border-[#e5e7eb] rounded-2xl ${isWebView ? 'p-6' : 'p-4'} flex-1 self-stretch justify-between`}
+              >
+                <View className="items-center w-full">
+                  <View
+                    className={`${isWebView ? 'w-20 h-20' : 'w-16 h-16'} rounded-full items-center justify-center border-2 mb-3.5 bg-[#f8fafb] border-[#237227]`}
+                  >
+                    <Text className={`${isWebView ? 'text-2xl' : 'text-xl'} font-extrabold text-[#237227]`}>
+                      {initials}
+                    </Text>
                   </View>
-                  {isEditMode && (
+
+                  <Text
+                    className={`${isWebView ? 'text-[17px]' : 'text-base'} font-bold text-center mb-[3px] text-[#1a2e1b]`}
+                  >
+                    {fullName}
+                  </Text>
+                  <Text className="mb-2 text-sm text-center text-[#8fa88f]">
+                    {email}
+                  </Text>
+
+                  <View
+                    className="px-3 py-1 mb-5 border rounded-full bg-[#f8fafb] border-[#237227]"
+                  >
+                    <Text className="text-sm font-semibold text-[#237227]">
+                      {role}
+                    </Text>
+                  </View>
+
+                  <View className="w-full h-px mb-4 bg-[#f0f4f0]" />
+
+                  {[
+                    { icon: 'shield-outline', label: 'Role', value: role },
+                    { icon: 'time-outline', label: 'Member', value: 'Since Jan 2024' },
+                  ].map((row) => (
+                    <View key={row.label} className="w-full flex-row items-center mb-2.5 gap-2.5">
+                      <View
+                        className="w-7 h-7 rounded-full border items-center justify-center bg-[#237227] border-[#237227]"
+                      >
+                        <Ionicons name={row.icon as any} size={16} color={COLORS.cloudMist} />
+                      </View>
+                      <View className="flex-1">
+                        <Text className="text-[10px] text-stone-900">
+                          {row.label}
+                        </Text>
+                        <Text className="text-sm font-semibold text-stone-900">
+                          {row.value}
+                        </Text>
+                      </View>
+                    </View>
+                  ))}
+
+                  <View className="w-full h-px my-4 bg-[#f0f4f0]" />
+                </View>
+
+                <View className="w-full">
+                  {isSaved && (
+                    <View
+                      className="w-full flex-row items-center px-3 py-2 rounded-lg mb-3.5 border bg-[#f8fafb] border-[#237227] gap-1.5"
+                    >
+                      <Ionicons name="checkmark-circle-outline" size={14} color={COLORS.green} />
+                      <Text className="flex-1 text-sm font-semibold text-[#237227]">
+                        Profile updated!
+                      </Text>
+                    </View>
+                  )}
+
+                  {!isEditMode ? (
                     <TouchableOpacity
-                      className="rounded-lg border border-emerald-600 bg-white px-3 py-1.5"
-                      onPress={pickImage}>
-                      <Text className="text-xs font-semibold text-emerald-600">Change Photo</Text>
+                      onPress={() => setIsEditMode(true)}
+                      className="w-full flex-row items-center justify-center rounded-lg py-2.5 bg-[#237227] gap-1.5"
+                    >
+                      <Ionicons name="create-outline" size={16} color={COLORS.white} />
+                      <Text className="text-sm font-semibold text-white">
+                        Edit Profile
+                      </Text>
                     </TouchableOpacity>
+                  ) : (
+                    <View className="w-full gap-2.5">
+                      <TouchableOpacity
+                        onPress={handleSave}
+                        className="w-full h-10 rounded-lg items-center justify-center flex-row bg-[#237227] gap-1.5"
+                      >
+                        <Ionicons name="checkmark-outline" size={16} color={COLORS.white} />
+                        <Text className="text-sm font-semibold text-white">
+                          Save Changes
+                        </Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        onPress={handleCancel}
+                        className="w-full h-10 rounded-lg items-center justify-center bg-[#f8fafb] border border-[#237227]"
+                      >
+                        <Text className="text-sm font-semibold text-[#237227]">
+                          Cancel
+                        </Text>
+                      </TouchableOpacity>
+                    </View>
                   )}
                 </View>
               </View>
+            </View>
 
-              <View className="mb-3">
-                <Text className="mb-1.5 text-xs font-medium text-stone-700">Full Name</Text>
-                <TextInput
-                  className={`border bg-white ${isEditMode ? 'border-stone-300' : 'border-stone-200 bg-stone-50'} rounded-lg px-3 py-2 text-sm text-stone-900`}
-                  value={fullName}
-                  onChangeText={setFullName}
-                  editable={isEditMode}
-                />
-              </View>
-
-              <View className="mb-4">
-                <Text className="mb-1.5 text-xs font-medium text-stone-700">Email Address</Text>
-                <TextInput
-                  className={`border bg-white ${isEditMode ? 'border-stone-300' : 'border-stone-200 bg-stone-50'} rounded-lg px-3 py-2 text-sm text-stone-900`}
-                  value={email}
-                  onChangeText={setEmail}
-                  editable={isEditMode}
-                />
-              </View>
-
-              {isEditMode ? (
-                <View className="flex-row gap-2.5">
-                  <TouchableOpacity
-                    className="flex-1 rounded-lg bg-stone-100 py-2"
-                    onPress={() => setIsEditMode(false)}>
-                    <Text className="text-center text-sm font-semibold text-stone-700">Cancel</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    className="flex-1 rounded-lg bg-emerald-600 py-2"
-                    onPress={handleSaveChanges}>
-                    <Text className="text-center text-sm font-semibold text-white">
-                      Save Changes
-                    </Text>
-                  </TouchableOpacity>
+            {/* ── RIGHT COLUMN — Info / Security ─────────────────────────── */}
+            <View className={`${isWebView ? 'flex-1' : 'w-full'} gap-4`}>
+              <View
+                className={`bg-[#f8fafb] border border-[#e5e7eb] rounded-2xl ${isWebView ? 'p-6' : 'p-4'}`}
+              >
+                <View className="flex-row items-center mb-4.5 gap-2">
+                  <View className="w-[30px] h-[30px] rounded-full items-center justify-center bg-[#237227]">
+                    <Ionicons name="person-outline" size={15} color={COLORS.cloudMist} />
+                  </View>
+                  <Text className="text-sm font-bold text-[#1a2e1b]">
+                    Profile Information
+                  </Text>
                 </View>
-              ) : (
-                <TouchableOpacity
-                  className="flex-row items-center self-start rounded-lg bg-emerald-600 px-4 py-2"
-                  onPress={() => setIsEditMode(true)}>
-                  <Ionicons name="create-outline" size={16} color="white" />
-                  <Text className="ml-1.5 text-sm font-semibold text-white">Edit Profile</Text>
-                </TouchableOpacity>
-              )}
+
+                <View className="gap-[14px]">
+                  <LabeledInput
+                    label="Full Name"
+                    value={fullName}
+                    onChangeText={setFullName}
+                    editable={isEditMode}
+                    icon="person-outline"
+                    placeholder="Enter full name"
+                  />
+                  <LabeledInput
+                    label="Email Address"
+                    value={email}
+                    onChangeText={setEmail}
+                    editable={isEditMode}
+                    icon="mail-outline"
+                    placeholder="Enter email"
+                  />
+                  <LabeledInput
+                    label="Phone Number"
+                    value={phone}
+                    onChangeText={setPhone}
+                    editable={isEditMode}
+                    icon="call-outline"
+                    placeholder="Enter phone"
+                  />
+                  <View className="gap-1.5">
+                    <Text className="text-sm font-semibold text-[#4b6b4d]">
+                      Role
+                    </Text>
+                    <View
+                      className="flex-row items-center gap-2 px-3 h-10 rounded-[9px] border bg-white border-[#e5e7eb]"
+                    >
+                      <Ionicons name="shield-outline" size={14} color={COLORS.textMuted} />
+                      <Text className="flex-1 text-sm text-[#8fa88f]">
+                        {role}
+                      </Text>
+                      <Ionicons name="lock-closed-outline" size={12} color={COLORS.textMuted} />
+                    </View>
+                  </View>
+                </View>
+              </View>
+
+              <View
+                className={`bg-[#f8fafb] border border-[#e5e7eb] rounded-2xl ${isWebView ? 'p-6' : 'p-4'}`}
+              >
+                <View className="flex-row items-center mb-4.5 gap-2">
+                  <View className="w-[30px] h-[30px] rounded-full items-center justify-center bg-[#237227]">
+                    <Ionicons name="lock-closed-outline" size={15} color={COLORS.cloudMist} />
+                  </View>
+                  <Text className="text-sm font-bold text-[#1a2e1b]">
+                    Security
+                  </Text>
+                </View>
+
+                <View className="gap-[14px]">
+                  <LabeledInput
+                    label="Current Password"
+                    value={currentPassword}
+                    onChangeText={setCurrentPassword}
+                    editable={isEditMode}
+                    icon="key-outline"
+                    placeholder={isEditMode ? 'Enter current password' : '••••••••'}
+                    secureTextEntry={isEditMode}
+                  />
+                  <LabeledInput
+                    label="New Password"
+                    value={newPassword}
+                    onChangeText={setNewPassword}
+                    editable={isEditMode}
+                    icon="lock-open-outline"
+                    placeholder={isEditMode ? 'Enter new password' : '••••••••'}
+                    secureTextEntry={isEditMode}
+                  />
+                  <LabeledInput
+                    label="Confirm Password"
+                    value={confirmPassword}
+                    onChangeText={setConfirmPassword}
+                    editable={isEditMode}
+                    icon="checkmark-circle-outline"
+                    placeholder={isEditMode ? 'Confirm new password' : '••••••••'}
+                    secureTextEntry={isEditMode}
+                  />
+                </View>
+              </View>
             </View>
           </View>
         </View>
       </ScrollView>
 
-      {/* Notification Modal */}
-      <Modal visible={isNotificationOpen} transparent animationType="fade">
+      {/* ── Notification Modal ──────────────────────────────────────────────── */}
+      <Modal
+        visible={isNotificationOpen}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setIsNotificationOpen(false)}
+      >
         <Pressable
-          className="flex-1 items-center justify-center bg-black/20"
-          onPress={() => setIsNotificationOpen(false)}>
-          <View className="w-80 items-center rounded-2xl bg-white p-6">
-            <Ionicons name="notifications-outline" size={32} color="#10b981" className="mb-3" />
-            <Text className="mb-2 text-lg font-bold text-stone-800">Notifications</Text>
-            <Text className="mb-4 text-center text-stone-500">You have no new notifications.</Text>
+          className="items-end flex-1 bg-black/15 pt-[60px] pr-5"
+          onPress={() => setIsNotificationOpen(false)}
+        >
+          <View
+            className="w-[300px] rounded-2xl border border-[#e5e7eb] overflow-hidden bg-white"
+          >
+            <View
+              className="flex-row items-center justify-between px-4 py-3.5 border-b border-[#f0f4f0]"
+            >
+              <Text className="text-sm font-bold text-[#1a2e1b]">
+                Notifications
+              </Text>
+              <View className="px-2 py-0.5 rounded-full bg-[#f8fafb]">
+                <Text className="text-[10px] font-semibold text-[#237227]">
+                  1 new
+                </Text>
+              </View>
+            </View>
+            <View className="flex-row px-4 py-3 gap-2.5">
+              <View className="items-center justify-center w-8 h-8 rounded-full bg-[#237227]">
+                <Ionicons name="settings-outline" size={15} color={COLORS.cloudMist} />
+              </View>
+              <View className="flex-1">
+                <Text className="text-xs font-medium text-[#1a2e1b] leading-4">
+                  Your account settings were updated
+                </Text>
+                <Text className="text-[11px] mt-0.5 text-[#8fa88f]">
+                  Just now
+                </Text>
+              </View>
+            </View>
             <TouchableOpacity
-              className="rounded-lg bg-emerald-600 px-6 py-2"
-              onPress={() => setIsNotificationOpen(false)}>
-              <Text className="font-bold text-white">Close</Text>
+              onPress={() => setIsNotificationOpen(false)}
+              className="m-3 py-2.5 rounded-lg items-center bg-[#237227]"
+            >
+              <Text className="text-xs font-semibold text-white">
+                Mark all as read
+              </Text>
             </TouchableOpacity>
           </View>
         </Pressable>
       </Modal>
 
-      {/* Mobile Drawer */}
-      <Modal visible={isDrawerOpen} transparent animationType="fade">
-        <View className="flex-1 flex-row">
-          <View className="h-full w-72 bg-white shadow-2xl">
-            <View className="border-b border-emerald-100 bg-emerald-50 px-6 pb-6 pt-12">
-              <Text className="text-base font-bold text-stone-900">Admin Portal</Text>
+      {/* Mobile Drawer (fallback only — Dashboard/AdminNavbar owns the shared drawer) */}
+      {!hasSharedMobileMenu && (
+        <Modal visible={isDrawerOpen} transparent animationType="fade" onRequestClose={closeMenu}>
+          <View className="flex-row flex-1">
+            <View className="w-64 h-full bg-white shadow-lg">
+              <View className="px-5 pt-12 pb-5 border-b border-[#e5e7eb]">
+                <Text className="text-sm font-bold text-[#1a2e1b]">Admin Portal</Text>
+              </View>
+              <ScrollView className="flex-1 px-3 py-3" showsVerticalScrollIndicator={false}>
+                <TouchableOpacity
+                  className="flex-row items-center px-3 py-2.5 mb-1 rounded-lg"
+                  onPress={() => {
+                    closeMenu();
+                    onNavigate('dashboard');
+                  }}
+                >
+                  <Ionicons name="grid-outline" size={18} color={COLORS.textMuted} />
+                  <Text className="ml-3 text-sm font-medium text-[#4b6b4d]">Dashboard</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  className="flex-row items-center px-3 py-2.5 mb-1 rounded-lg"
+                  onPress={() => {
+                    closeMenu();
+                    onNavigate('siteManagement');
+                  }}
+                >
+                  <Ionicons name="location-outline" size={18} color={COLORS.textMuted} />
+                  <Text className="ml-3 text-sm font-medium text-[#4b6b4d]">Site Management</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  className="flex-row items-center px-3 py-2.5 mb-1 rounded-lg"
+                  onPress={() => {
+                    closeMenu();
+                    onNavigate('walkieTalkie');
+                  }}
+                >
+                  <Ionicons name="mail-outline" size={18} color={COLORS.textMuted} />
+                  <Text className="ml-3 text-sm font-medium text-[#4b6b4d]">Contact Management</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  className="flex-row items-center px-3 py-2.5 mb-1 rounded-lg"
+                  onPress={() => {
+                    closeMenu();
+                    onNavigate('activityLogs');
+                  }}
+                >
+                  <Ionicons name="clipboard-outline" size={18} color={COLORS.textMuted} />
+                  <Text className="ml-3 text-sm font-medium text-[#4b6b4d]">Activity Logs</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  className="flex-row items-center px-3 py-2.5 mb-1 rounded-lg"
+                  onPress={() => {
+                    closeMenu();
+                    onNavigate('companyList');
+                  }}
+                >
+                  <Ionicons name="business-outline" size={18} color={COLORS.textMuted} />
+                  <Text className="ml-3 text-sm font-medium text-[#4b6b4d]">Company Lists</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  className="flex-row items-center px-3 py-2.5 mb-1 rounded-lg"
+                  onPress={() => {
+                    closeMenu();
+                    onNavigate('employee');
+                  }}
+                >
+                  <Ionicons name="people-outline" size={18} color={COLORS.textMuted} />
+                  <Text className="ml-3 text-sm font-medium text-[#4b6b4d]">Employees</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  className="flex-row items-center px-3 py-2.5 mb-1 rounded-lg bg-[#f8fafb]"
+                  onPress={() => {
+                    closeMenu();
+                    onNavigate('settings');
+                  }}
+                >
+                  <Ionicons name="settings" size={18} color={COLORS.green} />
+                  <Text className="ml-3 text-sm font-semibold text-[#237227]">Settings</Text>
+                </TouchableOpacity>
+              </ScrollView>
             </View>
-            <ScrollView className="flex-1 px-4 py-4">
-              <Text className="p-4 text-xs text-stone-400">Mobile Menu Content</Text>
-            </ScrollView>
+            <Pressable className="flex-1 bg-black/15" onPress={closeMenu} />
           </View>
-          <Pressable className="flex-1 bg-black/40" onPress={() => setIsDrawerOpen(false)} />
-        </View>
-      </Modal>
+        </Modal>
+      )}
     </View>
   );
 }

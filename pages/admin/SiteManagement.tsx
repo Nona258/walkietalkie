@@ -24,7 +24,6 @@ interface Site {
   branch_id?: string | number | null;
   start_time?: string | null;
   end_time?: string | null;
-  date_accomplished?: string | null;
   members_count?: number | null;
   status: string;
   leader_id?: string | null;
@@ -51,6 +50,8 @@ interface SiteManagementProps {
       | 'employee'
       | 'settings'
   ) => void;
+  isMobileMenuOpen?: boolean;
+  setIsMobileMenuOpen?: (open: boolean) => void;
 }
 
 interface ValidationErrors {
@@ -61,8 +62,7 @@ interface ValidationErrors {
   membersCount?: string;
 }
 
-export default function SiteManagement({ onNavigate }: SiteManagementProps) {
-  const [isDrawerOpen, setIsDrawerOpen] = useState(false);
+export default function SiteManagement({ onNavigate, isMobileMenuOpen, setIsMobileMenuOpen }: SiteManagementProps) {
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [isViewLocationOpen, setIsViewLocationOpen] = useState(false);
@@ -104,7 +104,6 @@ export default function SiteManagement({ onNavigate }: SiteManagementProps) {
   const [branch_id, setBranchId] = useState('');
   const [startTime, setStartTime] = useState('');
   const [endTime, setEndTime] = useState('');
-  const [dateAccomplished, setDateAccomplished] = useState('');
   const [membersCount, setMembersCount] = useState('');
   const [latitude, setLatitude] = useState<number | null>(null);
   const [longitude, setLongitude] = useState<number | null>(null);
@@ -439,16 +438,82 @@ export default function SiteManagement({ onNavigate }: SiteManagementProps) {
 
   // Initialize edit map using Google Maps
   useEffect(() => {
-    if (isEditModalOpen && selectedSite && typeof window !== 'undefined') {
-      const initEditMap = () => {
-        const g = (window as any).google;
-        if (!g || !g.maps || editMapRef.current) return;
+    if (!isEditModalOpen || !selectedSite || typeof window === 'undefined') {
+      // Clean up when modal closes
+      if (editMarkerRef.current) {
+        try {
+          editMarkerRef.current.setMap(null);
+        } catch {}
+        editMarkerRef.current = null;
+      }
+      if (editMapRef.current) {
+        editMapRef.current = null;
+      }
+      return;
+    }
 
+    const ensureGoogleMapsScript = () => {
+      const w = window as any;
+      if (w.google && w.google.maps) {
+        return;
+      }
+
+      const scriptId = 'gmaps-script';
+      if (document.getElementById(scriptId)) {
+        return;
+      }
+
+      const API_KEY = 'AIzaSyAq58TD9PputxnK8ZO9jRUX8KW7bTuPTPQ';
+      const script = document.createElement('script');
+      script.id = scriptId;
+      script.src = `https://maps.googleapis.com/maps/api/js?key=${API_KEY}&libraries=places`;
+      script.async = true;
+      script.defer = true;
+      document.head.appendChild(script);
+    };
+
+    ensureGoogleMapsScript();
+
+    let retryCount = 0;
+    const maxRetries = 20;
+
+    const initEditMap = () => {
+      const g = (window as any).google;
+      if (!g || !g.maps) return;
+
+      const mapEl = document.getElementById('edit-leaflet-map') as HTMLElement;
+      if (!mapEl) {
+        if (retryCount < maxRetries) {
+          retryCount++;
+          setTimeout(initEditMap, 100);
+        }
+        return;
+      }
+
+      // Check if element has dimensions
+      const rect = mapEl.getBoundingClientRect();
+      if (rect.width === 0 || rect.height === 0) {
+        if (retryCount < maxRetries) {
+          retryCount++;
+          setTimeout(initEditMap, 100);
+        }
+        return;
+      }
+
+      // Clean up any existing map first
+      if (editMarkerRef.current) {
+        try {
+          editMarkerRef.current.setMap(null);
+        } catch {}
+        editMarkerRef.current = null;
+      }
+      if (editMapRef.current) {
+        editMapRef.current = null;
+      }
+
+      try {
         const lat = selectedSite.latitude || 8.228;
         const lng = selectedSite.longitude || 124.2452;
-
-        const mapEl = document.getElementById('edit-leaflet-map');
-        if (!mapEl) return;
 
         const map = new g.maps.Map(mapEl, {
           center: { lat, lng },
@@ -482,18 +547,34 @@ export default function SiteManagement({ onNavigate }: SiteManagementProps) {
 
         editMapRef.current = map;
         editMarkerRef.current = marker;
-      };
 
-      if ((window as any).google && (window as any).google.maps) {
-        setTimeout(initEditMap, 100);
-      } else {
-        const check = setInterval(() => {
-          if ((window as any).google && (window as any).google.maps) {
-            clearInterval(check);
-            initEditMap();
-          }
-        }, 100);
+        // Force resize after initialization
+        setTimeout(() => {
+          try {
+            g.maps.event.trigger(map, 'resize');
+            map.setCenter({ lat, lng });
+          } catch {}
+        }, 200);
+      } catch (error) {
+        console.error('Error initializing edit map:', error);
       }
+    };
+
+    if ((window as any).google && (window as any).google.maps) {
+      // Use requestAnimationFrame to ensure DOM is painted
+      requestAnimationFrame(() => {
+        setTimeout(initEditMap, 500);
+      });
+    } else {
+      const check = setInterval(() => {
+        if ((window as any).google && (window as any).google.maps) {
+          clearInterval(check);
+          requestAnimationFrame(() => {
+            setTimeout(initEditMap, 500);
+          });
+        }
+      }, 100);
+      return () => clearInterval(check);
     }
 
     return () => {
@@ -557,16 +638,82 @@ export default function SiteManagement({ onNavigate }: SiteManagementProps) {
 
   // Initialize view location map using Google Maps
   useEffect(() => {
-    if (isViewLocationOpen && selectedSite && typeof window !== 'undefined') {
-      const initViewMap = () => {
-        const g = (window as any).google;
-        if (!g || !g.maps || viewMapRef.current) return;
+    if (!isViewLocationOpen || !selectedSite || typeof window === 'undefined') {
+      // Clean up when modal closes
+      if (viewMarkerRef.current) {
+        try {
+          viewMarkerRef.current.setMap(null);
+        } catch {}
+        viewMarkerRef.current = null;
+      }
+      if (viewMapRef.current) {
+        viewMapRef.current = null;
+      }
+      return;
+    }
 
+    const ensureGoogleMapsScript = () => {
+      const w = window as any;
+      if (w.google && w.google.maps) {
+        return;
+      }
+
+      const scriptId = 'gmaps-script';
+      if (document.getElementById(scriptId)) {
+        return;
+      }
+
+      const API_KEY = 'AIzaSyAq58TD9PputxnK8ZO9jRUX8KW7bTuPTPQ';
+      const script = document.createElement('script');
+      script.id = scriptId;
+      script.src = `https://maps.googleapis.com/maps/api/js?key=${API_KEY}&libraries=places`;
+      script.async = true;
+      script.defer = true;
+      document.head.appendChild(script);
+    };
+
+    ensureGoogleMapsScript();
+
+    let retryCount = 0;
+    const maxRetries = 20;
+
+    const initViewMap = () => {
+      const g = (window as any).google;
+      if (!g || !g.maps) return;
+
+      const mapEl = document.getElementById('view-leaflet-map') as HTMLElement;
+      if (!mapEl) {
+        if (retryCount < maxRetries) {
+          retryCount++;
+          setTimeout(initViewMap, 100);
+        }
+        return;
+      }
+
+      // Check if element has dimensions
+      const rect = mapEl.getBoundingClientRect();
+      if (rect.width === 0 || rect.height === 0) {
+        if (retryCount < maxRetries) {
+          retryCount++;
+          setTimeout(initViewMap, 100);
+        }
+        return;
+      }
+
+      // Clean up any existing map first
+      if (viewMarkerRef.current) {
+        try {
+          viewMarkerRef.current.setMap(null);
+        } catch {}
+        viewMarkerRef.current = null;
+      }
+      if (viewMapRef.current) {
+        viewMapRef.current = null;
+      }
+
+      try {
         const lat = selectedSite.latitude || 8.228;
         const lng = selectedSite.longitude || 124.2452;
-
-        const mapEl = document.getElementById('view-leaflet-map');
-        if (!mapEl) return;
 
         const map = new g.maps.Map(mapEl, {
           center: { lat, lng },
@@ -582,8 +729,8 @@ export default function SiteManagement({ onNavigate }: SiteManagementProps) {
           draggable: false,
         });
 
-        const companyName = selectedSite.company || 
-          (companyOptions.find((opt) => String(opt.id) === String(selectedSite.company_id))?.name || 
+        const companyName = selectedSite.company ||
+          (companyOptions.find((opt) => String(opt.id) === String(selectedSite.company_id))?.name ||
           'No company selected');
         const branchName = selectedSite.branch ||
           (branchOptions.find((opt) => opt.id === selectedSite.branch_id)?.name ||
@@ -608,18 +755,34 @@ export default function SiteManagement({ onNavigate }: SiteManagementProps) {
           viewBikeRef.current = new g.maps.BicyclingLayer();
           viewStreetRef.current = map.getStreetView();
         } catch (e) {}
-      };
 
-      if ((window as any).google && (window as any).google.maps) {
-        setTimeout(initViewMap, 100);
-      } else {
-        const check = setInterval(() => {
-          if ((window as any).google && (window as any).google.maps) {
-            clearInterval(check);
-            initViewMap();
-          }
-        }, 100);
+        // Force resize after initialization
+        setTimeout(() => {
+          try {
+            g.maps.event.trigger(map, 'resize');
+            map.setCenter({ lat, lng });
+          } catch {}
+        }, 200);
+      } catch (error) {
+        console.error('Error initializing view map:', error);
       }
+    };
+
+    if ((window as any).google && (window as any).google.maps) {
+      // Use requestAnimationFrame to ensure DOM is painted
+      requestAnimationFrame(() => {
+        setTimeout(initViewMap, 500);
+      });
+    } else {
+      const check = setInterval(() => {
+        if ((window as any).google && (window as any).google.maps) {
+          clearInterval(check);
+          requestAnimationFrame(() => {
+            setTimeout(initViewMap, 500);
+          });
+        }
+      }, 100);
+      return () => clearInterval(check);
     }
 
     return () => {
@@ -714,9 +877,6 @@ export default function SiteManagement({ onNavigate }: SiteManagementProps) {
       case 'endTime':
         setEndTime(value);
         break;
-      case 'dateAccomplished':
-        setDateAccomplished(value);
-        break;
       case 'membersCount':
         setMembersCount(value);
         break;
@@ -777,7 +937,6 @@ export default function SiteManagement({ onNavigate }: SiteManagementProps) {
     setBranchId('');
     setStartTime('');
     setEndTime('');
-    setDateAccomplished('');
     setMembersCount('');
     setLeaderId('');
     setLatitude(null);
@@ -922,7 +1081,6 @@ export default function SiteManagement({ onNavigate }: SiteManagementProps) {
           branch_id: branch_id || null,
           start_time: startTime || null,
           end_time: endTime || null,
-          date_accomplished: dateAccomplished || null,
           members_count: membersCount ? parseInt(membersCount) : null,
           leader_id: selectedLeaderId,
           status: selectedLeaderId ? 'Pending' : 'Active',
@@ -976,7 +1134,6 @@ export default function SiteManagement({ onNavigate }: SiteManagementProps) {
     setBranchId(site.branch_id ? String(site.branch_id) : '');
     setStartTime((site as any).start_time || '');
     setEndTime((site as any).end_time || '');
-    setDateAccomplished((site as any).date_accomplished || '');
     setMembersCount(site.members_count ? String(site.members_count) : '');
     setLatitude(site.latitude || null);
     setLongitude(site.longitude || null);
@@ -1001,7 +1158,6 @@ export default function SiteManagement({ onNavigate }: SiteManagementProps) {
         branch_id: branch_id || null,
         start_time: startTime || null,
         end_time: endTime || null,
-        date_accomplished: dateAccomplished || null,
         members_count: membersCount ? parseInt(membersCount) : null,
         latitude: latitude,
         longitude: longitude,
@@ -1069,235 +1225,137 @@ export default function SiteManagement({ onNavigate }: SiteManagementProps) {
   return (
     <View className="flex-1 bg-stone-50">
       {/* Main Content Area */}
-      <ScrollView className="flex-1 bg-stone-50">
+      <ScrollView className="flex-1 bg-stone-50" showsVerticalScrollIndicator={false}>
         {/* Header */}
-        <View className="border-b border-stone-200 bg-white px-5 pb-3 pt-4">
+        <View className="px-6 pt-5 pb-4 border-b bg-[#f8fafb] border-slate-200">
           <View className="flex-row items-center justify-between">
-            <View className="flex-1 flex-row items-center">
+            <View className="flex-row items-center flex-1">
               <TouchableOpacity
-                className="mr-3 h-9 w-9 items-center justify-center lg:hidden"
-                onPress={() => setIsDrawerOpen(true)}>
-                <Ionicons name="menu" size={24} color="#44403c" />
+                className="items-center justify-center mr-3 lg:hidden w-9 h-9"
+                onPress={() => setIsMobileMenuOpen?.(true)}>
+                <Ionicons name="menu" size={28} color="#237227" />
               </TouchableOpacity>
               <View className="flex-1">
-                <Text className="text-lg font-bold text-stone-900 lg:text-2xl">
-                  Site Management
-                </Text>
-                <Text className="mt-0.5 text-xs text-stone-500 lg:text-sm">
-                  Welcome back, Administrator
-                </Text>
-              </View>
-            </View>
-            <View className="flex-row items-center gap-2.5">
-              <TouchableOpacity
-                className="h-9 w-9 items-center justify-center rounded-full bg-stone-100"
-                onPress={() => setIsNotificationOpen(true)}
-                activeOpacity={0.7}>
-                <View className="absolute right-1.5 top-1.5 h-2 w-2 rounded-full bg-red-500" />
-                <Ionicons name="notifications-outline" size={18} color="#57534e" />
-              </TouchableOpacity>
-              <Modal
-                visible={isNotificationOpen}
-                transparent
-                animationType="fade"
-                onRequestClose={() => setIsNotificationOpen(false)}>
-                <Pressable
-                  style={{
-                    flex: 1,
-                    backgroundColor: 'rgba(0,0,0,0.2)',
-                    justifyContent: 'center',
-                    alignItems: 'center',
-                  }}
-                  onPress={() => setIsNotificationOpen(false)}>
-                  <View
-                    style={{
-                      width: 320,
-                      backgroundColor: 'rgba(255,255,255,0.85)',
-                      borderRadius: 16,
-                      padding: 24,
-                      alignItems: 'center',
-                    }}>
-                    <Ionicons
-                      name="notifications-outline"
-                      size={32}
-                      color="#10b981"
-                      style={{ marginBottom: 12 }}
-                    />
-                    <Text
-                      style={{
-                        fontWeight: 'bold',
-                        fontSize: 18,
-                        color: '#44403c',
-                        marginBottom: 8,
-                      }}>
-                      Notifications
-                    </Text>
-                    <Text style={{ color: '#57534e', textAlign: 'center', marginBottom: 16 }}>
-                      You have no new notifications.
-                    </Text>
-                    <TouchableOpacity
-                      style={{
-                        backgroundColor: '#10b981',
-                        borderRadius: 8,
-                        paddingVertical: 8,
-                        paddingHorizontal: 24,
-                      }}
-                      onPress={() => setIsNotificationOpen(false)}>
-                      <Text style={{ color: 'white', fontWeight: 'bold' }}>Close</Text>
-                    </TouchableOpacity>
-                  </View>
-                </Pressable>
-              </Modal>
-              <View className="h-9 w-9 items-center justify-center rounded-full bg-emerald-100">
-                <Text className="text-xs font-semibold text-emerald-700">AD</Text>
-              </View>
-              <View className="ml-2 hidden lg:flex">
-                <Text className="text-sm font-semibold text-stone-900">Admin User</Text>
-                <Text className="text-xs text-stone-500">Super Admin</Text>
+                <Text className="mb-1 text-xl font-light lg:text-3xl text-stone-900">Site Management</Text>
+                <Text className="text-xs lg:text-base text-stone-900">Welcome back, Administrator</Text>
               </View>
             </View>
           </View>
         </View>
 
         {/* Page Title & Add Button */}
-        <View className="px-5 pb-3 pt-4 lg:px-8 lg:pt-6">
+        <View className="px-6 pt-4 pb-3">
           <View className="flex-row items-center justify-between">
-            <View className="flex-1 flex-row items-center gap-3">
+            <View className="flex-row items-center flex-1 gap-3">
               <Text className="mb-0.5 text-lg font-bold text-stone-900 lg:text-xl">
                 {showArchived ? 'Archived Sites' : 'Site Management'}
               </Text>
               <TouchableOpacity
-                className={`ml-2 px-2 py-1 rounded transition-colors duration-150 ${!showArchived ? 'bg-emerald-600' : 'bg-stone-200'} ${!showArchived ? 'shadow-md' : ''}`}
+                className={`ml-2 px-2 py-1 rounded transition-colors duration-150 ${!showArchived ? 'bg-[#237227]' : 'bg-stone-200'} ${!showArchived ? 'shadow-md' : ''}`}
                 style={{ minWidth: 70, alignItems: 'center' }}
                 onPress={() => setShowArchived(false)}
                 activeOpacity={0.85}
               >
-                <Text className={`text-xs font-semibold ${!showArchived ? 'text-white' : 'text-emerald-700'}`}>Active</Text>
+                <Text className={`text-xs font-semibold ${!showArchived ? 'text-white' : 'text-[#237227]'}`}>Active</Text>
               </TouchableOpacity>
               <TouchableOpacity
-                className={`ml-1 px-2 py-1 rounded transition-colors duration-150 ${showArchived ? 'bg-emerald-600' : 'bg-stone-200'} ${showArchived ? 'shadow-md' : ''}`}
+                className={`ml-1 px-2 py-1 rounded transition-colors duration-150 ${showArchived ? 'bg-[#237227]' : 'bg-stone-200'} ${showArchived ? 'shadow-md' : ''}`}
                 style={{ minWidth: 70, alignItems: 'center' }}
                 onPress={() => setShowArchived(true)}
                 activeOpacity={0.85}
               >
-                <Text className={`text-xs font-semibold ${showArchived ? 'text-white' : 'text-emerald-700'}`}>Archived</Text>
+                <Text className={`text-xs font-semibold ${showArchived ? 'text-white' : 'text-[#237227]'}`}>Archived</Text>
               </TouchableOpacity>
             </View>
             {!showArchived && (
               <TouchableOpacity
-                className="ml-2 flex-row items-center rounded-xl bg-emerald-600 px-3 py-2 lg:px-4 lg:py-2.5"
-                onPress={() => setIsAddModalOpen(true)}>
-                <Ionicons name="add" size={18} color="white" />
-                <Text className="ml-1 text-xs font-semibold text-white lg:text-sm">Add Site</Text>
+                className="ml-2 flex-row items-center gap-1.5 px-3.5 py-2 rounded-lg bg-[#237227] shadow-sm"
+                onPress={() => setIsAddModalOpen(true)}
+              >
+                <Ionicons name="add" size={16} color="white" />
+                <Text className="text-sm font-semibold text-white">Add Site</Text>
               </TouchableOpacity>
             )}
           </View>
         </View>
 
         {/* Desktop Table View - Hidden on mobile */}
-        <View className="hidden px-8 pb-6 lg:flex">
-          <View className="overflow-hidden rounded-2xl border border-stone-200 bg-white">
+        <View className="hidden px-6 pb-6 lg:flex">
+          <View className="overflow-hidden bg-white border shadow-sm rounded-xl border-stone-100">
             {/* Table Header */}
-            <View className="flex-row items-center border-b border-stone-200 bg-stone-50 px-6 py-4">
-              <Text className="flex-1 text-xs font-semibold uppercase tracking-wide text-stone-600">
-                Site Name
-              </Text>
-              <Text className="flex-1 text-xs font-semibold uppercase tracking-wide text-stone-600">
-                Company
-              </Text>
-              <Text className="flex-1 text-xs font-semibold uppercase tracking-wide text-stone-600">
-                Branch
-              </Text>
-              <Text className="w-28 text-xs font-semibold uppercase tracking-wide text-stone-600">
-                Status
-              </Text>
-              <Text className="w-32 text-center text-xs font-semibold uppercase tracking-wide text-stone-600">
-                Actions
-              </Text>
+            <View className="flex-row items-center px-6 py-3 border-b border-gray-200 bg-gray-50">
+              <Text className="flex-1 text-sm font-semibold text-gray-700">Site Name</Text>
+              <Text className="flex-1 text-sm font-semibold text-center text-gray-700">Company</Text>
+              <Text className="flex-1 text-sm font-semibold text-gray-700">Branch</Text>
+              <Text className="w-24 text-sm font-semibold text-gray-700">Status</Text>
+              <Text className="text-sm font-semibold text-center text-gray-700 w-28">Actions</Text>
             </View>
 
             {/* Table Rows */}
             {sites.length === 0 ? (
               <View className="items-center px-6 py-12">
-                <Ionicons name="location-outline" size={48} color="#d6d3d1" />
-                <Text className="mt-4 text-sm text-stone-500">No sites found</Text>
-                {!showArchived && (
-                  <Text className="mt-1 text-xs text-stone-400">
-                    Click &quot;Add Site&quot; to create your first site
-                  </Text>
-                )}
+                <View className="items-center justify-center w-12 h-12 mb-3 rounded-full bg-[#237227]">
+                  <Ionicons name="location-outline" size={22} color="#f8fafb" />
+                </View>
+                <Text className="text-sm font-medium text-stone-500">No sites found</Text>
+                <Text className="mt-1 text-xs text-stone-400">Click Add Site to create your first site</Text>
               </View>
             ) : (
               sites.map((site, index) => (
                 <View
                   key={site.id}
-                  className={`flex-row items-center px-8 py-6 ${index !== sites.length - 1 ? 'border-b border-stone-100' : ''} ${index % 2 === 0 ? 'bg-white' : 'bg-stone-50'}`}>
-                  {/* Site Name */}
-                  <View className="flex-1 flex-row items-center">
-                    <View className="mr-3 h-10 w-10 items-center justify-center rounded-xl bg-emerald-100">
-                      <Ionicons name="location" size={18} color="#10b981" />
+                  className={`flex-row items-center px-6 py-3.5 ${index !== sites.length - 1 ? 'border-b border-stone-50' : ''}`}
+                >
+                  <View className="flex-1 flex-row items-center gap-2.5">
+                    <View className="items-center justify-center w-8 h-8 rounded-full bg-[#f8fafb] border border-[#237227]">
+                      <Ionicons name="location" size={18} color="#237227" />
                     </View>
-                    <Text className="text-sm font-semibold text-stone-900">{site.name}</Text>
+                    <Text className="text-sm font-semibold text-stone-900" numberOfLines={1}>{site.name}</Text>
                   </View>
 
-                  {/* Company */}
-                  <Text className="flex-1 text-sm text-stone-600">
-                    {companyOptions.find((opt) => String(opt.id) === String(site.company_id))
-                      ?.name || (site.company || 'No company selected')}
+                  <Text className="flex-1 text-sm text-center text-stone-700" numberOfLines={1}>
+                    {companyOptions.find(opt => String(opt.id) === String(site.company_id))?.name || '—'}
                   </Text>
 
-                  {/* Branch */}
-                  <Text className="flex-1 text-sm text-stone-600">
-                    {branchOptions.find((opt) => String(opt.id) === String(site.branch_id))?.name ||
-                      (site.branch || 'No branch selected')}
+                  <Text className="flex-1 text-sm text-stone-700" numberOfLines={1}>
+                    {branchOptions.find(opt => String(opt.id) === String(site.branch_id))?.name || '—'}
                   </Text>
 
-                  {/* Status */}
-                  <View className="w-28">
-                    <View className="inline-flex self-start rounded-lg bg-emerald-50 px-3 py-1.5">
-                      <Text className="text-xs font-semibold text-emerald-700">{site.status}</Text>
+                  <View className="w-24">
+                    <View className="flex-row items-center gap-1.5 px-2.5 py-1 rounded-full self-start  border border-[#237227]">
+                      <View className="w-1.5 h-1.5 rounded-full bg-[#237227]" />
+                      <Text className="text-xs font-semibold text-stone-900">{site.status || 'Active'}</Text>
                     </View>
                   </View>
 
-                  {/* Actions */}
-                  <View className="w-32 flex-row items-center justify-center gap-2">
-                    {!showArchived ? (
-                      // Active site actions
-                      <>
-                        <TouchableOpacity
-                          className="h-8 w-8 items-center justify-center rounded-lg hover:bg-stone-100"
-                          onPress={() => handleEditSite(site)}>
-                          <Ionicons name="create-outline" size={18} color="#78716c" />
-                        </TouchableOpacity>
-                        <TouchableOpacity
-                          className="h-8 w-8 items-center justify-center rounded-lg hover:bg-red-50"
-                          onPress={() => handleDeleteSite(site)}>
-                          <Ionicons name="trash-outline" size={18} color="#dc2626" />
-                        </TouchableOpacity>
-                        <TouchableOpacity
-                          className="h-8 w-8 items-center justify-center rounded-lg hover:bg-stone-100"
-                          onPress={() => handleViewLocation(site)}>
-                          <Ionicons name="eye-outline" size={18} color="#78716c" />
-                        </TouchableOpacity>
-                      </>
-                    ) : (
-                      // Archived site actions
-                      <>
-                        <TouchableOpacity
-                          className="h-8 w-8 items-center justify-center rounded-lg hover:bg-stone-100"
-                          onPress={() => handleViewLocation(site)}>
-                          <Ionicons name="location-outline" size={18} color="#78716c" />
-                        </TouchableOpacity>
-                        <TouchableOpacity
-                          className="h-8 w-8 items-center justify-center rounded-lg hover:bg-stone-100"
-                          onPress={() => openArchivedDetail(site)}>
-                          <Ionicons name="eye-outline" size={18} color="#78716c" />
-                        </TouchableOpacity>
-                      </>
-                    )}
+                  <View className="w-28 flex-row items-center justify-center gap-1.5">
+                    <TouchableOpacity
+                      className="items-center justify-center rounded-full w-8 h-8 bg-[#f8fafb] border border-[#237227]"
+                      onPress={() => handleEditSite(site)}
+                    >
+                      <Ionicons name="create-outline" size={14} color="#237227" />
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      className="items-center justify-center rounded-full w-8 h-8 bg-[#f8fafb] border border-[#237227]"
+                      onPress={() => handleViewLocation(site)}
+                    >
+                      <Ionicons name="map-outline" size={14} color="#237227" />
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      className="items-center justify-center rounded-full w-8 h-8 bg-[#f8fafb] border border-[#ef4444]"
+                      onPress={() => handleDeleteSite(site)}
+                    >
+                      <Ionicons name="trash-outline" size={14} color="#ef4444" />
+                    </TouchableOpacity>
                   </View>
                 </View>
               ))
+            )}
+            {sites.length > 0 && (
+              <View className="flex-row items-center justify-between px-6 py-3 border-t border-stone-100 bg-stone-50">
+                <Text className="text-xs text-stone-900">Showing {sites.length} sites</Text>
+                <View />
+              </View>
             )}
           </View>
         </View>
@@ -1309,7 +1367,7 @@ export default function SiteManagement({ onNavigate }: SiteManagementProps) {
               <Ionicons name="location-outline" size={48} color="#d6d3d1" />
               <Text className="mt-4 text-sm text-stone-500">No sites found</Text>
               {!showArchived && (
-                <Text className="mt-1 text-center text-xs text-stone-400">
+                <Text className="mt-1 text-xs text-center text-stone-400">
                   Click &quot;Add Site&quot; to create your first site
                 </Text>
               )}
@@ -1401,7 +1459,7 @@ export default function SiteManagement({ onNavigate }: SiteManagementProps) {
                       </Text>
 
                       {showArchived && (
-                        <View className="mt-3 rounded-md bg-white/10 px-3 py-2">
+                        <View className="px-3 py-2 mt-3 rounded-md bg-white/10">
                           <Text className="text-xs font-semibold text-white">
                             Members: {site.members_count ?? '—'}
                           </Text>
@@ -1428,103 +1486,10 @@ export default function SiteManagement({ onNavigate }: SiteManagementProps) {
         </View>
       </ScrollView>
 
-      {/* Mobile Drawer Modal */}
-      <Modal
-        visible={isDrawerOpen}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setIsDrawerOpen(false)}>
-        <View className="flex-1 flex-row">
-          <View className="h-full w-72 bg-white shadow-2xl">
-            <View className="border-b border-emerald-100 bg-emerald-50 px-6 pb-6 pt-12">
-              <View className="mb-3 flex-row items-center gap-3">
-                <View className="h-14 w-14 items-center justify-center rounded-2xl bg-emerald-100">
-                  <Ionicons name="chatbubble" size={24} color="#10b981" />
-                </View>
-                <View>
-                  <Text className="text-base font-bold text-stone-900">Admin Portal</Text>
-                  <Text className="text-xs text-stone-500">Monitoring System</Text>
-                </View>
-              </View>
-            </View>
-            <ScrollView className="flex-1 px-4 py-4">
-              <TouchableOpacity
-                className="mb-1 flex-row items-center rounded-xl px-4 py-3 hover:bg-stone-50"
-                onPress={() => {
-                  setIsDrawerOpen(false);
-                  onNavigate('dashboard');
-                }}>
-                <Ionicons name="grid-outline" size={20} color="#78716c" />
-                <Text className="ml-3 font-medium text-stone-700">Dashboard</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                className="mb-1 flex-row items-center rounded-xl bg-emerald-50 px-4 py-3"
-                onPress={() => {
-                  setIsDrawerOpen(false);
-                  onNavigate('siteManagement');
-                }}>
-                <Ionicons name="location-outline" size={20} color="#10b981" />
-                <Text className="ml-3 font-medium text-emerald-700">Site Management</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                className="mb-1 flex-row items-center rounded-xl px-4 py-3 hover:bg-stone-50"
-                onPress={() => {
-                  setIsDrawerOpen(false);
-                  onNavigate('walkieTalkie');
-                }}>
-                <Ionicons name="mic-outline" size={20} color="#78716c" />
-                <Text className="ml-3 font-medium text-stone-700">Walkie Talkie</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                className="mb-1 flex-row items-center rounded-xl px-4 py-3 hover:bg-stone-50"
-                onPress={() => {
-                  setIsDrawerOpen(false);
-                  onNavigate('activityLogs');
-                }}>
-                <Ionicons name="clipboard-outline" size={20} color="#78716c" />
-                <Text className="ml-3 font-medium text-stone-700">Activity Logs</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                className="mb-1 flex-row items-center rounded-xl px-4 py-3 hover:bg-stone-50"
-                onPress={() => {
-                  setIsDrawerOpen(false);
-                  onNavigate('companyList');
-                }}>
-                <Ionicons name="business-outline" size={20} color="#78716c" />
-                <Text className="ml-3 font-medium text-stone-700">Company Lists</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                className="mb-1 flex-row items-center rounded-xl px-4 py-3 hover:bg-stone-50"
-                onPress={() => {
-                  setIsDrawerOpen(false);
-                  onNavigate('employee');
-                }}>
-                <Ionicons name="people-outline" size={20} color="#78716c" />
-                <Text className="ml-3 font-medium text-stone-700">Employees</Text>
-              </TouchableOpacity>
-              <View className="my-4 border-t border-stone-200" />
-              <TouchableOpacity
-                className="mb-1 flex-row items-center rounded-xl px-4 py-3 hover:bg-stone-50"
-                onPress={() => onNavigate('settings')}>
-                <Ionicons name="settings-outline" size={20} color="#78716c" />
-                <Text className="ml-3 font-medium text-stone-700">Settings</Text>
-              </TouchableOpacity>
-            </ScrollView>
-            <View className="border-t border-stone-200 px-4 pb-6 pt-4">
-              <TouchableOpacity className="flex-row items-center rounded-xl px-4 py-3">
-                <Ionicons name="log-out-outline" size={20} color="#dc2626" />
-                <Text className="ml-3 font-medium text-red-600">Sign Out</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-          <Pressable className="flex-1 bg-black/40" onPress={() => setIsDrawerOpen(false)} />
-        </View>
-      </Modal>
-
       {/* Detail Modal for Archived Sites */}
       <Modal visible={detailModalVisible} animationType="slide" transparent={true}>
-        <View className="flex-1 items-center justify-center bg-black/40 px-6">
-          <View className="w-full max-w-2xl rounded-2xl bg-white p-6">
+        <View className="items-center justify-center flex-1 px-6 bg-black/40">
+          <View className="w-full max-w-2xl p-6 bg-white rounded-2xl">
             <View className="flex-row items-start justify-between">
               <View className="flex-1">
                 <Text className="text-lg font-extrabold text-gray-900">
@@ -1581,14 +1546,14 @@ export default function SiteManagement({ onNavigate }: SiteManagementProps) {
                     keyExtractor={(item, idx) => idx.toString()}
                     renderItem={({ item }) => (
                       <TouchableOpacity
-                        className="mr-2 h-24 w-24 rounded-md overflow-hidden border border-stone-200"
+                        className="w-24 h-24 mr-2 overflow-hidden border rounded-md border-stone-200"
                         onPress={() => {
                           setActiveImage(item);
                           setImageModalVisible(true);
                         }}>
                         <Image
                           source={{ uri: item }}
-                          className="h-full w-full"
+                          className="w-full h-full"
                           resizeMode="cover"
                           onError={(e) => console.warn('Failed to load evidence', e.nativeEvent.error)}
                         />
@@ -1599,7 +1564,7 @@ export default function SiteManagement({ onNavigate }: SiteManagementProps) {
               )}
 
               {(!selectedArchivedSite?.evidence_urls || selectedArchivedSite.evidence_urls.length === 0) && (
-                <Text className="text-sm text-stone-500 mt-2">No evidence images.</Text>
+                <Text className="mt-2 text-sm text-stone-500">No evidence images.</Text>
               )}
             </ScrollView>
           </View>
@@ -1616,15 +1581,15 @@ export default function SiteManagement({ onNavigate }: SiteManagementProps) {
           resetForm();
         }}>
         <Pressable
-          className="flex-1 items-center justify-center bg-black/50 px-6"
+          className="items-center justify-center flex-1 px-6 bg-black/50"
           onPress={() => {
             setIsAddModalOpen(false);
             resetForm();
           }}>
           <Pressable
-            className="w-full max-w-md rounded-2xl bg-white"
+            className="w-full max-w-md bg-white rounded-2xl"
             onPress={(e) => e.stopPropagation()}>
-            <View className="border-b border-stone-100 px-6 pb-4 pt-6">
+            <View className="px-6 pt-6 pb-4 border-b border-stone-100">
               <View className="flex-row items-center justify-between">
                 <View>
                   <Text className="text-xl font-bold text-stone-900">Add New Site</Text>
@@ -1633,7 +1598,7 @@ export default function SiteManagement({ onNavigate }: SiteManagementProps) {
                   </Text>
                 </View>
                 <TouchableOpacity
-                  className="h-8 w-8 items-center justify-center"
+                  className="items-center justify-center w-8 h-8"
                   onPress={() => {
                     setIsAddModalOpen(false);
                     resetForm();
@@ -1643,14 +1608,14 @@ export default function SiteManagement({ onNavigate }: SiteManagementProps) {
               </View>
             </View>
 
-            <ScrollView className="max-h-96 px-6 py-5">
+            <ScrollView className="px-6 py-5 max-h-96">
               <View className="mb-4">
                 <Text className="mb-2 text-sm font-medium text-stone-700">
                   Site Name <Text className="text-red-500">*</Text>
                 </Text>
                 <TextInput
                   className={`border bg-white ${
-                    touched.siteName && errors.siteName ? 'border-red-500' : 'border-stone-300'
+                    touched.siteName && errors.siteName ? 'border-red-500' : 'border-[#237227]'
                   } rounded-xl px-4 py-3 text-sm text-stone-900`}
                   id="site-name-input"
                   nativeID="site-name-input"
@@ -1689,7 +1654,7 @@ export default function SiteManagement({ onNavigate }: SiteManagementProps) {
                 </Text>
                 <View
                   className={`border bg-white ${
-                    touched.company && errors.company ? 'border-red-500' : 'border-stone-300'
+                    touched.company && errors.company ? 'border-red-500' : 'border-[#237227]'
                   } rounded-xl px-4 py-3`}>
                   <select
                     style={{
@@ -1722,7 +1687,7 @@ export default function SiteManagement({ onNavigate }: SiteManagementProps) {
                 <Text className="mb-2 text-sm font-medium text-stone-700">Branch/Department</Text>
                 <View
                   className={`border bg-white ${
-                    touched.branch_id && errors.branch_id ? 'border-red-500' : 'border-stone-300'
+                    touched.branch_id && errors.branch_id ? 'border-red-500' : 'border-[#237227]'
                   } rounded-xl px-4 py-3`}>
                   <select
                     style={{
@@ -1753,10 +1718,10 @@ export default function SiteManagement({ onNavigate }: SiteManagementProps) {
                 )}
               </View>
 
-              <View className="-mx-2 flex-row flex-wrap">
-                <View className="mb-4 w-1/2 px-2">
+              <View className="flex-row flex-wrap -mx-2">
+                <View className="w-1/2 px-2 mb-4">
                   <Text className="mb-2 text-sm font-medium text-stone-700">Start Time</Text>
-                  <div className={`rounded-xl border bg-white px-4 py-3`}>
+                  <div className={`rounded-xl border border-[#237227] bg-white px-4 py-3`}>
                     <input
                       type="time"
                       style={{
@@ -1772,9 +1737,9 @@ export default function SiteManagement({ onNavigate }: SiteManagementProps) {
                   </div>
                 </View>
 
-                <View className="mb-4 w-1/2 px-2">
+                <View className="w-1/2 px-2 mb-4">
                   <Text className="mb-2 text-sm font-medium text-stone-700">End Time</Text>
-                  <div className={`rounded-xl border bg-white px-4 py-3`}>
+                  <div className={`rounded-xl border border-[#237227] bg-white px-4 py-3`}>
                     <input
                       type="time"
                       style={{
@@ -1790,25 +1755,7 @@ export default function SiteManagement({ onNavigate }: SiteManagementProps) {
                   </div>
                 </View>
 
-                <View className="mb-4 w-1/2 px-2">
-                  <Text className="mb-2 text-sm font-medium text-stone-700">Date Accomplished</Text>
-                  <div className={`rounded-xl border bg-white px-4 py-3`}>
-                    <input
-                      type="date"
-                      style={{
-                        width: '100%',
-                        background: 'transparent',
-                        border: 'none',
-                        fontSize: 16,
-                        color: '#44403c',
-                      }}
-                      value={dateAccomplished}
-                      onChange={(e) => handleFieldChange('dateAccomplished', e.target.value)}
-                    />
-                  </div>
-                </View>
-
-                <View className="mb-4 w-1/2 px-2">
+                <View className="w-full px-2 mb-4">
                   <Text className="mb-2 text-sm font-medium text-stone-700">
                     Employees to Deploy <Text className="text-red-500">*</Text>
                   </Text>
@@ -1816,7 +1763,7 @@ export default function SiteManagement({ onNavigate }: SiteManagementProps) {
                     className={`border bg-white ${
                       touched.membersCount && errors.membersCount
                         ? 'border-red-500'
-                        : 'border-stone-300'
+                        : 'border-[#237227]'
                     } rounded-xl px-4 py-3`}>
                     <input
                       list="members-list"
@@ -1834,7 +1781,7 @@ export default function SiteManagement({ onNavigate }: SiteManagementProps) {
                       onBlur={() => handleFieldBlur('membersCount', membersCount)}
                     />
                     <datalist id="members-list">
-                      {Array.from({ length: 50 }, (_, i) => i + 1).map((n) => (
+                      {Array.from({ length: 10 }, (_, i) => i + 1).map((n) => (
                         <option key={n} value={n}>
                           {n}
                         </option>
@@ -1854,7 +1801,7 @@ export default function SiteManagement({ onNavigate }: SiteManagementProps) {
                 <Text className="mb-2 text-sm font-medium text-stone-700">
                   Group Leader (Optional)
                 </Text>
-                <View className="rounded-xl border border-stone-300 bg-white px-4 py-3">
+                <View className="px-4 py-3 bg-white border rounded-xl border-[#237227]">
                   <select
                     style={{
                       width: '100%',
@@ -1902,7 +1849,7 @@ export default function SiteManagement({ onNavigate }: SiteManagementProps) {
                   </View>
                 )}
                 {latitude !== null && longitude !== null && (
-                  <View className="mt-2 rounded-lg bg-stone-50 px-3 py-2">
+                  <View className="px-3 py-2 mt-2 rounded-lg bg-stone-50">
                     <Text className="text-xs text-stone-600">
                       <Text className="font-semibold">Coordinates:</Text> {latitude.toFixed(6)},{' '}
                       {longitude.toFixed(6)}
@@ -1919,20 +1866,20 @@ export default function SiteManagement({ onNavigate }: SiteManagementProps) {
               </Text>
             </ScrollView>
 
-            <View className="border-t border-stone-100 px-6 pb-6 pt-4">
+            <View className="px-6 pt-4 pb-6 border-t border-stone-100">
               <View className="flex-row gap-3">
                 <TouchableOpacity
-                  className="flex-1 rounded-xl bg-stone-100 py-3 active:opacity-70"
+                  className="flex-1 py-3 rounded-xl  bg-[#f8fafb] border border-[#237227] active:opacity-70"
                   onPress={() => {
                     setIsAddModalOpen(false);
                     resetForm();
                   }}>
-                  <Text className="text-center font-semibold text-stone-700">Cancel</Text>
+                  <Text className="font-semibold text-center text-stone-900">Cancel</Text>
                 </TouchableOpacity>
                 <TouchableOpacity
-                  className="flex-1 rounded-xl bg-emerald-600 py-3 active:opacity-80"
+                  className="flex-1 py-3 rounded-xl bg-[#237227] active:opacity-80"
                   onPress={handleAddSite}>
-                  <Text className="text-center font-semibold text-white">Add Site</Text>
+                  <Text className="font-semibold text-center text-white">Add Site</Text>
                 </TouchableOpacity>
               </View>
             </View>
@@ -1950,22 +1897,22 @@ export default function SiteManagement({ onNavigate }: SiteManagementProps) {
           resetForm();
         }}>
         <Pressable
-          className="flex-1 items-center justify-center bg-black/50 px-6"
+          className="items-center justify-center flex-1 px-6 bg-black/50"
           onPress={() => {
             setIsEditModalOpen(false);
             resetForm();
           }}>
           <Pressable
-            className="w-full max-w-md rounded-2xl bg-white"
+            className="w-full max-w-md bg-white rounded-2xl"
             onPress={(e) => e.stopPropagation()}>
-            <View className="border-b border-stone-100 px-6 pb-4 pt-6">
+            <View className="px-6 pt-6 pb-4 border-b border-stone-100">
               <View className="flex-row items-center justify-between">
                 <View>
                   <Text className="text-xl font-bold text-stone-900">Edit Site</Text>
                   <Text className="mt-1 text-xs text-stone-500">Update the site details below</Text>
                 </View>
                 <TouchableOpacity
-                  className="h-8 w-8 items-center justify-center"
+                  className="items-center justify-center w-8 h-8"
                   onPress={() => {
                     setIsEditModalOpen(false);
                     resetForm();
@@ -1975,14 +1922,14 @@ export default function SiteManagement({ onNavigate }: SiteManagementProps) {
               </View>
             </View>
 
-            <ScrollView className="max-h-96 px-6 py-5">
+            <ScrollView className="px-6 py-5 max-h-96">
               <View className="mb-4">
                 <Text className="mb-2 text-sm font-medium text-stone-700">
                   Site Name <Text className="text-red-500">*</Text>
                 </Text>
                 <TextInput
                   className={`border bg-white ${
-                    touched.siteName && errors.siteName ? 'border-red-500' : 'border-stone-300'
+                    touched.siteName && errors.siteName ? 'border-red-500' : 'border-[#237227]' 
                   } rounded-xl px-4 py-3 text-sm text-stone-900`}
                   placeholder="e.g., Downtown Office"
                   placeholderTextColor="#a8a29e"
@@ -2020,7 +1967,7 @@ export default function SiteManagement({ onNavigate }: SiteManagementProps) {
                 </Text>
                 <View
                   className={`border bg-white ${
-                    touched.company && errors.company ? 'border-red-500' : 'border-stone-300'
+                    touched.company && errors.company ? 'border-red-500' : 'border-[#237227]'
                   } rounded-xl px-4 py-3`}>
                   <select
                     style={{
@@ -2055,7 +2002,7 @@ export default function SiteManagement({ onNavigate }: SiteManagementProps) {
                 </Text>
                 <View
                   className={`border bg-white ${
-                    touched.branch_id && errors.branch_id ? 'border-red-500' : 'border-stone-300'
+                    touched.branch_id && errors.branch_id ? 'border-red-500' : 'border-[#237227]'
                   } rounded-xl px-4 py-3`}>
                   <select
                     style={{
@@ -2084,10 +2031,10 @@ export default function SiteManagement({ onNavigate }: SiteManagementProps) {
                 )}
               </View>
 
-              <View className="-mx-2 flex-row flex-wrap">
-                <View className="mb-4 w-1/2 px-2">
+              <View className="flex-row flex-wrap -mx-2">
+                <View className="w-1/2 px-2 mb-4">
                   <Text className="mb-2 text-sm font-medium text-stone-700">Start Time</Text>
-                  <div className={`rounded-xl border bg-white px-4 py-3`}>
+                  <div className={`rounded-xl border border-[#237227] bg-white px-4 py-3`}>
                     <input
                       type="time"
                       style={{
@@ -2103,9 +2050,9 @@ export default function SiteManagement({ onNavigate }: SiteManagementProps) {
                   </div>
                 </View>
 
-                <View className="mb-4 w-1/2 px-2">
+                <View className="w-1/2 px-2 mb-4">
                   <Text className="mb-2 text-sm font-medium text-stone-700">End Time</Text>
-                  <div className={`rounded-xl border bg-white px-4 py-3`}>
+                  <div className={`rounded-xl border border-[#237227] bg-white px-4 py-3`}>
                     <input
                       type="time"
                       style={{
@@ -2121,25 +2068,7 @@ export default function SiteManagement({ onNavigate }: SiteManagementProps) {
                   </div>
                 </View>
 
-                <View className="mb-4 w-1/2 px-2">
-                  <Text className="mb-2 text-sm font-medium text-stone-700">Date Accomplished</Text>
-                  <div className={`rounded-xl border bg-white px-4 py-3`}>
-                    <input
-                      type="date"
-                      style={{
-                        width: '100%',
-                        background: 'transparent',
-                        border: 'none',
-                        fontSize: 16,
-                        color: '#44403c',
-                      }}
-                      value={dateAccomplished}
-                      onChange={(e) => handleFieldChange('dateAccomplished', e.target.value)}
-                    />
-                  </div>
-                </View>
-
-                <View className="mb-4 w-1/2 px-2">
+                <View className="w-1/2 px-2 mb-4">
                   <Text className="mb-2 text-sm font-medium text-stone-700">
                     Employees to Deploy
                   </Text>
@@ -2147,7 +2076,7 @@ export default function SiteManagement({ onNavigate }: SiteManagementProps) {
                     className={`border bg-white ${
                       touched.membersCount && errors.membersCount
                         ? 'border-red-500'
-                        : 'border-stone-300'
+                        : 'border-[#237227]'
                     } rounded-xl px-4 py-3`}>
                     <input
                       list="members-list"
@@ -2191,7 +2120,6 @@ export default function SiteManagement({ onNavigate }: SiteManagementProps) {
                     height: 200,
                     width: '100%',
                     borderRadius: 12,
-                    overflow: 'hidden',
                     borderWidth: 1,
                     borderColor: touched.location && errors.location ? '#dc2626' : '#d6d3d1',
                     borderStyle: 'solid',
@@ -2204,7 +2132,7 @@ export default function SiteManagement({ onNavigate }: SiteManagementProps) {
                   </View>
                 )}
                 {latitude !== null && longitude !== null && (
-                  <View className="mt-2 rounded-lg bg-stone-50 px-3 py-2">
+                  <View className="px-3 py-2 mt-2 rounded-lg bg-stone-50">
                     <Text className="text-xs text-stone-600">
                       <Text className="font-semibold">Coordinates:</Text> {latitude.toFixed(6)},{' '}
                       {longitude.toFixed(6)}
@@ -2221,20 +2149,20 @@ export default function SiteManagement({ onNavigate }: SiteManagementProps) {
               </Text>
             </ScrollView>
 
-            <View className="border-t border-stone-100 px-6 pb-6 pt-4">
+            <View className="px-6 pt-4 pb-6 border-t border-stone-100">
               <View className="flex-row gap-3">
                 <TouchableOpacity
-                  className="flex-1 rounded-xl bg-stone-100 py-3 active:opacity-70"
+                  className="flex-1 py-3 rounded-xl  bg-[#f8fafb] border border-[#237227]"
                   onPress={() => {
                     setIsEditModalOpen(false);
                     resetForm();
                   }}>
-                  <Text className="text-center font-semibold text-stone-700">Cancel</Text>
+                  <Text className="font-semibold text-center text-stone-900">Cancel</Text>
                 </TouchableOpacity>
                 <TouchableOpacity
-                  className="flex-1 rounded-xl bg-emerald-600 py-3 active:opacity-80"
+                  className="flex-1 py-3 rounded-xl bg-[#237227] active:opacity-80"
                   onPress={handleUpdateSite}>
-                  <Text className="text-center font-semibold text-white">Update Site</Text>
+                  <Text className="font-semibold text-center text-white">Update Site</Text>
                 </TouchableOpacity>
               </View>
             </View>
@@ -2252,22 +2180,22 @@ export default function SiteManagement({ onNavigate }: SiteManagementProps) {
           setSelectedSite(null);
         }}>
         <Pressable
-          className="flex-1 items-center justify-center bg-black/50 px-6"
+          className="items-center justify-center flex-1 px-6 bg-black/50"
           onPress={() => {
             setIsViewLocationOpen(false);
             setSelectedSite(null);
           }}>
           <Pressable
-            className="w-full max-w-2xl rounded-2xl bg-white"
+            className="w-full max-w-2xl bg-white rounded-2xl"
             onPress={(e) => e.stopPropagation()}>
-            <View className="border-b border-stone-100 px-6 pb-4 pt-6">
+            <View className="px-6 pt-6 pb-4 border-b border-stone-100">
               <View className="flex-row items-center justify-between">
                 <View>
                   <Text className="text-xl font-bold text-stone-900">{selectedSite?.name}</Text>
                   <Text className="mt-1 text-xs text-stone-500">Location on Map</Text>
                 </View>
                 <TouchableOpacity
-                  className="h-8 w-8 items-center justify-center"
+                  className="items-center justify-center w-8 h-8"
                   onPress={() => {
                     setIsViewLocationOpen(false);
                     setSelectedSite(null);
@@ -2285,7 +2213,6 @@ export default function SiteManagement({ onNavigate }: SiteManagementProps) {
                     height: 400,
                     width: '100%',
                     borderRadius: 12,
-                    overflow: 'hidden',
                     borderWidth: 1,
                     borderColor: '#d6d3d1',
                     borderStyle: 'solid',
@@ -2321,11 +2248,6 @@ export default function SiteManagement({ onNavigate }: SiteManagementProps) {
                         <Text style={{ fontSize: 13, color: '#6b7280', marginTop: 2 }}>
                           {selectedSite.branch || 'No branch selected'}
                         </Text>
-                        {(selectedSite as any).date_accomplished && (
-                          <Text style={{ fontSize: 13, color: '#6b7280', marginTop: 4 }}>
-                            Date: {(selectedSite as any).date_accomplished}
-                          </Text>
-                        )}
                         {((selectedSite as any).start_time || (selectedSite as any).end_time) && (
                           <Text
                             style={{
@@ -2388,14 +2310,14 @@ export default function SiteManagement({ onNavigate }: SiteManagementProps) {
               </View>
             </View>
 
-            <View className="border-t border-stone-100 px-6 pb-6 pt-4">
+            <View className="px-6 pt-4 pb-6 border-t border-stone-100">
               <TouchableOpacity
-                className="rounded-xl bg-emerald-600 py-3 active:opacity-80"
+                className="py-3 rounded-xl  bg-[#f8fafb] border border-[#237227] active:opacity-80"
                 onPress={() => {
                   setIsViewLocationOpen(false);
                   setSelectedSite(null);
                 }}>
-                <Text className="text-center font-semibold text-white">Close</Text>
+                <Text className="font-semibold text-center text-stone-900">Close</Text>
               </TouchableOpacity>
             </View>
           </Pressable>
@@ -2404,8 +2326,8 @@ export default function SiteManagement({ onNavigate }: SiteManagementProps) {
 
       {/* Image Modal for Evidence */}
       <Modal visible={imageModalVisible} transparent animationType="fade">
-        <View className="flex-1 items-center justify-center bg-black/60 p-6">
-          <View className="w-full max-w-3xl rounded-2xl bg-white p-4">
+        <View className="items-center justify-center flex-1 p-6 bg-black/60">
+          <View className="w-full max-w-3xl p-4 bg-white rounded-2xl">
             <View className="flex-row items-center justify-between">
               <Text className="text-base font-bold text-stone-900">Evidence Photo</Text>
               <Pressable onPress={() => setImageModalVisible(false)}>
@@ -2413,7 +2335,7 @@ export default function SiteManagement({ onNavigate }: SiteManagementProps) {
               </Pressable>
             </View>
             {activeImage ? (
-              <Image source={{ uri: activeImage }} className="mt-4 h-96 w-full rounded-md" resizeMode="contain" />
+              <Image source={{ uri: activeImage }} className="w-full mt-4 rounded-md h-96" resizeMode="contain" />
             ) : (
               <Text className="mt-4 text-sm text-stone-500">No image</Text>
             )}

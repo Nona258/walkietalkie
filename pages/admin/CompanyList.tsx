@@ -7,6 +7,7 @@ import {
   Modal,
   Pressable,
   TextInput,
+  ActivityIndicator,
 } from 'react-native';
 import supabase from '../../utils/supabase';
 import { Ionicons } from '@expo/vector-icons';
@@ -47,11 +48,11 @@ interface ValidationErrors {
 // ---------- Main Component ----------
 export default function CompanyList({ onNavigate }: CompanyListProps) {
   // ---------- UI States ----------
-  // drawer state not used in this component; keep a no-op setter to avoid unused variable errors
   const setIsDrawerOpen = (_v: boolean) => {};
   const [isNotificationOpen, setIsNotificationOpen] = useState(false);
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [companies, setCompanies] = useState<Company[]>([]);
+  const [loading, setLoading] = useState(true);
 
   // ---------- Add Company Form States ----------
   const [companyName, setCompanyName] = useState('');
@@ -63,20 +64,22 @@ export default function CompanyList({ onNavigate }: CompanyListProps) {
   const [errors, setErrors] = useState<ValidationErrors>({});
   const [touched, setTouched] = useState<{ [key: string]: boolean }>({});
 
-  // ---------- Branch Management Modal States ----------
+  // ---------- Branch Management Modal States (Edit) ----------
   const [isBranchModalOpen, setIsBranchModalOpen] = useState(false);
   const [selectedCompany, setSelectedCompany] = useState<Company | null>(null);
   const [branchesList, setBranchesList] = useState<{ id: number; name: string }[]>([]);
-  // View-only branches modal states
+  
+  // ---------- View-Only Branches Modal States ----------
   const [isViewBranchModalOpen, setIsViewBranchModalOpen] = useState(false);
   const [selectedCompanyForView, setSelectedCompanyForView] = useState<Company | null>(null);
   const [branchesListView, setBranchesListView] = useState<{ id: number; name: string }[]>([]);
+  
+  // Edit specific branch states
   const [editingBranch, setEditingBranch] = useState<{ id: number; name: string } | null>(null);
   const [newBranchName, setNewBranchName] = useState('');
   const [branchFormError, setBranchFormError] = useState('');
-  // id of company which has its action menu open (or null)
-  const [menuOpenFor, setMenuOpenFor] = useState<number | null>(null);
-  // Sweet alert state (replaces showToast)
+  
+  // Sweet alert state
   const [sweetVisible, setSweetVisible] = useState(false);
   const [sweetTitle, setSweetTitle] = useState('');
   const [sweetMessage, setSweetMessage] = useState('');
@@ -172,10 +175,12 @@ export default function CompanyList({ onNavigate }: CompanyListProps) {
   }, []);
 
   const loadCompaniesFromSupabase = async () => {
+    setLoading(true);
     try {
       const { data: supabaseCompanies, error } = await supabase
         .from('company')
-        .select('id, company_name, industry_or_sectors, no_of_branch');
+        .select('id, company_name, industry_or_sectors, no_of_branch')
+        .order('id', { ascending: false });
 
       if (error) throw error;
 
@@ -208,6 +213,8 @@ export default function CompanyList({ onNavigate }: CompanyListProps) {
       } catch (cacheErr) {
         console.log('Cache load failed:', cacheErr);
       }
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -385,7 +392,7 @@ export default function CompanyList({ onNavigate }: CompanyListProps) {
         color: '#ccfbf1',
       };
 
-      const updatedCompanies = [...companies, newCompany];
+      const updatedCompanies = [newCompany, ...companies];
       await saveCompaniesToCache(updatedCompanies);
 
       // Activity log
@@ -411,20 +418,15 @@ export default function CompanyList({ onNavigate }: CompanyListProps) {
   const handleDeleteCompany = async (id: number) => {
     const company = companies.find((c) => c.id === id);
     try {
-      // 1) Delete branches belonging to the company (if any)
       const { error: branchError } = await supabase.from('branch').delete().eq('company_id', id);
       if (branchError) throw branchError;
 
-      // 2) Delete the company
       const { error: compError } = await supabase.from('company').delete().eq('id', id);
       if (compError) throw compError;
 
-      // 3) Update local state/cache and UI
       const updatedCompanies = companies.filter((c) => c.id !== id);
       await saveCompaniesToCache(updatedCompanies);
 
-      // close any open menus/modals related to this company
-      setMenuOpenFor(null);
       if (selectedCompany && selectedCompany.id === id) {
         setIsBranchModalOpen(false);
         setSelectedCompany(null);
@@ -475,7 +477,6 @@ export default function CompanyList({ onNavigate }: CompanyListProps) {
   };
 
   const handleCompanyPress = (company: Company) => {
-    setMenuOpenFor(null);
     setSelectedCompany(company);
     fetchBranches(company.id);
     setIsBranchModalOpen(true);
@@ -485,7 +486,6 @@ export default function CompanyList({ onNavigate }: CompanyListProps) {
   };
 
   const handleViewCompany = (company: Company) => {
-    setMenuOpenFor(null);
     setSelectedCompanyForView(company);
     fetchBranchesForView(company.id);
     setIsViewBranchModalOpen(true);
@@ -534,11 +534,6 @@ export default function CompanyList({ onNavigate }: CompanyListProps) {
       setBranchFormError('');
 
       await updateCompanyBranchCount(selectedCompany.id, selectedCompany.branches + 1);
-
-      // close modal then show confirmation so alert appears above modal
-      setIsBranchModalOpen(false);
-      setEditingBranch(null);
-      setTimeout(() => openSweet('success', 'Success', 'Branch added'), 150);
     } catch (error: any) {
       console.error('Error adding branch:', error);
       openSweet('error', 'Error', error.message);
@@ -573,9 +568,6 @@ export default function CompanyList({ onNavigate }: CompanyListProps) {
       setEditingBranch(null);
       setNewBranchName('');
       setBranchFormError('');
-      // close modal so sweetalert is visible above
-      setIsBranchModalOpen(false);
-      setTimeout(() => openSweet('success', 'Success', 'Branch updated'), 150);
     } catch (error: any) {
       console.error('Error updating branch:', error);
       openSweet('error', 'Error', error.message);
@@ -587,17 +579,14 @@ export default function CompanyList({ onNavigate }: CompanyListProps) {
     try {
       const { error } = await supabase.from('branch').delete().eq('id', branchId);
       if (error) throw error;
-      // refresh branches from server to get an accurate count
+      
       const refreshed = await fetchBranches(selectedCompany.id);
       const newCount = Math.max(0, refreshed?.length || 0);
       await updateCompanyBranchCount(selectedCompany.id, newCount);
 
-      // close branch modal then show confirmation so the sweetalert appears on top
-      setIsBranchModalOpen(false);
       setEditingBranch(null);
       setNewBranchName('');
       setBranchFormError('');
-      setTimeout(() => openSweet('success', 'Success', 'Branch deleted'), 350);
     } catch (error: any) {
       console.error('Error deleting branch:', error);
       openSweet('error', 'Error', error.message);
@@ -610,247 +599,191 @@ export default function CompanyList({ onNavigate }: CompanyListProps) {
     setBranchFormError('');
   };
 
-  // When user taps delete (trash) for a branch, close the branch modal first
-  // so the SweetAlert confirmation appears above it, then show confirm.
   const confirmDeleteBranch = (branchId: number) => {
-    // close the branch modal so the alert will be visible on top
-    setIsBranchModalOpen(false);
-    setTimeout(() => {
-      openSweet(
-        'warning',
-        'Delete branch',
-        'Are you sure you want to delete this branch?',
-        true,
-        () => handleDeleteBranch(branchId)
-      );
-    }, 250);
+    openSweet(
+      'warning',
+      'Delete branch',
+      'Are you sure you want to delete this branch?',
+      true,
+      () => handleDeleteBranch(branchId)
+    );
   };
 
   // ---------- Render ----------
   return (
-    <View className="flex-1 bg-stone-50">
-      {/* Main Content Area */}
-      <ScrollView className="flex-1 bg-stone-50">
-        {/* Header */}
-        <View className="border-b border-stone-200 bg-white px-5 pb-3 pt-4">
+    <View className="flex-1 bg-[#f8fafb]">
+      <ScrollView className="flex-1 bg-[#f8fafb]" showsVerticalScrollIndicator={false}>
+        {/* ── Header ──────────────────────────────────────────────────────── */}
+        <View className="bg-[#f8fafb] px-6 pt-[18px] pb-4 border-b border-[#e5e7eb]">
           <View className="flex-row items-center justify-between">
-            <View className="flex-1 flex-row items-center">
-              {/* Mobile Menu Button - Hidden on desktop */}
+            <View className="flex-row items-center flex-1">
               <TouchableOpacity
-                className="mr-3 h-9 w-9 items-center justify-center lg:hidden"
+                className="items-center justify-center w-10 h-10 mr-3 lg:hidden"
                 onPress={() => setIsDrawerOpen(true)}>
-                <Ionicons name="menu" size={24} color="#44403c" />
+                <Ionicons name="menu" size={28} color="#237227" />
               </TouchableOpacity>
               <View className="flex-1">
-                <Text className="text-lg font-bold text-stone-900 lg:text-2xl">Company List</Text>
-                <Text className="mt-0.5 text-xs text-stone-500 lg:text-sm">
+                <Text className="text-[20px] lg:text-[30px] font-light text-[#1a2e1b] leading-[26px]">Company List</Text>
+                <Text className="mt-[1px] text-[12px] lg:text-[16px] text-black">
                   Welcome back, Administrator
                 </Text>
               </View>
             </View>
-            <View className="flex-row items-center gap-2.5">
-              <TouchableOpacity
-                className="h-9 w-9 items-center justify-center rounded-full bg-stone-100"
-                onPress={() => setIsNotificationOpen(true)}
-                activeOpacity={0.7}>
-                <View className="absolute right-1.5 top-1.5 h-2 w-2 rounded-full bg-red-500" />
-                <Ionicons name="notifications-outline" size={18} color="#57534e" />
-              </TouchableOpacity>
-              {/* Notification Modal */}
-              <Modal
-                visible={isNotificationOpen}
-                transparent
-                animationType="fade"
-                onRequestClose={() => setIsNotificationOpen(false)}>
-                <Pressable
-                  style={{
-                    flex: 1,
-                    backgroundColor: 'rgba(0,0,0,0.2)',
-                    justifyContent: 'center',
-                    alignItems: 'center',
-                  }}
-                  onPress={() => setIsNotificationOpen(false)}>
-                  <View
-                    style={{
-                      width: 320,
-                      backgroundColor: 'rgba(255,255,255,0.85)',
-                      borderRadius: 16,
-                      padding: 24,
-                      alignItems: 'center',
-                    }}>
-                    <Ionicons
-                      name="notifications-outline"
-                      size={32}
-                      color="#10b981"
-                      style={{ marginBottom: 12 }}
-                    />
-                    <Text
-                      style={{
-                        fontWeight: 'bold',
-                        fontSize: 18,
-                        color: '#44403c',
-                        marginBottom: 8,
-                      }}>
-                      Notifications
-                    </Text>
-                    <Text style={{ color: '#57534e', textAlign: 'center', marginBottom: 16 }}>
-                      You have no new notifications.
-                    </Text>
-                    <TouchableOpacity
-                      style={{
-                        backgroundColor: '#10b981',
-                        borderRadius: 8,
-                        paddingVertical: 8,
-                        paddingHorizontal: 24,
-                      }}
-                      onPress={() => setIsNotificationOpen(false)}>
-                      <Text style={{ color: 'white', fontWeight: 'bold' }}>Close</Text>
-                    </TouchableOpacity>
-                  </View>
-                </Pressable>
-              </Modal>
-              <View className="h-9 w-9 items-center justify-center rounded-full bg-emerald-100">
-                <Text className="text-xs font-semibold text-emerald-700">AD</Text>
-              </View>
-              {/* Desktop User Info - Hidden on mobile */}
-              <View className="ml-2 hidden lg:flex">
-                <Text className="text-sm font-semibold text-stone-900">Admin User</Text>
-                <Text className="text-xs text-stone-500">Super Admin</Text>
-              </View>
-            </View>
           </View>
         </View>
 
-        {/* Page Title & Add Button */}
-        <View className="px-5 pb-3 pt-4 lg:px-8 lg:pt-6">
-          <View className="flex-row items-center justify-between">
-            <View className="flex-1">
-              <Text className="mb-0.5 text-lg font-bold text-stone-900 lg:text-xl">
-                Company Management
-              </Text>
+        {/* ── Page Title & Add Button ─────────────────────────────────────── */}
+        <View className="flex-row items-center justify-between px-6 py-4 pt-6">
+          <View className="flex-row items-center gap-[10px]">
+            <Ionicons name="business-outline" size={18} color="#1a2e1b" />
+            <Text className="text-[16px] font-bold text-[#1a2e1b]">All Companies</Text>
+            <View className="rounded-full bg-[#e8f5e9] px-[10px] py-[2px]">
+              <Text className="text-[12px] font-bold text-[#237227]">{companies.length}</Text>
             </View>
-            <TouchableOpacity
-              className="ml-2 flex-row items-center rounded-xl bg-emerald-600 px-3 py-2 lg:px-4 lg:py-2.5"
-              onPress={() => setIsAddModalOpen(true)}>
-              <Ionicons name="add" size={18} color="white" />
-              <Text className="ml-1 text-xs font-semibold text-white lg:text-sm">Add Company</Text>
-            </TouchableOpacity>
           </View>
+          <TouchableOpacity
+            className="flex-row items-center gap-[6px] rounded-[6px] bg-[#237227] px-4 py-2"
+            onPress={() => setIsAddModalOpen(true)}>
+            <Ionicons name="add" size={16} color="#ffffff" />
+            <Text className="text-[13px] font-semibold text-white">Add Company</Text>
+          </TouchableOpacity>
         </View>
 
-        {/* ---------- Company Cards Grid ---------- */}
-        <View className="px-5 pb-6 lg:px-8">
-          {companies.length === 0 ? (
-            <View className="items-center rounded-2xl border border-stone-200 bg-white px-6 py-12">
-              <Ionicons name="business-outline" size={48} color="#d6d3d1" />
-              <Text className="mt-4 text-sm text-stone-500">No companies found</Text>
-              <Text className="mt-1 text-xs text-stone-400">
-                Click &quot;Add Company&quot; to create your first company
-              </Text>
-            </View>
-          ) : (
-            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 12 }}>
-              {companies.map((company) => (
-                <View
-                  key={company.id}
-                  style={{ flex: 1, minWidth: 260 }}
-                  className="rounded-2xl border border-stone-200 bg-white">
-                  {/* Card Header */}
-                  <View className="flex-row items-center px-5 pb-4 pt-5" style={{ gap: 12 }}>
-                    <View className="h-12 w-12 items-center justify-center rounded-xl bg-emerald-100">
-                      <Text className="text-base font-bold text-emerald-700">
-                        {company.initials}
-                      </Text>
-                    </View>
-                    <View className="flex-1">
-                      <Text className="text-sm font-bold text-stone-900" numberOfLines={1}>
-                        {company.name}
-                      </Text>
-                      <Text className="mt-0.5 text-xs text-stone-500" numberOfLines={1}>
-                        {company.industry}
-                      </Text>
-                    </View>
+        {/* ── Table Layout ────────────────────────────────────────────────── */}
+        <View className="w-full px-6 pb-12">
+          <View className="bg-white border border-[#e5e7eb] rounded-[10px] overflow-hidden w-full">
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ minWidth: '100%' }}>
+              <View className="flex-1 min-w-full">
+                {/* Table Header */}
+                <View className="flex-row items-center px-5 py-4 bg-[#f8fafb] border-b border-[#e5e7eb]">
+                  <View className="flex-[3]">
+                    <Text className="text-[12px] font-bold text-stone-900 uppercase tracking-[0.5px]">Company</Text>
                   </View>
-
-                  {/* Divider */}
-                  <View className="mx-5 border-t border-stone-100" />
-
-                  {/* Card Body */}
-                  <View className="flex-row items-center justify-between px-5 py-3">
-                    <View className="flex-row items-center" style={{ gap: 6 }}>
-                      <Ionicons name="git-branch-outline" size={14} color="#78716c" />
-                      <Text className="text-xs text-stone-600">
-                        {company.branches} {company.branches === 1 ? 'branch' : 'branches'}
-                      </Text>
-                    </View>
-                    <View className="rounded-full bg-emerald-50 px-2.5 py-1">
-                      <Text className="text-xs font-medium text-emerald-700">
-                        {company.industry}
-                      </Text>
-                    </View>
+                  <View className="flex-[3]">
+                    <Text className="text-[12px] font-bold text-stone-900 uppercase tracking-[0.5px]">Industry/Sector</Text>
                   </View>
-
-                  {/* Divider */}
-                  <View className="mx-5 border-t border-stone-100" />
-
-                  {/* Card Footer / Actions */}
-                  <View className="flex-row items-center justify-end px-5 py-3" style={{ gap: 6 }}>
-                    <TouchableOpacity
-                      className="flex-row items-center rounded-lg bg-stone-50 px-3 py-1.5"
-                      style={{ gap: 5 }}
-                      onPress={() => handleCompanyPress(company)}>
-                      <Ionicons name="create-outline" size={15} color="#78716c" />
-                      <Text className="text-xs font-medium text-stone-600">Edit</Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                      className="flex-row items-center rounded-lg bg-stone-50 px-3 py-1.5"
-                      style={{ gap: 5 }}
-                      onPress={() => handleViewCompany(company)}>
-                      <Ionicons name="eye-outline" size={15} color="#78716c" />
-                      <Text className="text-xs font-medium text-stone-600">View</Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                      className="flex-row items-center rounded-lg bg-red-50 px-3 py-1.5"
-                      style={{ gap: 5 }}
-                      onPress={() =>
-                        openSweet(
-                          'warning',
-                          'Delete company',
-                          'Are you sure you want to delete this company?',
-                          true,
-                          () => handleDeleteCompany(company.id)
-                        )
-                      }>
-                      <Ionicons name="trash-outline" size={15} color="#dc2626" />
-                      <Text className="text-xs font-medium text-red-600">Delete</Text>
-                    </TouchableOpacity>
+                  <View className="flex-[2]">
+                    <Text className="text-[12px] font-bold text-stone-900 uppercase tracking-[0.5px]">Branches</Text>
+                  </View>
+                  <View className="w-[130px] pr-2 items-start">
+                    <Text className="text-[12px] font-bold text-stone-900 uppercase tracking-[0.5px]">Actions</Text>
                   </View>
                 </View>
-              ))}
-            </View>
-          )}
+
+                {/* Table Body */}
+                {loading ? (
+                  <View className="items-center justify-center py-[60px]">
+                    <ActivityIndicator size="large" color="#237227" />
+                  </View>
+                ) : companies.length === 0 ? (
+                  <View className="items-center justify-center py-[60px] gap-[10px]">
+                    <View className="h-12 w-12 items-center justify-center rounded-[12px] bg-[#e8f5e9]">
+                      <Ionicons name="business-outline" size={22} color="#237227" />
+                    </View>
+                    <Text className="text-[14px] font-semibold text-[#1a2e1b]">No companies found</Text>
+                    <Text className="text-[12px] text-[#8fa88f]">Click &quot;Add Company&quot; to create your first company</Text>
+                  </View>
+                ) : (
+                  companies.map((company, index) => (
+                    <View
+                      key={company.id}
+                      className={`flex-row items-center px-5 py-[16px] bg-white ${
+                        index !== companies.length - 1 ? 'border-b border-[#f0f4f0]' : ''
+                      }`}>
+                      
+                      {/* Column: Company Name & Avatar */}
+                      <View className="flex-[3] flex-row items-center gap-[12px]">
+                        <View className="h-8 w-8 items-center justify-center rounded-full bg-[#237227]">
+                          <Text className="text-[12px] font-bold text-white">{company.initials}</Text>
+                        </View>
+                        <Text className="text-[14px] font-semibold text-[#1a2e1b]">{company.name}</Text>
+                      </View>
+
+                      {/* Column: Industry */}
+                      <View className="flex-[3]">
+                        <Text className="text-[13px] text-[#1a2e1b]">{company.industry}</Text>
+                      </View>
+
+                      {/* Column: Branches */}
+                      <View className="flex-[2]">
+                        <Text className="text-[13px] text-[#1a2e1b]">{company.branches}</Text>
+                      </View>
+
+                      {/* Column: Actions */}
+                      <View className="w-[130px] flex-row items-center gap-[8px]">
+                        <TouchableOpacity
+                          className="h-[30px] w-[30px] items-center justify-center rounded-full bg-[#f8fafb] border border-[#237227]"
+                          onPress={() => handleCompanyPress(company)}>
+                          <Ionicons name="create-outline" size={15} color="#237227" />
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                          className="h-[30px] w-[30px] items-center justify-center rounded-full bg-[#f8fafb] border border-[#237227]"
+                          onPress={() => handleViewCompany(company)}>
+                          <Ionicons name="eye-outline" size={15} color="#237227" />
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                          className="h-[30px] w-[30px] items-center justify-center rounded-full bg-[#f8fafb] border border-[#ef4444]"
+                          onPress={() =>
+                            openSweet(
+                              'warning',
+                              'Delete company',
+                              'Are you sure you want to delete this company?',
+                              true,
+                              () => handleDeleteCompany(company.id)
+                            )
+                          }>
+                          <Ionicons name="trash-outline" size={15} color="#ef4444" />
+                        </TouchableOpacity>
+                      </View>
+                    </View>
+                  ))
+                )}
+
+                {/* Table Footer */}
+                {companies.length > 0 && (
+                  <View className="flex-row items-center justify-between border-t border-[#f0f4f0] bg-[#f8fafb] px-5 py-4">
+                    <Text className="text-[13px] text-black">
+                      Showing {companies.length} of {companies.length} companies
+                    </Text>
+                    <View className="flex-row gap-[8px]">
+                      <TouchableOpacity className="h-[30px] w-[30px] items-center justify-center rounded-[6px] border border-[#e5e7eb] bg-white opacity-50" disabled>
+                        <Ionicons name="chevron-back-outline" size={14} color="#4b6b4d" />
+                      </TouchableOpacity>
+                      <TouchableOpacity className="h-[30px] w-[30px] items-center justify-center rounded-[6px] border border-[#e5e7eb] bg-white opacity-50" disabled>
+                        <Ionicons name="chevron-forward-outline" size={14} color="#4b6b4d" />
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+                )}
+              </View>
+            </ScrollView>
+          </View>
         </View>
       </ScrollView>
 
-      {/* ---------- Mobile Drawer Modal ---------- */}
-      <Modal visible={isNotificationOpen} transparent animationType="fade">
+      {/* ── Notification Modal ──────────────────────────────────────────── */}
+      <Modal visible={isNotificationOpen} transparent animationType="fade" onRequestClose={() => setIsNotificationOpen(false)}>
         <Pressable
-          className="flex-1 items-center justify-center bg-black/20"
-          onPress={() => setIsNotificationOpen(false)}>
-          <View className="w-80 items-center rounded-2xl bg-white p-6">
-            <Ionicons name="notifications-outline" size={32} color="#10b981" />
-            <Text className="mt-4 text-lg font-bold">Notifications</Text>
-            <Text className="my-4 text-center text-stone-500">You have no new notifications.</Text>
-            <TouchableOpacity
-              className="w-full items-center rounded-xl bg-emerald-500 py-3"
-              onPress={() => setIsNotificationOpen(false)}>
-              <Text className="font-bold text-white">Close</Text>
+          className="flex-1 bg-black/15 justify-start items-end pt-[60px] pr-5"
+          onPress={() => setIsNotificationOpen(false)}
+        >
+          <View className="w-[300px] bg-white rounded-[14px] border border-[#e5e7eb] overflow-hidden">
+            <View className="flex-row items-center justify-between px-4 py-[14px] border-b border-[#f0f4f0]">
+              <Text className="text-[14px] font-bold text-[#1a2e1b]">Notifications</Text>
+            </View>
+            <View className="items-center px-6 py-8">
+              <Text className="text-[13px] text-center text-[#8fa88f]">
+                You have no new notifications.
+              </Text>
+            </View>
+            <TouchableOpacity onPress={() => setIsNotificationOpen(false)} className="m-3 py-[9px] bg-[#237227] rounded-lg items-center">
+              <Text className="text-[12px] font-semibold text-white">Dismiss</Text>
             </TouchableOpacity>
           </View>
         </Pressable>
       </Modal>
 
-      {/* Sweet Alert Modal (replaces SimpleToast) */}
+      {/* Sweet Alert Modal */}
       <SweetAlertModal
         visible={sweetVisible}
         title={sweetTitle}
@@ -861,179 +794,164 @@ export default function CompanyList({ onNavigate }: CompanyListProps) {
         onCancel={() => sweetOnCancel && sweetOnCancel()}
       />
 
-      {/* ---------- Branch Management Modal (Edit) ---------- */}
+      {/* ── Branch Management Modal (Edit) ──────────────────────────────── */}
       <Modal
         visible={isBranchModalOpen}
         transparent
         animationType="fade"
         onRequestClose={() => setIsBranchModalOpen(false)}>
-        <Pressable
-          className="flex-1 items-center justify-center bg-black/50"
-          onPress={() => setIsBranchModalOpen(false)}>
-          <Pressable
-            className="w-full max-w-md rounded-2xl bg-white"
-            onPress={(e) => e.stopPropagation()}>
-            <View className="border-b border-stone-100 px-6 pb-4 pt-6">
-              <View className="flex-row items-center justify-between">
+        <View className="items-center justify-center flex-1 p-6 bg-black/30">
+          <View className="w-full max-w-[460px] overflow-hidden rounded-2xl border border-[#e5e7eb] bg-white shadow-lg shadow-black/10">
+            <View className="flex-row items-center justify-between border-b border-[#f0f4f0] px-6 py-[18px]">
+              <View className="flex-row items-center gap-[10px]">
+                <View className="h-8 w-8 items-center justify-center rounded-lg bg-[#237227]">
+                  <Ionicons name="create-outline" size={18} color="#f8fafb" />
+                </View>
                 <View>
-                  <Text className="text-xl font-bold text-stone-900">
+                  <Text className="text-[15px] font-bold text-[#1a2e1b]">
                     {selectedCompany?.name || 'Company'}
                   </Text>
-                  <Text className="mt-1 text-xs text-stone-500">Manage branches</Text>
+                  <Text className="text-[11px] text-stone-900">Manage branches</Text>
                 </View>
-                <TouchableOpacity
-                  className="h-8 w-8 items-center justify-center"
-                  onPress={() => setIsBranchModalOpen(false)}>
-                  <Ionicons name="close" size={22} color="#78716c" />
-                </TouchableOpacity>
               </View>
+              <TouchableOpacity onPress={() => setIsBranchModalOpen(false)}>
+                <Ionicons name="close-outline" size={20} color="#8fa88f" />
+              </TouchableOpacity>
             </View>
 
-            <ScrollView className="max-h-80 px-6 py-5">
-              <Text className="mb-3 text-sm font-medium text-stone-700">
+            <ScrollView className="max-h-[50vh] px-6 py-5">
+              <Text className="mb-3 text-[13px] font-semibold text-[#1c1917]">
                 Branches ({branchesList.length})
               </Text>
 
               {branchesList.length === 0 ? (
-                <View className="items-center rounded-xl bg-stone-50 p-4">
-                  <Ionicons name="business-outline" size={24} color="#a8a29e" />
-                  <Text className="mt-2 text-sm text-stone-500">No branches yet</Text>
+                <View className="items-center rounded-xl bg-[#f8fafb] border border-[#f0f4f0] p-4">
+                  <Ionicons name="business-outline" size={24} color="#8fa88f" />
+                  <Text className="mt-2 text-[13px] text-[#8fa88f]">No branches yet</Text>
                 </View>
               ) : (
                 branchesList.map((branch) => (
                   <View
                     key={branch.id}
-                    className="mb-3 flex-row items-center justify-between rounded-xl bg-stone-50 p-3">
-                    <View className="flex-1 flex-row items-center">
-                      <Ionicons name="location-outline" size={16} color="#78716c" />
-                      <Text className="ml-2 text-sm text-stone-700">{branch.name}</Text>
+                    className="mb-3 flex-row items-center justify-between rounded-[10px] bg-[#f8fafb] border border-[#237227] p-3">
+                    <View className="flex-row items-center flex-1">
+                      <Ionicons name="location-outline" size={18} color="#237227" />
+                      <Text className="ml-2 text-[13px] font-medium text-stone-900">{branch.name}</Text>
                     </View>
-                    <View className="flex-row gap-2">
-                      <TouchableOpacity className="p-2" onPress={() => handleEditBranch(branch)}>
-                        <Ionicons name="pencil-outline" size={18} color="#10b981" />
+                    <View className="flex-row gap-2 ">
+                      <TouchableOpacity className="p-1 " onPress={() => handleEditBranch(branch)}>
+                        <Ionicons name="pencil-outline" size={18} color="#237227" />
                       </TouchableOpacity>
                       <TouchableOpacity
-                        className="p-2"
+                        className="p-1"
                         onPress={() => confirmDeleteBranch(branch.id)}>
-                        <Ionicons name="trash-outline" size={18} color="#dc2626" />
+                        <Ionicons name="trash-outline" size={18} color="#ef4444" />
                       </TouchableOpacity>
                     </View>
                   </View>
                 ))
               )}
 
-              <View className="mt-4 border-t border-stone-100 pt-4">
-                <Text className="mb-2 text-sm font-medium text-stone-700">
-                  {editingBranch ? 'Edit Branch' : 'Add New Branch'}
+              <View className="mt-4 border-t border-[#f0f4f0] pt-4">
+                <Text className="mb-2 text-[12px] font-semibold text-[#1c1917]">
+                  {editingBranch ? 'Edit Branch Name' : 'Add New Branch'}
                 </Text>
-                <TextInput
-                  className={`border bg-white ${branchFormError ? 'border-red-500' : 'border-stone-300'} rounded-xl px-4 py-3 text-sm text-stone-900`}
-                  placeholder="Branch name"
-                  placeholderTextColor="#a8a29e"
-                  value={newBranchName}
-                  onChangeText={setNewBranchName}
-                />
+                <View className={`flex-row items-center bg-[#f8fafb] border ${branchFormError ? 'border-[#237227]' : 'border-[#e5e7eb]'} rounded-[8px] px-3 h-[42px]`}>
+                  <TextInput
+                    className="flex-1 text-[13px] text-stone-900"
+                    placeholder="Enter branch name..."
+                    placeholderTextColor="#000000"
+                    value={newBranchName}
+                    onChangeText={setNewBranchName}
+                  />
+                </View>
                 {branchFormError ? (
-                  <View className="mt-1.5 flex-row items-center">
-                    <Ionicons name="alert-circle" size={14} color="#dc2626" />
-                    <Text className="ml-1 text-xs text-red-600">{branchFormError}</Text>
-                  </View>
+                  <Text className="mt-1 text-[11px] text-[#ef4444]">{branchFormError}</Text>
                 ) : null}
 
-                <View className="mt-3 flex-row gap-2">
+                <View className="flex-row gap-2 mt-3">
                   {editingBranch ? (
                     <>
                       <TouchableOpacity
-                        className="flex-1 rounded-xl bg-emerald-600 py-3"
+                        className="flex-1 items-center justify-center rounded-[8px] bg-[#237227] h-[40px]"
                         onPress={handleUpdateBranch}>
-                        <Text className="text-center font-semibold text-white">Update</Text>
+                        <Text className="text-[13px] font-semibold text-white">Save Changes</Text>
                       </TouchableOpacity>
                       <TouchableOpacity
-                        className="flex-1 rounded-xl bg-stone-200 py-3"
+                        className="flex-1 items-center justify-center rounded-[8px] bg-[#f8fafb] border border-[#237227] h-[40px]"
                         onPress={handleCancelBranchEdit}>
-                        <Text className="text-center font-semibold text-stone-700">Cancel</Text>
+                        <Text className="text-[13px] font-semibold text-stone-900">Cancel</Text>
                       </TouchableOpacity>
                     </>
                   ) : (
                     <TouchableOpacity
-                      className="flex-1 rounded-xl bg-emerald-600 py-3"
+                      className="flex-1 items-center justify-center rounded-[8px] bg-[#237227] h-[40px]"
                       onPress={handleAddBranch}>
-                      <Text className="text-center font-semibold text-white">Add Branch</Text>
+                      <Text className="text-[13px] font-semibold text-white">Add Branch</Text>
                     </TouchableOpacity>
                   )}
                 </View>
               </View>
             </ScrollView>
-
-            <View className="border-t border-stone-100 px-6 pb-6 pt-2">
-              <TouchableOpacity
-                className="rounded-xl bg-stone-100 py-3"
-                onPress={() => setIsBranchModalOpen(false)}>
-                <Text className="text-center font-semibold text-stone-700">Close</Text>
-              </TouchableOpacity>
-            </View>
-          </Pressable>
-        </Pressable>
+          </View>
+        </View>
       </Modal>
 
-      {/* ---------- View-Only Branches Modal ---------- */}
+      {/* ── View-Only Branches Modal ────────────────────────────────────── */}
       <Modal
         visible={isViewBranchModalOpen}
         transparent
         animationType="fade"
         onRequestClose={() => setIsViewBranchModalOpen(false)}>
-        <Pressable
-          className="flex-1 items-center justify-center bg-black/50"
-          onPress={() => setIsViewBranchModalOpen(false)}>
-          <Pressable
-            className="w-full max-w-md rounded-2xl bg-white"
-            onPress={(e) => e.stopPropagation()}>
-            <View className="border-b border-stone-100 px-6 pb-4 pt-6">
-              <View className="flex-row items-center justify-between">
+        <View className="items-center justify-center flex-1 p-6 bg-black/30">
+          <View className="w-full max-w-[460px] overflow-hidden rounded-2xl border border-[#e5e7eb] bg-white shadow-lg shadow-black/10">
+            <View className="flex-row items-center justify-between border-b border-[#f0f4f0] px-6 py-[18px]">
+              <View className="flex-row items-center gap-[10px]">
+                <View className="h-8 w-8 items-center justify-center rounded-lg bg-[#e8f5e9]">
+                  <Ionicons name="business-outline" size={16} color="#237227" />
+                </View>
                 <View>
-                  <Text className="text-xl font-bold text-stone-900">
+                  <Text className="text-[15px] font-bold text-[#1a2e1b]">
                     {selectedCompanyForView?.name || 'Company'}
                   </Text>
-                  <Text className="mt-1 text-xs text-stone-500">Branches</Text>
+                  <Text className="text-[11px] text-[#8fa88f]">Branches</Text>
                 </View>
-                <TouchableOpacity
-                  className="h-8 w-8 items-center justify-center"
-                  onPress={() => setIsViewBranchModalOpen(false)}>
-                  <Ionicons name="close" size={22} color="#78716c" />
-                </TouchableOpacity>
               </View>
+              <TouchableOpacity onPress={() => setIsViewBranchModalOpen(false)}>
+                <Ionicons name="close-outline" size={20} color="#8fa88f" />
+              </TouchableOpacity>
             </View>
 
-            <ScrollView className="max-h-80 px-6 py-5">
+            <ScrollView className="max-h-[50vh] px-6 py-5">
               {branchesListView.length === 0 ? (
-                <View className="items-center rounded-xl bg-stone-50 p-4">
-                  <Ionicons name="business-outline" size={24} color="#a8a29e" />
-                  <Text className="mt-2 text-sm text-stone-500">No branches yet</Text>
+                <View className="items-center rounded-xl bg-[#f8fafb] border border-[#f0f4f0] p-4">
+                  <Ionicons name="business-outline" size={24} color="#8fa88f" />
+                  <Text className="mt-2 text-[13px] text-[#8fa88f]">No branches yet</Text>
                 </View>
               ) : (
                 branchesListView.map((branch) => (
-                  <View key={branch.id} className="mb-3 rounded-xl bg-stone-50 p-3">
+                  <View key={branch.id} className="mb-3 rounded-[10px] bg-[#f8fafb] border border-[#f0f4f0] p-3">
                     <View className="flex-row items-center">
-                      <Ionicons name="location-outline" size={16} color="#78716c" />
-                      <Text className="ml-2 text-sm text-stone-700">{branch.name}</Text>
+                      <Ionicons name="location-outline" size={16} color="#8fa88f" />
+                      <Text className="ml-2 text-[13px] font-medium text-[#1a2e1b]">{branch.name}</Text>
                     </View>
                   </View>
                 ))
               )}
             </ScrollView>
 
-            <View className="border-t border-stone-100 px-6 pb-6 pt-2">
+            <View className="flex-row gap-[10px] px-6 pb-6 pt-2">
               <TouchableOpacity
-                className="rounded-xl bg-stone-100 py-3"
+                className="flex-1 h-[42px] items-center justify-center rounded-[8px] border border-[#e5e7eb] bg-[#f8fafb]"
                 onPress={() => setIsViewBranchModalOpen(false)}>
-                <Text className="text-center font-semibold text-stone-700">Close</Text>
+                <Text className="text-[14px] font-semibold text-[#1a2e1b]">Close</Text>
               </TouchableOpacity>
             </View>
-          </Pressable>
-        </Pressable>
+          </View>
+        </View>
       </Modal>
 
-      {/* ---------- Add Company Modal Design ---------- */}
+      {/* ── Add Company Modal ───────────────────────────────────────────── */}
       <Modal
         visible={isAddModalOpen}
         transparent
@@ -1042,159 +960,139 @@ export default function CompanyList({ onNavigate }: CompanyListProps) {
           setIsAddModalOpen(false);
           resetForm();
         }}>
-        <Pressable
-          className="flex-1 items-center justify-center"
-          style={{ backgroundColor: 'rgba(0,0,0,0.45)' }}
-          onPress={() => {
-            setIsAddModalOpen(false);
-            resetForm();
-          }}>
-          <Pressable
-            className="w-full max-w-md rounded-2xl bg-white"
-            onPress={(e) => e.stopPropagation()}>
-            <View className="border-b border-stone-100 px-6 pb-4 pt-6">
-              <View className="flex-row items-center justify-between">
-                <View>
-                  <Text className="text-xl font-bold text-stone-900">Add New Company</Text>
-                  <Text className="mt-1 text-xs text-stone-500">
-                    Fill in the company details below
-                  </Text>
+        <View className="items-center justify-center flex-1 p-6 bg-black/30">
+          <View className="w-full max-w-[460px] overflow-hidden rounded-2xl border border-[#e5e7eb] bg-white shadow-lg shadow-black/10">
+            <View className="flex-row items-center justify-between border-b border-[#f0f4f0] px-6 py-[18px]">
+              <View className="flex-row items-center gap-[10px]">
+                <View className="h-8 w-8 items-center justify-center rounded-lg bg-[#e8f5e9]">
+                  <Ionicons name="business-outline" size={16} color="#237227" />
                 </View>
-                <TouchableOpacity
-                  className="h-8 w-8 items-center justify-center"
-                  onPress={() => {
-                    setIsAddModalOpen(false);
-                    resetForm();
-                  }}>
-                  <Ionicons name="close" size={22} color="#78716c" />
-                </TouchableOpacity>
+                <View>
+                  <Text className="text-[15px] font-bold text-[#1a2e1b]">Add New Company</Text>
+                  <Text className="text-[11px] text-[#8fa88f]">Fill in the details below</Text>
+                </View>
               </View>
+              <TouchableOpacity
+                onPress={() => {
+                  setIsAddModalOpen(false);
+                  resetForm();
+                }}>
+                <Ionicons name="close-outline" size={20} color="#8fa88f" />
+              </TouchableOpacity>
             </View>
 
-            <ScrollView className="max-h-96 px-6 py-5">
-              {/* Company Name */}
-              <View className="mb-4">
-                <Text className="mb-2 text-sm font-medium text-stone-700">
-                  Company Name <Text className="text-red-500">*</Text>
-                </Text>
-                <TextInput
-                  className={`border bg-white ${touched.companyName && errors.companyName ? 'border-red-500' : 'border-stone-300'} rounded-xl px-4 py-3 text-sm text-stone-900`}
-                  placeholder="e.g., Acme Corporation"
-                  placeholderTextColor="#a8a29e"
-                  value={companyName}
-                  onChangeText={(v) => handleFieldChange('companyName', v)}
-                  onBlur={() => handleFieldBlur('companyName', companyName)}
-                  maxLength={100}
-                />
-                {touched.companyName && errors.companyName && (
-                  <View className="mt-1.5 flex-row items-center">
-                    <Ionicons name="alert-circle" size={14} color="#dc2626" />
-                    <Text className="ml-1 text-xs text-red-600">{errors.companyName}</Text>
+            <ScrollView className="max-h-[60vh] px-6 py-5">
+              <View className="gap-[13px]">
+                {/* Company Name */}
+                <View className="gap-[5px]">
+                  <Text className="text-[12px] font-semibold text-[#1c1917]">
+                    Company Name <Text className="text-[#ef4444]">*</Text>
+                  </Text>
+                  <View className={`flex-row items-center bg-[#f8fafb] border ${touched.companyName && errors.companyName ? 'border-[#ef4444]' : 'border-[#e5e7eb]'} rounded-[8px] px-3 h-[42px]`}>
+                    <Ionicons name="business-outline" size={15} color="#8fa88f" className="mr-2" />
+                    <TextInput
+                      className="flex-1 text-[13px] text-[#1a2e1b] ml-1"
+                      placeholder="e.g., Acme Corporation"
+                      placeholderTextColor="#8fa88f"
+                      value={companyName}
+                      onChangeText={(v) => handleFieldChange('companyName', v)}
+                      onBlur={() => handleFieldBlur('companyName', companyName)}
+                      maxLength={100}
+                    />
                   </View>
-                )}
-                <Text className="mt-1 text-xs text-stone-400">
-                  {companyName.length}/100 characters
-                </Text>
+                  {touched.companyName && errors.companyName && (
+                    <Text className="mt-1 text-[11px] text-[#ef4444]">{errors.companyName}</Text>
+                  )}
+                </View>
+
+                {/* Industry */}
+                <View className="gap-[5px]">
+                  <Text className="text-[12px] font-semibold text-[#1c1917]">
+                    Industry/Sector <Text className="text-[#ef4444]">*</Text>
+                  </Text>
+                  <View className={`flex-row items-center bg-[#f8fafb] border ${touched.industry && errors.industry ? 'border-[#ef4444]' : 'border-[#e5e7eb]'} rounded-[8px] px-3 h-[42px]`}>
+                    <Ionicons name="briefcase-outline" size={15} color="#8fa88f" className="mr-2" />
+                    <TextInput
+                      className="flex-1 text-[13px] text-[#1a2e1b] ml-1"
+                      placeholder="e.g., Technology & Security"
+                      placeholderTextColor="#8fa88f"
+                      value={industry}
+                      onChangeText={(v) => handleFieldChange('industry', v)}
+                      onBlur={() => handleFieldBlur('industry', industry)}
+                      maxLength={100}
+                    />
+                  </View>
+                  {touched.industry && errors.industry && (
+                    <Text className="mt-1 text-[11px] text-[#ef4444]">{errors.industry}</Text>
+                  )}
+                </View>
+
+                {/* Number of Branches */}
+                <View className="gap-[5px]">
+                  <Text className="text-[12px] font-semibold text-[#1c1917]">Number of Branches</Text>
+                  <View className={`flex-row items-center bg-[#f8fafb] border ${touched.branches && errors.branches ? 'border-[#ef4444]' : 'border-[#e5e7eb]'} rounded-[8px] px-3 h-[42px]`}>
+                    <Ionicons name="git-branch-outline" size={15} color="#8fa88f" className="mr-2" />
+                    <TextInput
+                      className="flex-1 text-[13px] text-[#1a2e1b] ml-1"
+                      placeholder="e.g., 3"
+                      placeholderTextColor="#8fa88f"
+                      keyboardType="numeric"
+                      value={branches}
+                      onChangeText={(v) => handleFieldChange('branches', v)}
+                      onBlur={() => handleFieldBlur('branches', branches)}
+                    />
+                  </View>
+                  {touched.branches && errors.branches && (
+                    <Text className="mt-1 text-[11px] text-[#ef4444]">{errors.branches}</Text>
+                  )}
+                </View>
+
+                {/* Branch Names */}
+                {(() => {
+                  const num = parseInt(branches) || 0;
+                  if (num <= 0) return null;
+                  return (
+                    <View className="gap-[8px] mt-2 border-t border-[#f0f4f0] pt-4">
+                      <Text className="text-[12px] font-semibold text-[#1c1917]">Branch Names</Text>
+                      {Array.from({ length: num }).map((_, idx) => (
+                        <View key={idx} className={`flex-row items-center bg-[#f8fafb] border ${touched.branchNames && errors.branchNames ? 'border-[#ef4444]' : 'border-[#e5e7eb]'} rounded-[8px] px-3 h-[42px]`}>
+                          <Ionicons name="location-outline" size={15} color="#8fa88f" className="mr-2" />
+                          <TextInput
+                            className="flex-1 text-[13px] text-[#1a2e1b] ml-1"
+                            placeholder={`Branch ${idx + 1} name`}
+                            placeholderTextColor="#8fa88f"
+                            value={branchNames[idx] ?? ''}
+                            onChangeText={(value) => handleBranchNameChange(idx, value)}
+                          />
+                        </View>
+                      ))}
+                      {touched.branchNames && errors.branchNames && (
+                        <Text className="mt-1 text-[11px] text-[#ef4444]">{errors.branchNames}</Text>
+                      )}
+                    </View>
+                  );
+                })()}
               </View>
-
-              {/* Industry */}
-              <View className="mb-4">
-                <Text className="mb-2 text-sm font-medium text-stone-700">
-                  Industry/Sector <Text className="text-red-500">*</Text>
-                </Text>
-                <TextInput
-                  className={`border bg-white ${touched.industry && errors.industry ? 'border-red-500' : 'border-stone-300'} rounded-xl px-4 py-3 text-sm text-stone-900`}
-                  placeholder="e.g., Technology & Security"
-                  placeholderTextColor="#a8a29e"
-                  value={industry}
-                  onChangeText={(v) => handleFieldChange('industry', v)}
-                  onBlur={() => handleFieldBlur('industry', industry)}
-                  maxLength={100}
-                />
-                {touched.industry && errors.industry && (
-                  <View className="mt-1.5 flex-row items-center">
-                    <Ionicons name="alert-circle" size={14} color="#dc2626" />
-                    <Text className="ml-1 text-xs text-red-600">{errors.industry}</Text>
-                  </View>
-                )}
-                <Text className="mt-1 text-xs text-stone-400">
-                  {industry.length}/100 characters
-                </Text>
-              </View>
-
-              {/* Number of Branches */}
-              <View className="mb-4">
-                <Text className="mb-2 text-sm font-medium text-stone-700">Number of Branches</Text>
-                <TextInput
-                  className={`border bg-white ${touched.branches && errors.branches ? 'border-red-500' : 'border-stone-300'} rounded-xl px-4 py-3 text-sm text-stone-900`}
-                  placeholder="e.g., 3"
-                  placeholderTextColor="#a8a29e"
-                  keyboardType="numeric"
-                  value={branches}
-                  onChangeText={(v) => handleFieldChange('branches', v)}
-                  onBlur={() => handleFieldBlur('branches', branches)}
-                />
-                {touched.branches && errors.branches && (
-                  <View className="mt-1.5 flex-row items-center">
-                    <Ionicons name="alert-circle" size={14} color="#dc2626" />
-                    <Text className="ml-1 text-xs text-red-600">{errors.branches}</Text>
-                  </View>
-                )}
-                <Text className="mt-1 text-xs text-stone-400">Maximum 1000 branches</Text>
-              </View>
-
-              {/* Branch Names */}
-              {(() => {
-                const num = parseInt(branches) || 0;
-                if (num <= 0) return null;
-                return (
-                  <View className="mb-4">
-                    <Text className="mb-2 text-sm font-medium text-stone-700">Branch Names</Text>
-                    {Array.from({ length: num }).map((_, idx) => (
-                      <View key={idx} className="mb-3">
-                        <TextInput
-                          className={`border bg-white ${touched.branchNames && errors.branchNames ? 'border-red-500' : 'border-stone-300'} rounded-xl px-4 py-3 text-sm text-stone-900`}
-                          placeholder={`Branch ${idx + 1} name`}
-                          placeholderTextColor="#a8a29e"
-                          value={branchNames[idx] ?? ''}
-                          onChangeText={(value) => handleBranchNameChange(idx, value)}
-                        />
-                      </View>
-                    ))}
-                    {touched.branchNames && errors.branchNames && (
-                      <View className="mt-1.5 flex-row items-center">
-                        <Ionicons name="alert-circle" size={14} color="#dc2626" />
-                        <Text className="ml-1 text-xs text-red-600">{errors.branchNames}</Text>
-                      </View>
-                    )}
-                  </View>
-                );
-              })()}
-
-              <Text className="mt-3 text-xs text-stone-400">
-                <Text className="text-red-500">*</Text> Required fields
-              </Text>
             </ScrollView>
 
-            <View className="border-t border-stone-100 px-6 pb-6 pt-4">
-              <View className="flex-row gap-3">
-                <TouchableOpacity
-                  className="flex-1 rounded-xl bg-stone-100 py-3 active:opacity-70"
-                  onPress={() => {
-                    setIsAddModalOpen(false);
-                    resetForm();
-                  }}>
-                  <Text className="text-center font-semibold text-stone-700">Cancel</Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  className="flex-1 rounded-xl bg-emerald-600 py-3 active:opacity-80"
-                  onPress={handleAddCompany}>
-                  <Text className="text-center font-semibold text-white">Add Company</Text>
-                </TouchableOpacity>
-              </View>
+            <View className="flex-row gap-[10px] border-t border-[#f0f4f0] px-6 pb-6 pt-4">
+              <TouchableOpacity
+                className="flex-1 h-[42px] items-center justify-center rounded-[8px] border border-[#e5e7eb] bg-[#f8fafb]"
+                onPress={() => {
+                  setIsAddModalOpen(false);
+                  resetForm();
+                }}>
+                <Text className="text-[14px] font-semibold text-[#1a2e1b]">Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                className="flex-1 h-[42px] items-center justify-center flex-row gap-[6px] rounded-[8px] bg-[#237227]"
+                onPress={handleAddCompany}>
+                <Ionicons name="checkmark-outline" size={16} color="#ffffff" />
+                <Text className="text-[14px] font-semibold text-white">Save Company</Text>
+              </TouchableOpacity>
             </View>
-          </Pressable>
-        </Pressable>
+          </View>
+        </View>
       </Modal>
     </View>
   );

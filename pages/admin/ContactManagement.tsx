@@ -24,6 +24,8 @@ interface ContactManagementProps {
       | 'employee'
       | 'settings'
   ) => void;
+  isMobileMenuOpen?: boolean;
+  setIsMobileMenuOpen?: (open: boolean) => void;
 }
 
 interface Contact {
@@ -82,8 +84,7 @@ const padZero = (num: number, length: number = 2): string => {
   return String(num).length >= length ? String(num) : '0'.repeat(length - String(num).length) + num;
 };
 
-export default function ContactManagement({ onNavigate }: ContactManagementProps) {
-  const [isDrawerOpen, setIsDrawerOpen] = useState(false);
+export default function ContactManagement({ onNavigate, isMobileMenuOpen, setIsMobileMenuOpen }: ContactManagementProps) {
   const [isNotificationOpen, setIsNotificationOpen] = useState(false);
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [selectedContact, setSelectedContact] = useState<Contact | null>(null);
@@ -1359,35 +1360,32 @@ export default function ContactManagement({ onNavigate }: ContactManagementProps
 
   return (
     <View className="flex-1 bg-gray-50">
-      <View className="flex-1 flex-row">
+      <View className="flex-row flex-1">
         {/* ─── LEFT: Contacts Panel ─── */}
         <View
           className={`${!showContactList ? 'hidden lg:flex' : 'flex'} flex-1 flex-col border-r border-gray-100 bg-white lg:w-80 lg:flex-none`}>
           {/* Panel header */}
-          <View className="border-b border-gray-100 bg-white px-4 pb-3 pt-5">
-            <View className="mb-3 flex-row items-center justify-between">
+          <View className="px-4 pt-5 pb-3 bg-white border-b border-gray-100">
+            <View className="flex-row items-center justify-between mb-3">
               <View className="flex-row items-center gap-2">
-                <TouchableOpacity
-                  className="h-8 w-8 items-center justify-center rounded-xl bg-gray-100 lg:hidden"
-                  onPress={() => setIsDrawerOpen(true)}>
-                  <Ionicons name="menu" size={20} color="#374151" />
-                </TouchableOpacity>
+                {setIsMobileMenuOpen && (
+                  <TouchableOpacity
+                    className="items-center justify-center w-8 h-8 lg:hidden"
+                    onPress={() => setIsMobileMenuOpen(true)}>
+                    <Ionicons name="menu" size={25} color="#237227" />
+                  </TouchableOpacity>
+                )}
                 <Text className="text-lg font-bold text-gray-900">Messages</Text>
-                <View className="rounded-full bg-emerald-100 px-2 py-0.5">
-                  <Text className="text-xs font-bold text-emerald-700">{contacts.length}</Text>
+                <View className="bg-[#237227] px-2 py-0.5 rounded-full">
+                  <Text className="text-xs font-bold text-[#f8fafb]">{contacts.length}</Text>
                 </View>
               </View>
               <View className="flex-row items-center gap-1.5">
                 <TouchableOpacity
-                  className="h-8 w-8 items-center justify-center rounded-xl border border-emerald-100 bg-emerald-50"
+                  className="items-center justify-center w-8 h-8 rounded-full"
+                  style={{ backgroundColor: '#237227' }}
                   onPress={openContactsModal}>
-                  <Ionicons name="person-add-outline" size={16} color="#10b981" />
-                </TouchableOpacity>
-                <TouchableOpacity
-                  className="relative h-8 w-8 items-center justify-center rounded-xl bg-gray-100"
-                  onPress={() => setIsNotificationOpen(true)}>
-                  <Ionicons name="notifications-outline" size={16} color="#6b7280" />
-                  <View className="absolute right-1 top-1 h-1.5 w-1.5 rounded-full bg-red-500" />
+                  <Ionicons name="person-add-outline" size={16} color="#f8fafb" />
                 </TouchableOpacity>
               </View>
             </View>
@@ -1395,7 +1393,7 @@ export default function ContactManagement({ onNavigate }: ContactManagementProps
             <View className="flex-row items-center rounded-xl bg-gray-100 px-3 py-2.5">
               <Ionicons name="search" size={15} color="#9ca3af" />
               <TextInput
-                className="ml-2 flex-1 text-sm text-gray-800"
+                className="flex-1 ml-2 text-sm text-gray-800"
                 placeholder="Search contacts..."
                 placeholderTextColor="#9ca3af"
                 value={searchQuery}
@@ -1413,13 +1411,13 @@ export default function ContactManagement({ onNavigate }: ContactManagementProps
           <ScrollView className="flex-1" showsVerticalScrollIndicator={false}>
             {filteredContacts.length === 0 ? (
               <View className="items-center px-6 py-14">
-                <View className="mb-3 h-14 w-14 items-center justify-center rounded-2xl bg-gray-100">
+                <View className="items-center justify-center mb-3 bg-gray-100 h-14 w-14 rounded-2xl">
                   <Ionicons name="people-outline" size={26} color="#9ca3af" />
                 </View>
-                <Text className="text-center text-sm font-semibold text-gray-700">
+                <Text className="text-sm font-semibold text-center text-gray-700">
                   No contacts found
                 </Text>
-                <Text className="mt-1 text-center text-xs leading-5 text-gray-400">
+                <Text className="mt-1 text-xs leading-5 text-center text-gray-400">
                   {searchQuery ? 'Try a different search term' : 'Add contacts to get started'}
                 </Text>
               </View>
@@ -1440,30 +1438,28 @@ export default function ContactManagement({ onNavigate }: ContactManagementProps
                         return (
                           <TouchableOpacity
                             key={contact.id}
-                            className={`mx-2 mb-0.5 flex-row items-center rounded-xl px-3 py-2.5 ${isSelected ? 'bg-emerald-50' : ''}`}
+                            className={`mx-2 mb-0.5 flex-row items-center rounded-xl px-3 py-2.5 ${isSelected ? 'bg-gray-100' : ''}`}
                             onPress={() => {
                               setSelectedContact(contact);
                               setShowContactList(false);
                             }}>
                             <View className="relative mr-3 shrink-0">
                               <View
-                                className="h-11 w-11 items-center justify-center rounded-2xl"
+                                className="items-center justify-center h-11 w-11 rounded-2xl"
                                 style={{ backgroundColor: contact.color }}>
                                 <Ionicons name="people" size={18} color="#1f2937" />
                               </View>
                             </View>
-                            <View className="min-w-0 flex-1">
+                            <View className="flex-1 min-w-0">
                               <Text
-                                className={`text-sm font-semibold ${isSelected ? 'text-emerald-700' : 'text-gray-900'}`}
+                                className={`text-sm font-semibold ${isSelected ? 'text-gray-900' : 'text-gray-900'}`}
                                 numberOfLines={1}>
                                 {contact.name}
                               </Text>
-                              <Text className="mt-0.5 text-xs font-medium text-emerald-500">
-                                Team Channel
-                              </Text>
+                              <Text className="mt-0.5 text-xs font-medium" style={{ color: '#237227' }}>Team Channel</Text>
                             </View>
                             {isSelected && (
-                              <Ionicons name="chevron-forward" size={14} color="#10b981" />
+                              <Ionicons name="chevron-forward" size={14} color="#237227" />
                             )}
                           </TouchableOpacity>
                         );
@@ -1488,7 +1484,7 @@ export default function ContactManagement({ onNavigate }: ContactManagementProps
                         return (
                           <TouchableOpacity
                             key={contact.id}
-                            className={`mx-2 mb-0.5 flex-row items-center rounded-xl px-3 py-2.5 ${isSelected ? 'bg-emerald-50' : ''}`}
+                            className={`mx-2 mb-0.5 flex-row items-center rounded-xl px-3 py-2.5 ${isSelected ? 'bg-gray-100' : ''}`}
                             onPress={() => {
                               setSelectedContact(contact);
                               setShowContactList(false);
@@ -1503,17 +1499,17 @@ export default function ContactManagement({ onNavigate }: ContactManagementProps
                             }}>
                             <View className="relative mr-3 shrink-0">
                               <View
-                                className="h-11 w-11 items-center justify-center rounded-full"
+                                className="items-center justify-center rounded-full h-11 w-11"
                                 style={{ backgroundColor: contact.color }}>
                                 <Text className="text-sm font-bold text-gray-800">
                                   {contact.initials}
                                 </Text>
                               </View>
                               {contact.online && (
-                                <View className="absolute bottom-0 right-0 h-3 w-3 rounded-full border-2 border-white bg-emerald-500" />
+                                <View className="absolute bottom-0 right-0 w-3 h-3 border-2 border-white rounded-full" style={{ backgroundColor: '#237227' }} />
                               )}
                             </View>
-                            <View className="min-w-0 flex-1">
+                            <View className="flex-1 min-w-0">
                               <View className="flex-row items-center justify-between">
                                 <Text
                                   className={`mr-2 flex-1 text-sm ${hasUnread ? 'font-bold text-gray-900' : 'font-semibold text-gray-800'}`}
@@ -1522,7 +1518,7 @@ export default function ContactManagement({ onNavigate }: ContactManagementProps
                                 </Text>
                                 {lastMsg && (
                                   <Text
-                                    className={`shrink-0 text-[10px] ${hasUnread ? 'font-bold text-emerald-600' : 'text-gray-400'}`}>
+                                    className={`shrink-0 text-[10px] ${hasUnread ? 'font-bold' : 'text-gray-400'}`} style={hasUnread ? { color: '#237227' } : {}}>
                                     {lastMsg.time}
                                   </Text>
                                 )}
@@ -1536,12 +1532,12 @@ export default function ContactManagement({ onNavigate }: ContactManagementProps
                                   </Text>
                                 ) : (
                                   <Text className="text-xs text-gray-400">
-                                    {contact.online ? '✓ Online' : contact.location}
+                                    {contact.online ? '● Online' : contact.location}
                                   </Text>
                                 )}
                                 {hasUnread && (
-                                  <View className="h-[18px] min-w-[18px] items-center justify-center rounded-full bg-emerald-500 px-1">
-                                    <Text className="text-[9px] font-bold text-white">
+                                  <View className="rounded-full min-w-[18px] h-[18px] px-1 items-center justify-center" style={{ backgroundColor: '#237227' }}>
+                                    <Text className="text-white text-[9px] font-bold">
                                       {lastMsg!.unreadCount > 9 ? '9+' : lastMsg!.unreadCount}
                                     </Text>
                                   </View>
@@ -1566,12 +1562,12 @@ export default function ContactManagement({ onNavigate }: ContactManagementProps
               {/* Chat Header */}
               <View className="flex-row items-center border-b border-gray-100 bg-white px-5 py-3.5 shadow-sm">
                 <TouchableOpacity
-                  className="mr-3 h-8 w-8 items-center justify-center rounded-xl bg-gray-100 lg:hidden"
+                  className="items-center justify-center w-8 h-8 mr-3 bg-gray-100 rounded-xl lg:hidden"
                   onPress={() => setShowContactList(true)}>
                   <Ionicons name="chevron-back" size={18} color="#374151" />
                 </TouchableOpacity>
                 <View
-                  className="mr-3 h-10 w-10 shrink-0 items-center justify-center rounded-full"
+                  className="items-center justify-center w-10 h-10 mr-3 rounded-full shrink-0"
                   style={{ backgroundColor: selectedContact.color }}>
                   {selectedContact.isGroup ? (
                     <Ionicons name="people" size={18} color="#1f2937" />
@@ -1588,13 +1584,13 @@ export default function ContactManagement({ onNavigate }: ContactManagementProps
                   <View className="mt-0.5 flex-row items-center gap-1.5">
                     {selectedContact.isGroup ? (
                       <>
-                        <Ionicons name="radio-outline" size={11} color="#10b981" />
-                        <Text className="text-xs font-medium text-emerald-600">Team Channel</Text>
+                        <Ionicons name="radio-outline" size={11} color="#237227" />
+                        <Text className="text-xs font-medium" style={{ color: '#237227' }}>Team Channel</Text>
                       </>
                     ) : selectedContact.online ? (
                       <>
-                        <View className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
-                        <Text className="text-xs font-medium text-emerald-600">Online</Text>
+                        <View className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: '#237227' }} />
+                        <Text className="text-xs font-medium" style={{ color: '#237227' }}>Online</Text>
                       </>
                     ) : (
                       <>
@@ -1642,7 +1638,7 @@ export default function ContactManagement({ onNavigate }: ContactManagementProps
                   return (
                     <View key={message.id}>
                       {showDateSep && (
-                        <View className="my-4 items-center">
+                        <View className="items-center my-4">
                           <View className="rounded-full bg-gray-200 px-4 py-0.5">
                             <Text className="text-[10px] font-semibold text-gray-500">
                               {dateLabel}
@@ -1654,7 +1650,7 @@ export default function ContactManagement({ onNavigate }: ContactManagementProps
                         className={`mb-3 flex-row ${isMe ? 'justify-end' : 'justify-start'} items-end`}>
                         {!isMe && (
                           <View
-                            className="mr-2 h-7 w-7 shrink-0 items-center justify-center rounded-full"
+                            className="items-center justify-center mr-2 rounded-full h-7 w-7 shrink-0"
                             style={{ backgroundColor: selectedContact.color }}>
                             <Text className="text-[9px] font-bold text-gray-800">
                               {selectedContact.initials}
@@ -1666,9 +1662,10 @@ export default function ContactManagement({ onNavigate }: ContactManagementProps
                             <TouchableOpacity
                               className={`flex-row items-center gap-2 px-3.5 py-2.5 ${
                                 isMe
-                                  ? 'rounded-2xl rounded-br-sm bg-emerald-500'
+                                  ? 'rounded-2xl rounded-br-sm'
                                   : 'rounded-2xl rounded-bl-sm border border-gray-200 bg-white shadow-sm'
                               }`}
+                              style={isMe ? { backgroundColor: '#237227' } : {}}
                               onPress={() => {
                                 handlePlayVoice(message);
                                 setExpandedMessageId((prev) =>
@@ -1677,18 +1674,18 @@ export default function ContactManagement({ onNavigate }: ContactManagementProps
                               }}>
                               <View
                                 className={`h-7 w-7 items-center justify-center rounded-full ${
-                                  isMe ? 'bg-emerald-400' : 'bg-emerald-50'
-                                }`}>
+                                  isMe ? '' : ''
+                                }`} style={isMe ? { backgroundColor: 'rgba(255,255,255,0.3)' } : { backgroundColor: '#237227', opacity: 0.1 }}>
                                 <Ionicons
                                   name={currentlyPlayingId === message.id ? 'pause' : 'play'}
                                   size={13}
-                                  color={isMe ? 'white' : '#10b981'}
+                                  color={isMe ? 'white' : '#237227'}
                                 />
                               </View>
                               <Ionicons
                                 name="mic"
                                 size={13}
-                                color={isMe ? 'rgba(255,255,255,0.75)' : '#10b981'}
+                                color={isMe ? 'rgba(255,255,255,0.75)' : '#237227'}
                               />
                               <Text
                                 className={`text-xs font-medium ${isMe ? 'text-white' : 'text-gray-700'}`}>
@@ -1705,9 +1702,10 @@ export default function ContactManagement({ onNavigate }: ContactManagementProps
                               }
                               className={`px-3.5 py-2.5 ${
                                 isMe
-                                  ? 'rounded-2xl rounded-br-sm bg-emerald-500'
+                                  ? 'rounded-2xl rounded-br-sm'
                                   : 'rounded-2xl rounded-bl-sm border border-gray-200 bg-white shadow-sm'
-                              }`}>
+                              }`}
+                              style={isMe ? { backgroundColor: '#237227' } : {}}>
                               <Text
                                 className={`text-sm leading-5 ${isMe ? 'text-white' : 'text-gray-800'}`}>
                                 {message.text}
@@ -1744,9 +1742,9 @@ export default function ContactManagement({ onNavigate }: ContactManagementProps
                 })}
 
                 {messagesList.length === 0 && (
-                  <View className="flex-1 items-center justify-center py-16">
-                    <View className="mb-3 h-16 w-16 items-center justify-center rounded-3xl border border-emerald-100 bg-emerald-50">
-                      <Ionicons name="chatbubbles-outline" size={28} color="#10b981" />
+                  <View className="items-center justify-center flex-1 py-16">
+                    <View className="items-center justify-center w-16 h-16 mb-3 rounded-full bg-[#237227]">
+                      <Ionicons name="chatbubbles-outline" size={28} color="#f8fafb" />
                     </View>
                     <Text className="text-sm font-semibold text-gray-700">No messages yet</Text>
                     <Text className="mt-1 text-xs text-gray-400">Start the conversation below</Text>
@@ -1755,10 +1753,10 @@ export default function ContactManagement({ onNavigate }: ContactManagementProps
               </ScrollView>
 
               {/* Message Input */}
-              <View className="border-t border-gray-100 bg-white px-4 pb-4 pt-3">
+              <View className="px-4 pt-3 pb-4 bg-white border-t border-gray-100">
                 {isRecording && (
                   <View className="mb-2 flex-row items-center justify-center gap-2 rounded-xl border border-red-100 bg-red-50 py-1.5">
-                    <View className="h-2 w-2 rounded-full bg-red-500" />
+                    <View className="w-2 h-2 bg-red-500 rounded-full" />
                     <Text className="text-xs font-semibold text-red-500">
                       Recording • {formatRecordingTime(recordingTime)}
                     </Text>
@@ -1785,7 +1783,7 @@ export default function ContactManagement({ onNavigate }: ContactManagementProps
                     <Ionicons name="mic" size={18} color={isRecording ? 'white' : '#6b7280'} />
                   </TouchableOpacity>
                   <TouchableOpacity
-                    className={`h-10 w-10 items-center justify-center rounded-full ${transcript.trim() ? 'bg-emerald-500' : 'bg-gray-200'}`}
+                    className={`h-10 w-10 items-center justify-center rounded-full ${transcript.trim() ? 'bg-[#237227]' : 'bg-gray-200'}`}
                     onPress={() => {
                       const trimmed = transcript.trim();
                       if (trimmed.length > 0) sendMessage(trimmed);
@@ -1801,15 +1799,15 @@ export default function ContactManagement({ onNavigate }: ContactManagementProps
             </>
           ) : (
             /* Welcome / empty state */
-            <View className="flex-1 items-center justify-center bg-gray-50">
+            <View className="items-center justify-center flex-1 bg-gray-50">
               <View className="items-center px-10">
-                <View className="mb-4 h-20 w-20 items-center justify-center rounded-3xl border border-emerald-100 bg-emerald-50">
-                  <Ionicons name="chatbubbles-outline" size={36} color="#10b981" />
+                <View className="items-center justify-center w-20 h-20 mb-4 rounded-full bg-[#237227]">
+                  <Ionicons name="chatbubbles-outline" size={36} color="#f8fafb" />
                 </View>
-                <Text className="mb-2 text-center text-lg font-bold text-gray-900">
+                <Text className="mb-2 text-lg font-bold text-center text-gray-900">
                   Contact Management
                 </Text>
-                <Text className="text-center text-sm leading-6 text-gray-400">
+                <Text className="text-sm leading-6 text-center text-gray-400">
                   Select a contact to start chatting, or use the button in the panel to add
                   contacts.
                 </Text>
@@ -1822,23 +1820,23 @@ export default function ContactManagement({ onNavigate }: ContactManagementProps
       {/* ─── NOTIFICATIONS MODAL ─── */}
       <Modal visible={isNotificationOpen} transparent animationType="fade">
         <Pressable
-          className="flex-1 items-center justify-center bg-black/30"
+          className="items-center justify-center flex-1 bg-black/30"
           onPress={() => setIsNotificationOpen(false)}>
           <Pressable onPress={(e) => e.stopPropagation()}>
-            <View className="w-80 overflow-hidden rounded-2xl bg-white shadow-xl">
-              <View className="flex-row items-center gap-2 bg-emerald-500 px-5 py-4">
+            <View className="overflow-hidden bg-white shadow-xl w-80 rounded-2xl">
+              <View className="flex-row items-center gap-2 px-5 py-4 bg-[#237227]">
                 <Ionicons name="notifications-outline" size={18} color="white" />
                 <Text className="text-base font-bold text-white">Notifications</Text>
               </View>
               <View className="items-center px-6 py-8">
                 <Ionicons name="notifications-off-outline" size={40} color="#d1d5db" />
-                <Text className="mt-3 text-center text-sm text-gray-400">No new notifications</Text>
+                <Text className="mt-3 text-sm text-center text-gray-400">No new notifications</Text>
               </View>
               <View className="px-5 pb-5">
                 <TouchableOpacity
-                  className="items-center rounded-xl bg-gray-100 py-2.5"
+                  className="items-center rounded-xl py-2.5 bg-[#237227] shadow-sm"
                   onPress={() => setIsNotificationOpen(false)}>
-                  <Text className="text-sm font-semibold text-gray-700">Dismiss</Text>
+                  <Text className="text-sm font-semibold text-white">Dismiss</Text>
                 </TouchableOpacity>
               </View>
             </View>
@@ -1849,18 +1847,18 @@ export default function ContactManagement({ onNavigate }: ContactManagementProps
       {/* ─── ADD CONTACTS MODAL ─── */}
       <Modal visible={showContactsModal} transparent animationType="fade">
         <Pressable
-          className="flex-1 items-center justify-center bg-black/30 p-4"
+          className="items-center justify-center flex-1 p-4 bg-black/30"
           onPress={() => setShowContactsModal(false)}>
           <Pressable onPress={(e) => e.stopPropagation()}>
-            <View className="w-96 overflow-hidden rounded-2xl bg-white shadow-xl">
+            <View className="overflow-hidden bg-white shadow-xl w-96 rounded-2xl">
               {/* Modal Header */}
-              <View className="flex-row items-center justify-between bg-emerald-500 px-5 py-4">
+              <View className="flex-row items-center justify-between px-5 py-4 bg-[#237227]">
                 <View className="flex-row items-center gap-2">
                   <Ionicons name="person-add-outline" size={18} color="white" />
                   <Text className="text-base font-bold text-white">Add Contact</Text>
                 </View>
                 <TouchableOpacity
-                  className="h-8 w-8 items-center justify-center rounded-xl bg-white/20"
+                  className="items-center justify-center w-8 h-8 rounded-full bg-white/20"
                   onPress={() => {
                     setShowContactsModal(false);
                     setEmployeeSearch('');
@@ -1873,7 +1871,7 @@ export default function ContactManagement({ onNavigate }: ContactManagementProps
                 <View className="mb-3 flex-row items-center rounded-xl border border-gray-200 bg-gray-50 px-3 py-2.5">
                   <Ionicons name="search" size={14} color="#9ca3af" />
                   <TextInput
-                    className="ml-2 flex-1 text-sm text-gray-800"
+                    className="flex-1 ml-2 text-sm text-gray-800"
                     placeholder="Search by name, email, or role..."
                     placeholderTextColor="#9ca3af"
                     value={employeeSearch}
@@ -1885,7 +1883,7 @@ export default function ContactManagement({ onNavigate }: ContactManagementProps
                   {filteredUsers.length === 0 ? (
                     <View className="items-center py-6">
                       <Ionicons name="person-outline" size={28} color="#d1d5db" />
-                      <Text className="mt-2 text-center text-xs text-gray-400">
+                      <Text className="mt-2 text-xs text-center text-gray-400">
                         No employees found
                       </Text>
                     </View>
@@ -1897,11 +1895,11 @@ export default function ContactManagement({ onNavigate }: ContactManagementProps
                           key={user.id}
                           className="mb-1.5 flex-row items-center rounded-xl border border-gray-200 bg-gray-50 p-3">
                           <View
-                            className="mr-3 h-9 w-9 shrink-0 items-center justify-center rounded-full"
+                            className="items-center justify-center mr-3 rounded-full h-9 w-9 shrink-0"
                             style={{ backgroundColor: user.color }}>
                             <Text className="text-xs font-bold text-gray-800">{user.initials}</Text>
                           </View>
-                          <View className="min-w-0 flex-1">
+                          <View className="flex-1 min-w-0">
                             <Text className="text-sm font-semibold text-gray-900" numberOfLines={1}>
                               {user.full_name || 'Unnamed'}
                             </Text>
@@ -1910,7 +1908,7 @@ export default function ContactManagement({ onNavigate }: ContactManagementProps
                             </Text>
                           </View>
                           <TouchableOpacity
-                            className={`ml-2 rounded-lg px-3 py-1.5 ${exists ? 'bg-gray-100' : 'bg-emerald-500'}`}
+                            className={`ml-2 rounded-lg px-3 py-1.5 ${exists ? 'bg-white border border-[#237227]' : 'bg-[#237227]'}`}
                             disabled={exists}
                             onPress={async () => {
                               try {
@@ -1922,7 +1920,7 @@ export default function ContactManagement({ onNavigate }: ContactManagementProps
                                   description: 'New contact has been added to the contact list',
                                   location: 'Contact Management',
                                   type: 'contact',
-                                  color: '#d1fae5',
+                                  color: '#237227',
                                   icon: 'person-add-outline',
                                 });
 
@@ -1936,7 +1934,7 @@ export default function ContactManagement({ onNavigate }: ContactManagementProps
                               }
                             }}>
                             <Text
-                              className={`text-xs font-semibold ${exists ? 'text-gray-500' : 'text-white'}`}>
+                              className={`text-xs font-semibold ${exists ? 'text-[#237227]' : 'text-white'}`}>
                               {exists ? 'Added' : 'Add'}
                             </Text>
                           </TouchableOpacity>
@@ -1947,9 +1945,9 @@ export default function ContactManagement({ onNavigate }: ContactManagementProps
                 </ScrollView>
 
                 <TouchableOpacity
-                  className="items-center rounded-xl border border-gray-200 py-2.5"
+                  className="items-center rounded-xl py-2.5 bg-[#237227]"
                   onPress={() => setShowContactsModal(false)}>
-                  <Text className="text-sm font-semibold text-gray-600">Close</Text>
+                  <Text className="text-sm font-semibold text-white">Close</Text>
                 </TouchableOpacity>
               </View>
             </View>

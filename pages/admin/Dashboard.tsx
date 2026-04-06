@@ -1003,7 +1003,7 @@ function MapEmbed({
           onLoadEnd={() => setReady(true)}
         />
       ) : (
-        <View className="flex-1 items-center justify-center">
+        <View className="items-center justify-center flex-1">
           <Ionicons name="map-outline" size={48} color="#a8a29e" />
           <Text className="mt-2 text-stone-400">Map not available</Text>
         </View>
@@ -1452,26 +1452,23 @@ export default function AdminDashboard({ onLogout, onNavigate }: AdminDashboardP
 
   const StatCard = ({ item }: { item: StatCard }) => (
     <View
-      className="min-w-[45%] flex-1 rounded-xl border border-stone-100 bg-white p-4 lg:min-w-[200px] lg:p-5"
+      className="min-w-[45%] flex-1 rounded-xl border border-stone-100 p-4 lg:min-w-[200px] lg:p-5"
       style={{
+        backgroundColor: '#e8f5e9',
         shadowColor: '#000',
         shadowOffset: { width: 0, height: 1 },
         shadowOpacity: 0.06,
         shadowRadius: 4,
       }}>
-      <View className="mb-4 flex-row items-start justify-between">
+      <View className="flex-row items-start justify-between mb-4">
         <View
-          className="h-10 w-10 items-center justify-center rounded-lg"
-          style={{ backgroundColor: item.color + '18' }}>
-          <Ionicons name={item.icon as any} size={20} color={item.color} />
-        </View>
-        <View className="flex-row items-center rounded-full bg-emerald-50 px-2 py-0.5">
-          <Ionicons name="trending-up" size={10} color="#059669" />
-          <Text className="ml-0.5 text-xs font-semibold text-emerald-700">+5%</Text>
+          className="items-center justify-center w-10 h-10 rounded-lg"
+          style={{ backgroundColor: '#237227' }}>
+          <Ionicons name={item.icon as any} size={20} color="#f8fafb" />
         </View>
       </View>
-      <Text className="mb-1 text-2xl font-bold text-stone-900 lg:text-3xl">{item.value}</Text>
-      <Text className="text-xs font-medium uppercase tracking-wide text-stone-400">
+      <Text className="mb-1 text-2xl font-bold lg:text-3xl" style={{ color: '#237227' }}>{item.value}</Text>
+      <Text className="text-xs font-medium tracking-wide uppercase" style={{ color: '#237227' }}>
         {item.label}
       </Text>
     </View>
@@ -1479,7 +1476,7 @@ export default function AdminDashboard({ onLogout, onNavigate }: AdminDashboardP
 
   if (loading) {
     return (
-      <View className="flex-1 items-center justify-center bg-stone-50">
+      <View className="items-center justify-center flex-1 bg-stone-50">
         <ActivityIndicator size="large" color="#10b981" />
       </View>
     );
@@ -1487,7 +1484,7 @@ export default function AdminDashboard({ onLogout, onNavigate }: AdminDashboardP
 
   if (activeTab === 'siteManagement') {
     return (
-      <View className="flex-1 flex-row bg-stone-50">
+      <View className="flex-row flex-1 bg-stone-50">
         <AdminNavbar
           activeTab={activeTab}
           setActiveTab={setActiveTab}
@@ -1502,7 +1499,7 @@ export default function AdminDashboard({ onLogout, onNavigate }: AdminDashboardP
 
   if (activeTab === 'walkieTalkie') {
     return (
-      <View className="flex-1 flex-row bg-stone-50">
+      <View className="flex-row flex-1 bg-stone-50">
         <AdminNavbar
           activeTab={activeTab}
           setActiveTab={setActiveTab}
@@ -1517,7 +1514,7 @@ export default function AdminDashboard({ onLogout, onNavigate }: AdminDashboardP
 
   if (activeTab === 'activityLogs') {
     return (
-      <View className="flex-1 flex-row bg-stone-50">
+      <View className="flex-row flex-1 bg-stone-50">
         <AdminNavbar
           activeTab={activeTab}
           setActiveTab={setActiveTab}
@@ -1532,7 +1529,7 @@ export default function AdminDashboard({ onLogout, onNavigate }: AdminDashboardP
 
   if (activeTab === 'companyList') {
     return (
-      <View className="flex-1 flex-row bg-stone-50">
+      <View className="flex-row flex-1 bg-stone-50">
         <AdminNavbar
           activeTab={activeTab}
           setActiveTab={setActiveTab}
@@ -1547,7 +1544,7 @@ export default function AdminDashboard({ onLogout, onNavigate }: AdminDashboardP
 
   if (activeTab === 'employee') {
     return (
-      <View className="flex-1 flex-row bg-stone-50">
+      <View className="flex-row flex-1 bg-stone-50">
         <AdminNavbar
           activeTab={activeTab}
           setActiveTab={setActiveTab}
@@ -1562,7 +1559,7 @@ export default function AdminDashboard({ onLogout, onNavigate }: AdminDashboardP
 
   if (activeTab === 'employeeLogs') {
     return (
-      <View className="flex-1 flex-row bg-stone-50">
+      <View className="flex-row flex-1 bg-stone-50">
         <AdminNavbar
           activeTab={activeTab}
           setActiveTab={setActiveTab}
@@ -1577,7 +1574,7 @@ export default function AdminDashboard({ onLogout, onNavigate }: AdminDashboardP
 
   if (activeTab === 'technicalSupport') {
     return (
-      <View className="flex-1 flex-row bg-stone-50">
+      <View className="flex-row flex-1 bg-stone-50">
         <AdminNavbar
           activeTab={activeTab}
           setActiveTab={setActiveTab}
@@ -1594,7 +1591,7 @@ export default function AdminDashboard({ onLogout, onNavigate }: AdminDashboardP
 
   if (activeTab === 'settings') {
     return (
-      <View className="flex-1 flex-row bg-stone-50">
+      <View className="flex-row flex-1 bg-stone-50">
         <AdminNavbar
           activeTab={activeTab}
           setActiveTab={setActiveTab}
@@ -1608,7 +1605,7 @@ export default function AdminDashboard({ onLogout, onNavigate }: AdminDashboardP
   }
 
   return (
-    <View className="flex-1 flex-row bg-stone-50">
+    <View className="flex-row flex-1 bg-stone-50">
       <AdminNavbar
         activeTab={activeTab}
         setActiveTab={setActiveTab}
@@ -1621,38 +1618,23 @@ export default function AdminDashboard({ onLogout, onNavigate }: AdminDashboardP
         className="flex-1 bg-stone-50"
         showsVerticalScrollIndicator={false}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}>
-        <View className="border-b border-stone-100 bg-white px-6 pb-4 pt-5">
+        <View className="px-6 pt-5 pb-4 bg-white border-b border-stone-100">
           <View className="flex-row items-center justify-between">
-            <View className="flex-1 flex-row items-center">
-              <TouchableOpacity className="mr-3 h-9 w-9 items-center justify-center lg:hidden">
+            <View className="flex-row items-center flex-1">
+              <TouchableOpacity className="items-center justify-center mr-3 h-9 w-9 lg:hidden">
                 <Ionicons name="menu" size={22} color="#44403c" />
               </TouchableOpacity>
               <View className="flex-1">
-                <Text className="text-xl font-bold tracking-tight text-stone-900">Dashboard</Text>
-                <Text className="mt-0.5 text-xs font-medium text-stone-400">
+                <Text className="mb-1 text-xl font-light lg:text-3xl text-stone-900">Dashboard</Text>
+                <Text className="mt-0.5 text-md font-light text-stone-500">
                   Overview & analytics
                 </Text>
-              </View>
-            </View>
-            <View className="flex-row items-center gap-2">
-              <TouchableOpacity className="h-9 w-9 items-center justify-center rounded-lg border border-stone-100 bg-stone-50">
-                <View className="absolute right-1.5 top-1.5 h-2 w-2 rounded-full bg-red-400" />
-                <Ionicons name="notifications-outline" size={17} color="#78716c" />
-              </TouchableOpacity>
-              <View className="flex-row items-center gap-2 rounded-lg border border-stone-100 bg-stone-50 px-2.5 py-1.5">
-                <View className="h-6 w-6 items-center justify-center rounded-md bg-emerald-500">
-                  <Text className="text-xs font-bold text-white">AD</Text>
-                </View>
-                <View className="hidden lg:flex">
-                  <Text className="text-xs font-semibold text-stone-800">Admin User</Text>
-                  <Text className="text-xs leading-none text-stone-400">Super Admin</Text>
-                </View>
               </View>
             </View>
           </View>
         </View>
 
-        <View className="px-6 pb-4 pt-6">
+        <View className="px-6 pt-6 pb-4">
           <View className="flex-row flex-wrap gap-3">
             {stats.map((stat, index) => (
               <View key={index} style={{ width: isWebView ? '23.5%' : '48%' }}>
@@ -1663,22 +1645,22 @@ export default function AdminDashboard({ onLogout, onNavigate }: AdminDashboardP
         </View>
 
         <View className="px-6 pb-6 lg:flex-row lg:gap-5">
-          <View className="mb-5 flex-1 lg:mb-0">
+          <View className="flex-1 mb-5 lg:mb-0">
             {/* Sites Accomplished Per Day Chart Card */}
             <View
-              className="mb-5 rounded-xl border border-stone-100 bg-white p-5"
+              className="p-5 mb-5 bg-white border rounded-xl border-stone-100"
               style={{
                 shadowColor: '#000',
                 shadowOffset: { width: 0, height: 1 },
                 shadowOpacity: 0.05,
                 shadowRadius: 4,
               }}>
-              <View className="mb-5 flex-row items-center justify-between">
+              <View className="flex-row items-center justify-between mb-5">
                 <View>
-                  <Text className="text-sm font-semibold text-stone-900">
+                  <Text className="text-sm font-light lg:text-lg text-stone-900">
                     Sites Accomplished Per Day
                   </Text>
-                  <Text className="mt-0.5 text-xs text-stone-400">
+                  <Text className="mt-0.5 text-sm text-stone-400">
                     Based on archived site groups
                   </Text>
                 </View>
@@ -1689,7 +1671,7 @@ export default function AdminDashboard({ onLogout, onNavigate }: AdminDashboardP
               </View>
 
               {dailyAccomplished.length === 0 ? (
-                <View className="h-32 items-center justify-center">
+                <View className="items-center justify-center h-32">
                   <Text className="text-sm text-stone-400">No data available</Text>
                 </View>
               ) : (
@@ -1699,12 +1681,12 @@ export default function AdminDashboard({ onLogout, onNavigate }: AdminDashboardP
                     const percentage = (bar.count / maxCount) * 100;
                     const barHeight = Math.max(8, percentage);
                     return (
-                      <View key={i} className="flex-1 items-center" style={{ height: '100%' }}>
+                      <View key={i} className="items-center flex-1" style={{ height: '100%' }}>
                         <View
                           className="w-full rounded-t-md"
                           style={{
                             height: `${barHeight}%`,
-                            backgroundColor: bar.count > 0 ? '#10b981' : '#d1fae5',
+                            backgroundColor: bar.count > 0 ? '#237227' : '#e8f5e9',
                             marginTop: 'auto',
                           }}
                         />
@@ -1720,21 +1702,21 @@ export default function AdminDashboard({ onLogout, onNavigate }: AdminDashboardP
             </View>
 
             <View
-              className="rounded-xl border border-stone-100 bg-white p-5"
+              className="p-5 bg-white border rounded-xl border-stone-100"
               style={{
                 shadowColor: '#000',
                 shadowOffset: { width: 0, height: 1 },
                 shadowOpacity: 0.05,
                 shadowRadius: 4,
               }}>
-              <View className="mb-4 flex-row items-center justify-between">
+              <View className="flex-row items-center justify-between mb-4">
                 <View>
-                  <Text className="text-sm font-semibold text-stone-900">Live Location Map</Text>
-                  <Text className="mt-0.5 text-xs text-stone-400">Real-time employee tracking</Text>
+                  <Text className="text-sm font-light lg:text-lg text-stone-900">Live Location Map</Text>
+                  <Text className="mt-0.5 text-sm text-stone-400">Real-time employee tracking</Text>
                 </View>
                 <View className="flex-row items-center gap-1.5">
-                  <View className="h-2 w-2 rounded-full bg-emerald-500" />
-                  <Text className="text-xs font-medium text-stone-500">
+                  <View className="w-2 h-2 rounded-full bg-[#237227]" />
+                  <Text className="text-sm font-medium text-stone-500">
                     {onlineUsersForMap.length} online
                   </Text>
                 </View>
@@ -1750,7 +1732,7 @@ export default function AdminDashboard({ onLogout, onNavigate }: AdminDashboardP
 
           <View className="lg:w-80">
             <View
-              className="rounded-xl border border-stone-100 bg-white p-5"
+              className="p-5 bg-white border rounded-xl border-stone-100"
               style={{
                 shadowColor: '#000',
                 shadowOffset: { width: 0, height: 1 },
@@ -1758,20 +1740,20 @@ export default function AdminDashboard({ onLogout, onNavigate }: AdminDashboardP
                 shadowRadius: 4,
                 height: 400,
               }}>
-              <View className="mb-4 flex-row items-center justify-between">
+              <View className="flex-row items-center justify-between mb-4">
                 <View>
-                  <Text className="text-sm font-semibold text-stone-900">Recent Activity</Text>
+                  <Text className="text-lg font-light lg:text-2xl text-stone-900">Recent Activity</Text>
                   <Text className="mt-0.5 text-xs text-stone-400">Latest system events</Text>
                 </View>
-                <View className="rounded-full bg-emerald-50 px-2.5 py-1">
-                  <Text className="text-xs font-semibold text-emerald-700">
+                <View className="rounded-full bg-[#237227] px-2.5 py-1">
+                  <Text className="text-xs font-semibold text-[#f8fafb]">
                     {activities.length} events
                   </Text>
                 </View>
               </View>
               {activities.length === 0 ? (
-                <View className="flex-1 items-center justify-center">
-                  <View className="mb-3 h-12 w-12 items-center justify-center rounded-xl bg-stone-50">
+                <View className="items-center justify-center flex-1">
+                  <View className="items-center justify-center w-12 h-12 mb-3 rounded-xl bg-stone-50">
                     <Ionicons name="clipboard-outline" size={22} color="#d6d3d1" />
                   </View>
                   <Text className="text-sm font-medium text-stone-400">No activities yet</Text>
@@ -1780,22 +1762,22 @@ export default function AdminDashboard({ onLogout, onNavigate }: AdminDashboardP
                 <ScrollView
                   className="flex-1"
                   nestedScrollEnabled
-                  showsVerticalScrollIndicator={false}>
+                  showsVerticalScrollIndicator={true}>
                   {activities.map((activity, idx) => (
                     <View
                       key={activity.id}
                       className={`flex-row items-start ${idx !== activities.length - 1 ? 'mb-3 border-b border-stone-50 pb-3' : ''}`}>
                       <View
-                        className="mr-3 mt-0.5 h-8 w-8 items-center justify-center rounded-lg"
-                        style={{ backgroundColor: activity.color || '#ecfdf5' }}>
+                        className="mr-3 mt-0.5 h-8 w-8 items-center justify-center rounded-full"
+                        style={{ backgroundColor: '#237227' }}>
                         <Ionicons
                           name={(activity.icon || 'notifications-outline') as any}
-                          size={14}
-                          color="#10b981"
+                          size={18}
+                          color="#f8fafb"
                         />
                       </View>
                       <View className="flex-1">
-                        <Text className="mb-0.5 text-xs font-semibold text-stone-800">
+                        <Text className="mb-0.5 text-xs font-medium text-stone-900">
                           {activity.action}
                         </Text>
                         {activity.description ? (
@@ -1806,7 +1788,7 @@ export default function AdminDashboard({ onLogout, onNavigate }: AdminDashboardP
                           </Text>
                         ) : null}
                       </View>
-                      <Text className="ml-2 mt-0.5 text-xs font-medium text-stone-300">
+                      <Text className="ml-2 mt-0.5 text-xs font-light text-stone-500">
                         {activity.time ? new Date(activity.time).toLocaleDateString() : ''}
                       </Text>
                     </View>

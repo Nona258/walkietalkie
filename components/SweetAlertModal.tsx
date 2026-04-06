@@ -26,6 +26,11 @@ export default function SweetAlertModal({
   onCancel,
   showCancelButton = false,
 }: SweetAlertModalProps) {
+  const palette = {
+    green: '#237227',
+    cloudmist: '#f8fafb',
+  };
+
   const iconMap = {
     success: { name: 'checkmark-circle' as const, color: '#10b981' },
     error: { name: 'close-circle' as const, color: '#ef4444' },
@@ -38,18 +43,18 @@ export default function SweetAlertModal({
   return (
     <Modal transparent visible={visible} animationType="fade">
       <Pressable
-        className="flex-1 items-center justify-center"
+        className="items-center justify-center flex-1"
         style={{ backgroundColor: 'rgba(0,0,0,0.5)' }}
         onPress={onCancel}>
         <Pressable
-          className="mx-8 items-center rounded-3xl bg-white p-8 shadow-2xl"
+          className="items-center p-8 mx-8 bg-white shadow-2xl rounded-3xl"
           style={{ minWidth: 300, maxWidth: 380 }}
           onPress={(e) => e.stopPropagation()}>
           {/* Icon */}
           <View
-            className="mb-5 h-20 w-20 items-center justify-center rounded-full"
-            style={{ backgroundColor: `${icon.color}15` }}>
-            <Ionicons name={icon.name} size={48} color={icon.color} />
+            className="items-center justify-center w-20 h-20 mb-5 rounded-full"
+            style={{ backgroundColor: palette.green }}>
+            <Ionicons name={icon.name} size={48} color={palette.cloudmist} />
           </View>
 
           {/* Title */}
@@ -63,7 +68,7 @@ export default function SweetAlertModal({
           )}
 
           {/* Buttons */}
-          <View className="w-full flex-row gap-3">
+          <View className="flex-row w-full gap-3">
             {showCancelButton && onCancel && (
               <TouchableOpacity
                 className="flex-1 items-center rounded-2xl border border-gray-200 py-3.5"
@@ -74,10 +79,12 @@ export default function SweetAlertModal({
             )}
             <TouchableOpacity
               className="flex-1 items-center rounded-2xl py-3.5"
-              style={{ backgroundColor: icon.color }}
+              style={{ backgroundColor: palette.green }}
               onPress={onConfirm}
               activeOpacity={0.8}>
-              <Text className="text-base font-bold text-white">{confirmText}</Text>
+              <Text className="text-base font-bold" style={{ color: palette.cloudmist }}>
+                {confirmText}
+              </Text>
             </TouchableOpacity>
           </View>
         </Pressable>
