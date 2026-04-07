@@ -656,6 +656,11 @@ export default function Employees({
                   >
                     <Ionicons name={'chevron-back-outline' as any} size={13} color="#4b6b4d" />
                   </TouchableOpacity>
+                  <View className="px-3 h-8 rounded-lg  border border-[#237227] items-center justify-center min-w-[60px]">
+                                      <Text className="text-[11px] font-semibold text-stone-900">
+                                        {currentPage} / {totalPages}
+                                      </Text>
+                                    </View>
                   <TouchableOpacity
                     onPress={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
                     disabled={currentPage >= totalPages}

@@ -55,6 +55,15 @@ export default function CompanyList({ onNavigate, isMobileMenuOpen, setIsMobileM
   const [companies, setCompanies] = useState<Company[]>([]);
   const [loading, setLoading] = useState(true);
 
+  // Pagination for companies list
+  const PAGE_SIZE = 10;
+  const [currentPage, setCurrentPage] = useState(1);
+
+  const totalPages = Math.max(1, Math.ceil(companies.length / PAGE_SIZE));
+  const startIndex = (currentPage - 1) * PAGE_SIZE;
+  const paginatedCompanies = companies.slice(startIndex, startIndex + PAGE_SIZE);
+  const showingCount = companies.length === 0 ? 0 : Math.min(currentPage * PAGE_SIZE, companies.length);
+
   // ---------- Add Company Form States ----------
   const [companyName, setCompanyName] = useState('');
   const [industry, setIndustry] = useState('');
@@ -174,6 +183,11 @@ export default function CompanyList({ onNavigate, isMobileMenuOpen, setIsMobileM
   useEffect(() => {
     loadCompaniesFromSupabase();
   }, []);
+
+  // Keep current page within valid range when companies length changes
+  useEffect(() => {
+    setCurrentPage((prev) => Math.max(1, Math.min(prev, totalPages)));
+  }, [totalPages]);
 
   const loadCompaniesFromSupabase = async () => {
     setLoading(true);
@@ -669,7 +683,7 @@ export default function CompanyList({ onNavigate, isMobileMenuOpen, setIsMobileM
             <>
               {/* Mobile Card Layout */}
               <View className="gap-3 md:hidden">
-                {companies.map((company) => (
+                {paginatedCompanies.map((company) => (
                   <View
                     key={company.id}
                     className="bg-white border border-[#e5e7eb] rounded-[10px] p-4 gap-3">
@@ -751,11 +765,11 @@ export default function CompanyList({ onNavigate, isMobileMenuOpen, setIsMobileM
                       </View>
 
                       {/* Table Body */}
-                      {companies.map((company, index) => (
+                      {paginatedCompanies.map((company, index) => (
                         <View
                           key={company.id}
                           className={`flex-row items-center px-5 py-[16px] bg-white ${
-                            index !== companies.length - 1 ? 'border-b border-[#f0f4f0]' : ''
+                            index !== paginatedCompanies.length - 1 ? 'border-b border-[#f0f4f0]' : ''
                           }`}>
 
                           {/* Column: Company Name & Avatar */}
@@ -808,14 +822,33 @@ export default function CompanyList({ onNavigate, isMobileMenuOpen, setIsMobileM
                       {/* Table Footer */}
                       <View className="flex-row items-center justify-between border-t border-[#f0f4f0] bg-[#f8fafb] px-5 py-4">
                         <Text className="text-[13px] text-black">
-                          Showing {companies.length} of {companies.length} companies
+                          Showing {showingCount} of {companies.length} companies
                         </Text>
-                        <View className="flex-row gap-[8px]">
-                          <TouchableOpacity className="h-[30px] w-[30px] items-center justify-center rounded-[6px] border border-[#e5e7eb] bg-white opacity-50" disabled>
-                            <Ionicons name="chevron-back-outline" size={14} color="#4b6b4d" />
+                        <View className="flex-row gap-[6px] items-center">
+                          <TouchableOpacity
+                            onPress={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                            disabled={currentPage <= 1}
+                            className={
+                              "w-7 h-7 rounded-[7px] border border-[#e5e7eb] bg-white items-center justify-center " +
+                              (currentPage <= 1 ? 'opacity-50' : '')
+                            }
+                          >
+                            <Ionicons name={"chevron-back-outline" as any} size={13} color="#4b6b4d" />
                           </TouchableOpacity>
-                          <TouchableOpacity className="h-[30px] w-[30px] items-center justify-center rounded-[6px] border border-[#e5e7eb] bg-white opacity-50" disabled>
-                            <Ionicons name="chevron-forward-outline" size={14} color="#4b6b4d" />
+                          <View className="px-3 h-8 rounded-lg border border-[#237227] items-center justify-center min-w-[60px]">
+                            <Text className="text-[11px] font-semibold text-stone-900">
+                              {currentPage} / {totalPages}
+                            </Text>
+                          </View>
+                          <TouchableOpacity
+                            onPress={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                            disabled={currentPage >= totalPages}
+                            className={
+                              "w-7 h-7 rounded-[7px] border border-[#e5e7eb] bg-white items-center justify-center " +
+                              (currentPage >= totalPages ? 'opacity-50' : '')
+                            }
+                          >
+                            <Ionicons name={"chevron-forward-outline" as any} size={13} color="#4b6b4d" />
                           </TouchableOpacity>
                         </View>
                       </View>
@@ -827,7 +860,7 @@ export default function CompanyList({ onNavigate, isMobileMenuOpen, setIsMobileM
               {/* Mobile Footer */}
               <View className="md:hidden mt-4 bg-white border border-[#e5e7eb] rounded-[10px] px-4 py-3">
                 <Text className="text-[12px] text-center text-[#8fa88f]">
-                  Showing {companies.length} {companies.length === 1 ? 'company' : 'companies'}
+                  Showing {showingCount} {companies.length === 1 ? 'company' : 'companies'}
                 </Text>
               </View>
             </>

@@ -1239,7 +1239,7 @@ export default function SiteManagement({ onNavigate, isMobileMenuOpen, setIsMobi
                 <Ionicons name="menu" size={28} color="#237227" />
               </TouchableOpacity>
               <View className="flex-1">
-                <Text className="mb-1 text-xl font-light lg:text-3xl text-stone-900">Site Management</Text>
+                <Text className="text-lg font-bold text-stone-900 lg:text-2xl">Site Management</Text>
                 <Text className="text-xs lg:text-base text-stone-900">Welcome back, Administrator</Text>
               </View>
             </View>

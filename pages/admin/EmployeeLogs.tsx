@@ -594,8 +594,8 @@ export default function EmployeeLogs({
                     accessibilityLabel="Previous page">
                     <Ionicons name={'chevron-back-outline' as any} size={14} color="#4b6b4d" />
                   </TouchableOpacity>
-                  <View className="px-3 h-8 rounded-lg bg-[#e8f5e9] border border-[#237227] items-center justify-center min-w-[60px]">
-                    <Text className="text-[11px] font-semibold text-[#237227]">
+                  <View className="px-3 h-8 rounded-lg  border border-[#237227] items-center justify-center min-w-[60px]">
+                    <Text className="text-[11px] font-semibold text-stone-900">
                       {currentPage} / {totalPages}
                     </Text>
                   </View>

@@ -230,25 +230,35 @@ export default function ActivityLogs({ onNavigate, isMobileMenuOpen, setIsMobile
                   </Text>
                   <View className="flex-row items-center gap-2">
                     <TouchableOpacity
-                      onPress={() => currentPage > 1 && setCurrentPage(currentPage - 1)}
+                      onPress={() => setCurrentPage((p) => Math.max(1, p - 1))}
                       disabled={currentPage === 1}
-                      className={`p-2 rounded-lg border ${currentPage === 1 ? 'border-stone-200 opacity-50' : 'border-stone-300'}`}
-                      style={currentPage === 1 ? {} : { backgroundColor: '#f8fafb' }}>
+                      className={
+                        `w-7 h-7 rounded-[7px] border items-center justify-center bg-white ` +
+                        (currentPage === 1 ? 'border-stone-200 opacity-50' : 'border-stone-300')
+                      }>
                       <Ionicons
-                        name="chevron-back"
-                        size={16}
+                        name={"chevron-back-outline" as any}
+                        size={13}
                         color={currentPage === 1 ? '#a8a29e' : '#237227'}
                       />
                     </TouchableOpacity>
 
+                    <View className="px-3 h-8 rounded-lg border border-[#237227] items-center justify-center min-w-[60px]">
+                      <Text className="text-[11px] font-semibold text-stone-900">
+                        {currentPage} / {totalPages}
+                      </Text>
+                    </View>
+
                     <TouchableOpacity
-                      onPress={() => currentPage < totalPages && setCurrentPage(currentPage + 1)}
+                      onPress={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
                       disabled={currentPage === totalPages}
-                      className={`p-2 rounded-lg border ${currentPage === totalPages ? 'border-stone-200 opacity-50' : 'border-stone-300'}`}
-                      style={currentPage === totalPages ? {} : { backgroundColor: '#f8fafb' }}>
+                      className={
+                        `w-7 h-7 rounded-[7px] border items-center justify-center bg-white ` +
+                        (currentPage === totalPages ? 'border-stone-200 opacity-50' : 'border-stone-300')
+                      }>
                       <Ionicons
-                        name="chevron-forward"
-                        size={16}
+                        name={"chevron-forward-outline" as any}
+                        size={13}
                         color={currentPage === totalPages ? '#a8a29e' : '#237227'}
                       />
                     </TouchableOpacity>
