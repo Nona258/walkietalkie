@@ -95,7 +95,7 @@ export default function SiteManagement({ onNavigate, isMobileMenuOpen, setIsMobi
 
   // Card gradient presets for mobile card styling
   const CARD_GRADIENTS = [
-    ['#059669', '#10b981'], // emerald dark -> emerald light
+    ['#237227', '#237227'], // green
   ];
 
   // Form state
@@ -130,6 +130,14 @@ export default function SiteManagement({ onNavigate, isMobileMenuOpen, setIsMobi
 
   // Mobile card expansion state - track which card shows the map
   const [expandedCardId, setExpandedCardId] = useState<string | null>(null);
+
+  // Mobile detail modal state
+  const [mobileDetailVisible, setMobileDetailVisible] = useState(false);
+  const [selectedMobileSite, setSelectedMobileSite] = useState<Site | null>(null);
+  const [mobileMapFullscreen, setMobileMapFullscreen] = useState(false);
+
+  // Track if edit was initiated from mobile detail modal
+  const [editingFromMobileDetail, setEditingFromMobileDetail] = useState(false);
 
   // Helper function to convert a stored path to a public URL
   const getPublicImageUrl = (path: string): string => {
@@ -218,6 +226,10 @@ export default function SiteManagement({ onNavigate, isMobileMenuOpen, setIsMobi
   const viewStreetRef = useRef<any>(null);
   const editMapRef = useRef<any>(null);
   const editMarkerRef = useRef<any>(null);
+  const mobileMapRef = useRef<any>(null);
+  const mobileMarkerRef = useRef<any>(null);
+  const fullscreenMapRef = useRef<any>(null);
+  const fullscreenMarkerRef = useRef<any>(null);
   const [showMapControls, setShowMapControls] = useState(false);
 
   // Fetch sites from Supabase (active or archived)
@@ -801,6 +813,282 @@ export default function SiteManagement({ onNavigate, isMobileMenuOpen, setIsMobi
     };
   }, [isViewLocationOpen, selectedSite, branchOptions, companyOptions]);
 
+  // Initialize mobile detail map using Google Maps
+  useEffect(() => {
+    if (!mobileDetailVisible || !selectedMobileSite || typeof window === 'undefined') {
+      // Clean up when modal closes
+      if (mobileMarkerRef.current) {
+        try {
+          mobileMarkerRef.current.setMap(null);
+        } catch {}
+        mobileMarkerRef.current = null;
+      }
+      if (mobileMapRef.current) {
+        mobileMapRef.current = null;
+      }
+      return;
+    }
+
+    const ensureGoogleMapsScript = () => {
+      const w = window as any;
+      if (w.google && w.google.maps) {
+        return;
+      }
+
+      const scriptId = 'gmaps-script';
+      if (document.getElementById(scriptId)) {
+        return;
+      }
+
+      const API_KEY = 'AIzaSyAq58TD9PputxnK8ZO9jRUX8KW7bTuPTPQ';
+      const script = document.createElement('script');
+      script.id = scriptId;
+      script.src = `https://maps.googleapis.com/maps/api/js?key=${API_KEY}&libraries=places`;
+      script.async = true;
+      script.defer = true;
+      document.head.appendChild(script);
+    };
+
+    ensureGoogleMapsScript();
+
+    let retryCount = 0;
+    const maxRetries = 20;
+
+    const initMobileMap = () => {
+      const g = (window as any).google;
+      if (!g || !g.maps) return;
+
+      const mapEl = document.getElementById('mobile-detail-map') as HTMLElement;
+      if (!mapEl) {
+        if (retryCount < maxRetries) {
+          retryCount++;
+          setTimeout(initMobileMap, 100);
+        }
+        return;
+      }
+
+      // Check if element has dimensions
+      const rect = mapEl.getBoundingClientRect();
+      if (rect.width === 0 || rect.height === 0) {
+        if (retryCount < maxRetries) {
+          retryCount++;
+          setTimeout(initMobileMap, 100);
+        }
+        return;
+      }
+
+      // Clean up any existing map first
+      if (mobileMarkerRef.current) {
+        try {
+          mobileMarkerRef.current.setMap(null);
+        } catch {}
+        mobileMarkerRef.current = null;
+      }
+      if (mobileMapRef.current) {
+        mobileMapRef.current = null;
+      }
+
+      try {
+        const lat = selectedMobileSite.latitude || 8.228;
+        const lng = selectedMobileSite.longitude || 124.2452;
+
+        const map = new g.maps.Map(mapEl, {
+          center: { lat, lng },
+          zoom: 15,
+          mapTypeControl: false,
+          zoomControl: false,
+          fullscreenControl: false,
+          streetViewControl: false,
+        });
+
+        const marker = new g.maps.Marker({
+          position: { lat, lng },
+          map,
+          draggable: false,
+        });
+
+        mobileMapRef.current = map;
+        mobileMarkerRef.current = marker;
+
+        // Force resize after initialization
+        setTimeout(() => {
+          try {
+            g.maps.event.trigger(map, 'resize');
+            map.setCenter({ lat, lng });
+          } catch {}
+        }, 200);
+      } catch (error) {
+        console.error('Error initializing mobile detail map:', error);
+      }
+    };
+
+    if ((window as any).google && (window as any).google.maps) {
+      requestAnimationFrame(() => {
+        setTimeout(initMobileMap, 500);
+      });
+    } else {
+      const check = setInterval(() => {
+        if ((window as any).google && (window as any).google.maps) {
+          clearInterval(check);
+          requestAnimationFrame(() => {
+            setTimeout(initMobileMap, 500);
+          });
+        }
+      }, 100);
+      return () => clearInterval(check);
+    }
+
+    return () => {
+      if (mobileMarkerRef.current) {
+        try {
+          mobileMarkerRef.current.setMap(null);
+        } catch {}
+        mobileMarkerRef.current = null;
+      }
+      if (mobileMapRef.current) {
+        mobileMapRef.current = null;
+      }
+    };
+  }, [mobileDetailVisible, selectedMobileSite]);
+
+  // Initialize fullscreen map using Google Maps
+  useEffect(() => {
+    if (!mobileMapFullscreen || !selectedMobileSite || typeof window === 'undefined') {
+      // Clean up when modal closes
+      if (fullscreenMarkerRef.current) {
+        try {
+          fullscreenMarkerRef.current.setMap(null);
+        } catch {}
+        fullscreenMarkerRef.current = null;
+      }
+      if (fullscreenMapRef.current) {
+        fullscreenMapRef.current = null;
+      }
+      return;
+    }
+
+    const ensureGoogleMapsScript = () => {
+      const w = window as any;
+      if (w.google && w.google.maps) {
+        return;
+      }
+
+      const scriptId = 'gmaps-script';
+      if (document.getElementById(scriptId)) {
+        return;
+      }
+
+      const API_KEY = 'AIzaSyAq58TD9PputxnK8ZO9jRUX8KW7bTuPTPQ';
+      const script = document.createElement('script');
+      script.id = scriptId;
+      script.src = `https://maps.googleapis.com/maps/api/js?key=${API_KEY}&libraries=places`;
+      script.async = true;
+      script.defer = true;
+      document.head.appendChild(script);
+    };
+
+    ensureGoogleMapsScript();
+
+    let retryCount = 0;
+    const maxRetries = 20;
+
+    const initFullscreenMap = () => {
+      const g = (window as any).google;
+      if (!g || !g.maps) return;
+
+      const mapEl = document.getElementById('fullscreen-mobile-map') as HTMLElement;
+      if (!mapEl) {
+        if (retryCount < maxRetries) {
+          retryCount++;
+          setTimeout(initFullscreenMap, 100);
+        }
+        return;
+      }
+
+      // Check if element has dimensions
+      const rect = mapEl.getBoundingClientRect();
+      if (rect.width === 0 || rect.height === 0) {
+        if (retryCount < maxRetries) {
+          retryCount++;
+          setTimeout(initFullscreenMap, 100);
+        }
+        return;
+      }
+
+      // Clean up any existing map first
+      if (fullscreenMarkerRef.current) {
+        try {
+          fullscreenMarkerRef.current.setMap(null);
+        } catch {}
+        fullscreenMarkerRef.current = null;
+      }
+      if (fullscreenMapRef.current) {
+        fullscreenMapRef.current = null;
+      }
+
+      try {
+        const lat = selectedMobileSite.latitude || 8.228;
+        const lng = selectedMobileSite.longitude || 124.2452;
+
+        const map = new g.maps.Map(mapEl, {
+          center: { lat, lng },
+          zoom: 16,
+          mapTypeControl: true,
+          zoomControl: true,
+          fullscreenControl: false,
+          streetViewControl: true,
+        });
+
+        const marker = new g.maps.Marker({
+          position: { lat, lng },
+          map,
+          draggable: false,
+        });
+
+        fullscreenMapRef.current = map;
+        fullscreenMarkerRef.current = marker;
+
+        // Force resize after initialization
+        setTimeout(() => {
+          try {
+            g.maps.event.trigger(map, 'resize');
+            map.setCenter({ lat, lng });
+          } catch {}
+        }, 200);
+      } catch (error) {
+        console.error('Error initializing fullscreen mobile map:', error);
+      }
+    };
+
+    if ((window as any).google && (window as any).google.maps) {
+      requestAnimationFrame(() => {
+        setTimeout(initFullscreenMap, 500);
+      });
+    } else {
+      const check = setInterval(() => {
+        if ((window as any).google && (window as any).google.maps) {
+          clearInterval(check);
+          requestAnimationFrame(() => {
+            setTimeout(initFullscreenMap, 500);
+          });
+        }
+      }, 100);
+      return () => clearInterval(check);
+    }
+
+    return () => {
+      if (fullscreenMarkerRef.current) {
+        try {
+          fullscreenMarkerRef.current.setMap(null);
+        } catch {}
+        fullscreenMarkerRef.current = null;
+      }
+      if (fullscreenMapRef.current) {
+        fullscreenMapRef.current = null;
+      }
+    };
+  }, [mobileMapFullscreen, selectedMobileSite]);
+
   // Validation functions
   const validateField = (fieldName: string, value: string): string | undefined => {
     switch (fieldName) {
@@ -1225,6 +1513,11 @@ export default function SiteManagement({ onNavigate, isMobileMenuOpen, setIsMobi
     setDetailModalVisible(true);
   };
 
+  const openMobileDetail = (site: Site) => {
+    setSelectedMobileSite(site);
+    setMobileDetailVisible(true);
+  };
+
   return (
     <View className="flex-1 bg-stone-50">
       {/* Main Content Area */}
@@ -1247,14 +1540,15 @@ export default function SiteManagement({ onNavigate, isMobileMenuOpen, setIsMobi
         </View>
 
         {/* Page Title & Add Button */}
-        <View className="px-6 pt-4 pb-3">
-          <View className="flex-row items-center justify-between">
+        <View className="px-4 pt-4 pb-3 lg:px-6">
+          {/* Desktop Layout */}
+          <View className="flex-row items-center justify-between hidden lg:flex">
             <View className="flex-row items-center flex-1 gap-3">
-              <Text className="mb-0.5 text-lg font-bold text-stone-900 lg:text-xl">
+              <Text className="mb-0.5 text-xl font-bold text-stone-900">
                 {showArchived ? 'Archived Sites' : 'Site Management'}
               </Text>
               <TouchableOpacity
-                className={`ml-2 px-2 py-1 rounded transition-colors duration-150 ${!showArchived ? 'bg-[#237227]' : 'bg-stone-200'} ${!showArchived ? 'shadow-md' : ''}`}
+                className={`ml-2 px-3 py-1.5 rounded transition-colors duration-150 ${!showArchived ? 'bg-[#237227]' : 'bg-stone-200'} ${!showArchived ? 'shadow-md' : ''}`}
                 style={{ minWidth: 70, alignItems: 'center' }}
                 onPress={() => setShowArchived(false)}
                 activeOpacity={0.85}
@@ -1262,7 +1556,7 @@ export default function SiteManagement({ onNavigate, isMobileMenuOpen, setIsMobi
                 <Text className={`text-xs font-semibold ${!showArchived ? 'text-white' : 'text-[#237227]'}`}>Active</Text>
               </TouchableOpacity>
               <TouchableOpacity
-                className={`ml-1 px-2 py-1 rounded transition-colors duration-150 ${showArchived ? 'bg-[#237227]' : 'bg-stone-200'} ${showArchived ? 'shadow-md' : ''}`}
+                className={`ml-1 px-3 py-1.5 rounded transition-colors duration-150 ${showArchived ? 'bg-[#237227]' : 'bg-stone-200'} ${showArchived ? 'shadow-md' : ''}`}
                 style={{ minWidth: 70, alignItems: 'center' }}
                 onPress={() => setShowArchived(true)}
                 activeOpacity={0.85}
@@ -1279,6 +1573,42 @@ export default function SiteManagement({ onNavigate, isMobileMenuOpen, setIsMobi
                 <Text className="text-sm font-semibold text-white">Add Site</Text>
               </TouchableOpacity>
             )}
+          </View>
+
+          {/* Mobile Layout */}
+          <View className="lg:hidden">
+            <View className="flex-row items-center justify-between mb-3">
+              <Text className="text-lg font-bold text-stone-900">
+                {showArchived ? 'Archived Sites' : 'Site Management'}
+              </Text>
+              {!showArchived && (
+                <TouchableOpacity
+                  className="flex-row items-center gap-1 px-3 py-1.5 rounded-lg bg-[#237227] shadow-sm"
+                  onPress={() => setIsAddModalOpen(true)}
+                >
+                  <Ionicons name="add" size={16} color="white" />
+                  <Text className="text-xs font-semibold text-white">Add Site</Text>
+                </TouchableOpacity>
+              )}
+            </View>
+            <View className="flex-row items-center gap-2">
+              <TouchableOpacity
+                className={`flex-1 px-3 py-2 rounded-lg ${!showArchived ? 'bg-[#237227] shadow-md' : 'bg-stone-200'}`}
+                style={{ alignItems: 'center' }}
+                onPress={() => setShowArchived(false)}
+                activeOpacity={0.85}
+              >
+                <Text className={`text-xs font-semibold ${!showArchived ? 'text-white' : 'text-[#237227]'}`}>Active</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                className={`flex-1 px-3 py-2 rounded-lg ${showArchived ? 'bg-[#237227] shadow-md' : 'bg-stone-200'}`}
+                style={{ alignItems: 'center' }}
+                onPress={() => setShowArchived(true)}
+                activeOpacity={0.85}
+              >
+                <Text className={`text-xs font-semibold ${showArchived ? 'text-white' : 'text-[#237227]'}`}>Archived</Text>
+              </TouchableOpacity>
+            </View>
           </View>
         </View>
 
@@ -1332,24 +1662,36 @@ export default function SiteManagement({ onNavigate, isMobileMenuOpen, setIsMobi
                   </View>
 
                   <View className="w-28 flex-row items-center justify-center gap-1.5">
-                    <TouchableOpacity
-                      className="items-center justify-center rounded-full w-8 h-8 bg-[#f8fafb] border border-[#237227]"
-                      onPress={() => handleEditSite(site)}
-                    >
-                      <Ionicons name="create-outline" size={14} color="#237227" />
-                    </TouchableOpacity>
+                    {!showArchived && (
+                      <TouchableOpacity
+                        className="items-center justify-center rounded-full w-8 h-8 bg-[#f8fafb] border border-[#237227]"
+                        onPress={() => handleEditSite(site)}
+                      >
+                        <Ionicons name="create-outline" size={14} color="#237227" />
+                      </TouchableOpacity>
+                    )}
                     <TouchableOpacity
                       className="items-center justify-center rounded-full w-8 h-8 bg-[#f8fafb] border border-[#237227]"
                       onPress={() => handleViewLocation(site)}
                     >
                       <Ionicons name="map-outline" size={14} color="#237227" />
                     </TouchableOpacity>
-                    <TouchableOpacity
-                      className="items-center justify-center rounded-full w-8 h-8 bg-[#f8fafb] border border-[#ef4444]"
-                      onPress={() => handleDeleteSite(site)}
-                    >
-                      <Ionicons name="trash-outline" size={14} color="#ef4444" />
-                    </TouchableOpacity>
+                    {showArchived && (
+                      <TouchableOpacity
+                        className="items-center justify-center rounded-full w-8 h-8 bg-[#f8fafb] border border-[#237227]"
+                        onPress={() => openArchivedDetail(site)}
+                      >
+                        <Ionicons name="eye-outline" size={14} color="#237227" />
+                      </TouchableOpacity>
+                    )}
+                    {!showArchived && (
+                      <TouchableOpacity
+                        className="items-center justify-center rounded-full w-8 h-8 bg-[#f8fafb] border border-[#ef4444]"
+                        onPress={() => handleDeleteSite(site)}
+                      >
+                        <Ionicons name="trash-outline" size={14} color="#ef4444" />
+                      </TouchableOpacity>
+                    )}
                   </View>
                 </View>
               ))
@@ -1397,7 +1739,7 @@ export default function SiteManagement({ onNavigate, isMobileMenuOpen, setIsMobi
               return (
                 <View key={site.id} className="mb-4">
                   <TouchableOpacity
-                    onPress={() => handleViewLocation(site)}
+                    onPress={() => showArchived ? handleViewLocation(site) : openMobileDetail(site)}
                     activeOpacity={0.9}
                     style={{ borderRadius: 16, overflow: 'hidden' }}>
                     <View
@@ -1419,65 +1761,67 @@ export default function SiteManagement({ onNavigate, isMobileMenuOpen, setIsMobi
                         }}
                       />
 
-                      {!showArchived && (
-                        <TouchableOpacity
-                          style={{ position: 'absolute', top: 10, right: 10 }}
-                          onPress={() => {}}>
-                          <Ionicons
-                            name="ellipsis-vertical"
-                            size={20}
-                            color="rgba(255,255,255,0.95)"
-                          />
-                        </TouchableOpacity>
-                      )}
-
-                      {/* Icons row for archived sites */}
-                      {showArchived ? (
-                        <View style={{ position: 'absolute', top: 10, right: 10, flexDirection: 'row', gap: 12 }}>
-                          <TouchableOpacity onPress={() => handleViewLocation(site)}>
-                            <Ionicons name="location-outline" size={18} color="rgba(255,255,255,0.95)" />
-                          </TouchableOpacity>
-                          <TouchableOpacity onPress={() => openArchivedDetail(site)}>
-                            <Ionicons name="eye-outline" size={18} color="rgba(255,255,255,0.95)" />
-                          </TouchableOpacity>
+                      {/* Header section */}
+                      <View className="flex-row items-start justify-between">
+                        <View className="flex-1 pr-3">
+                          <Text
+                            className="text-base font-bold text-white"
+                            numberOfLines={2}
+                            ellipsizeMode="tail">
+                            {companyName}
+                          </Text>
+                          <Text className="mt-1 text-xs text-white/80">
+                            {hasCoords ? `${lat}, ${lng}` : code}
+                          </Text>
                         </View>
-                      ) : (
-                        // Active site: only one eye icon (positioned to leave space for the menu)
-                        <TouchableOpacity
-                          style={{ position: 'absolute', top: 10, right: 50 }}
-                          onPress={() => handleViewLocation(site)}>
-                          <Ionicons name="eye-outline" size={18} color="rgba(255,255,255,0.95)" />
-                        </TouchableOpacity>
-                      )}
 
-                      <Text
-                        className="text-sm font-semibold text-white"
-                        numberOfLines={2}
-                        ellipsizeMode="tail">
-                        {companyName}
-                      </Text>
-                      <Text className="mt-1 text-xs text-white opacity-90">{branchName}</Text>
-                      <Text className="mt-1 text-xs text-white opacity-90">
-                        {hasCoords ? `${lat}, ${lng}` : code}
-                      </Text>
+                        {/* Icon for archived sites */}
+                        {showArchived && (
+                          <TouchableOpacity
+                            onPress={(e) => {
+                              e.stopPropagation();
+                              openArchivedDetail(site);
+                            }}
+                            className="items-center justify-center w-8 h-8 rounded-full bg-white/20">
+                            <Ionicons name="eye-outline" size={16} color="#fff" />
+                          </TouchableOpacity>
+                        )}
+                      </View>
 
+                      {/* Archived site details */}
                       {showArchived && (
-                        <View className="px-3 py-2 mt-3 rounded-md bg-white/10">
-                          <Text className="text-xs font-semibold text-white">
-                            Members: {site.members_count ?? '—'}
-                          </Text>
-                          <Text className="mt-1 text-xs text-white">
-                            Starlink: {site.starlink_serial || '—'}
-                          </Text>
-                          <Text className="mt-1 text-xs text-white line-clamp-2">
-                            Issue: {site.technical_issue || site.issue_description || '—'}
-                          </Text>
-                          <Text className="mt-1 text-xs text-white">
-                            Leader: {(site as any).leaderName || '—'}
-                          </Text>
-                          <Text className="mt-1 text-xs text-white">
-                            Finished: {site.finished_at ? new Date(site.finished_at).toLocaleString() : '—'}
-                          </Text>
+                        <View className="mt-4">
+                          {/* Two column grid for key info */}
+                          <View className="flex-row flex-wrap">
+                            <View className="w-1/2 pr-2 mb-2">
+                              <Text className="text-[10px] text-white/60 uppercase tracking-wide">Members</Text>
+                              <Text className="text-sm font-semibold text-white">{site.members_count ?? '—'}</Text>
+                            </View>
+                            <View className="w-1/2 pl-2 mb-2">
+                              <Text className="text-[10px] text-white/60 uppercase tracking-wide">Leader</Text>
+                              <Text className="text-sm font-semibold text-white" numberOfLines={1}>{(site as any).leaderName || '—'}</Text>
+                            </View>
+                            <View className="w-1/2 pr-2 mb-2">
+                              <Text className="text-[10px] text-white/60 uppercase tracking-wide">Starlink</Text>
+                              <Text className="text-sm text-white" numberOfLines={1}>{site.starlink_serial || '—'}</Text>
+                            </View>
+                            <View className="w-1/2 pl-2 mb-2">
+                              <Text className="text-[10px] text-white/60 uppercase tracking-wide">Finished</Text>
+                              <Text className="text-sm text-white" numberOfLines={1}>
+                                {site.finished_at ? new Date(site.finished_at).toLocaleDateString() : '—'}
+                              </Text>
+                            </View>
+                          </View>
+
+                          {/* Issue section - full width */}
+                          {(site.technical_issue || site.issue_description) && (
+                            <View className="px-3 py-2 mt-1 rounded-lg bg-white/10">
+                              <Text className="text-[10px] text-white/60 uppercase tracking-wide mb-1">Issue</Text>
+                              <Text className="text-xs text-white" numberOfLines={2}>
+                                {site.technical_issue || site.issue_description}
+                              </Text>
+                            </View>
+                          )}
                         </View>
                       )}
                     </View>
@@ -1490,7 +1834,7 @@ export default function SiteManagement({ onNavigate, isMobileMenuOpen, setIsMobi
       </ScrollView>
 
       {/* Detail Modal for Archived Sites */}
-      <Modal visible={detailModalVisible} animationType="slide" transparent={true}>
+      <Modal visible={detailModalVisible} animationType="fade" transparent={true}>
         <View className="items-center justify-center flex-1 px-6 bg-black/40">
           <View className="w-full max-w-2xl p-6 bg-white rounded-2xl">
             <View className="flex-row items-start justify-between">
@@ -1570,6 +1914,202 @@ export default function SiteManagement({ onNavigate, isMobileMenuOpen, setIsMobi
                 <Text className="mt-2 text-sm text-stone-500">No evidence images.</Text>
               )}
             </ScrollView>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Mobile Detail Modal */}
+      <Modal visible={mobileDetailVisible} animationType="fade" transparent={false}>
+        <View className="flex-1 bg-white">
+          {/* Header */}
+          <View className="px-5 pt-12 pb-4 bg-white border-b border-stone-100">
+            <View className="flex-row items-center justify-between">
+              <TouchableOpacity
+                onPress={() => setMobileDetailVisible(false)}
+                className="items-center justify-center w-10 h-10 rounded-full bg-stone-100">
+                <Ionicons name="arrow-back" size={20} color="#44403c" />
+              </TouchableOpacity>
+              <Text className="text-lg font-bold text-stone-900">Site Information</Text>
+              <TouchableOpacity
+                className="flex-row items-center px-3 py-2"
+                style={{ backgroundColor: '#ffffff', borderWidth: 1, borderColor: '#237227', borderRadius: 20 }}
+                onPress={() => {
+                  if (selectedMobileSite) {
+                    setMobileDetailVisible(false);
+                    handleEditSite(selectedMobileSite);
+                  }
+                }}>
+                <Ionicons name="create-outline" size={16} color="#237227" />
+                <Text style={{ color: '#237227', fontSize: 12, fontWeight: '600', marginLeft: 4 }}>Edit Site</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+
+          <ScrollView className="flex-1">
+            {/* Map Section */}
+            <View style={{ backgroundColor: '#D4F4E8' }}>
+              <View style={{ position: 'relative' }}>
+                <View
+                  id="mobile-detail-map"
+                  style={{
+                    height: 400,
+                    width: '100%',
+                    overflow: 'hidden',
+                    backgroundColor: '#ffffff',
+                  }}
+                />
+                {/* Fullscreen Button */}
+                <TouchableOpacity
+                  onPress={() => setMobileMapFullscreen(true)}
+                  className="absolute items-center justify-center w-10 h-10 bg-white rounded-lg shadow-md"
+                  style={{ top: 12, right: 12 }}>
+                  <Ionicons name="expand-outline" size={20} color="#44403c" />
+                </TouchableOpacity>
+              </View>
+            </View>
+
+            {/* Site Details */}
+            <View className="px-5 pt-2 pb-6">
+              <Text className="text-2xl font-bold text-stone-900">{selectedMobileSite?.name || 'Site Name'}</Text>
+              <Text className="mt-1 text-base text-stone-500">
+                {companyOptions.find((opt) => String(opt.id) === String(selectedMobileSite?.company_id))?.name ||
+                  selectedMobileSite?.company ||
+                  'No company'}
+              </Text>
+
+              {/* Info Cards */}
+              <View className="mt-6 space-y-3">
+                {/* Main Branch Card */}
+                <View
+                  className="flex-row items-center p-4 bg-white rounded-xl"
+                  style={{ shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.08, shadowRadius: 8 }}>
+                  <View className="items-center justify-center w-12 h-12 rounded-full" style={{ backgroundColor: '#237227' }}>
+                    <Ionicons name="business" size={24} color="#f8fafb" />
+                  </View>
+                  <View style={{ width: 1, height: 40, backgroundColor: '#e7e5e4', marginLeft: 16 }} />
+                  <View className="flex-1 ml-4">
+                    <Text className="text-sm font-semibold text-stone-900">
+                      {branchOptions.find((opt) => String(opt.id) === String(selectedMobileSite?.branch_id))?.name ||
+                        selectedMobileSite?.branch ||
+                        'Main Branch'}
+                    </Text>
+                  </View>
+                </View>
+
+                {/* Status Card */}
+                <View
+                  className="flex-row items-center p-4 bg-white rounded-xl"
+                  style={{ shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.08, shadowRadius: 8 }}>
+                  <View className="items-center justify-center w-12 h-12 rounded-full" style={{ backgroundColor: '#237227' }}>
+                    <Ionicons name="information-circle" size={24} color="#f8fafb" />
+                  </View>
+                  <View style={{ width: 1, height: 40, backgroundColor: '#e7e5e4', marginLeft: 16 }} />
+                  <View className="flex-1 ml-4">
+                    <Text className="text-sm text-stone-500">Status</Text>
+                    <Text className="mt-1 text-lg font-bold text-stone-900">
+                      {selectedMobileSite?.status || 'N/A'}
+                    </Text>
+                  </View>
+                </View>
+
+                {/* Site Workforce Card */}
+                <View
+                  className="flex-row items-center p-4 bg-white rounded-xl"
+                  style={{ shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.08, shadowRadius: 8 }}>
+                  <View className="items-center justify-center w-12 h-12 rounded-full" style={{ backgroundColor: '#237227' }}>
+                    <Ionicons name="people" size={24} color="#f8fafb" />
+                  </View>
+                  <View style={{ width: 1, height: 40, backgroundColor: '#e7e5e4', marginLeft: 16 }} />
+                  <View className="flex-1 ml-4">
+                    <Text className="text-sm text-stone-500">Site Workforce</Text>
+                    <Text className="mt-1 text-lg font-bold text-stone-900">
+                      {selectedMobileSite?.members_count ?? 0} Members
+                    </Text>
+                  </View>
+                </View>
+
+                {/* Delete Site Card */}
+                <TouchableOpacity
+                  className="flex-row items-center p-4 bg-white rounded-xl"
+                  style={{ shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.08, shadowRadius: 8 }}
+                  onPress={async () => {
+                    if (selectedMobileSite) {
+                      const confirmed = window.confirm(
+                        `Are you sure you want to delete "${selectedMobileSite.name}"? This action cannot be undone.`
+                      );
+                      if (confirmed) {
+                        setMobileDetailVisible(false);
+                        const { error } = await supabase.from('sites').delete().eq('id', selectedMobileSite.id);
+                        if (error) {
+                          showAlert('Delete Error', error.message, 'error');
+                        } else {
+                          showAlert('Deleted', `${selectedMobileSite.name} has been removed successfully`, 'success');
+                          fetchSites();
+                        }
+                      }
+                    }
+                  }}
+                  activeOpacity={0.7}>
+                  <View className="items-center justify-center w-12 h-12 rounded-full" style={{ backgroundColor: '#ef4444' }}>
+                    <Ionicons name="trash-outline" size={24} color="#ffffff" />
+                  </View>
+                  <View style={{ width: 1, height: 40, backgroundColor: '#e7e5e4', marginLeft: 16 }} />
+                  <View className="flex-1 ml-4">
+                    <Text className="text-sm text-stone-500">Action</Text>
+                    <Text className="mt-1 text-lg font-bold text-red-500">
+                      Delete Site
+                    </Text>
+                  </View>
+                </TouchableOpacity>
+
+                {/* Additional Info Cards */}
+                {(selectedMobileSite?.start_time || selectedMobileSite?.end_time) && (
+                  <View
+                    className="flex-row items-center p-4 bg-white rounded-xl"
+                    style={{ shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.08, shadowRadius: 8 }}>
+                    <View className="items-center justify-center w-12 h-12 rounded-full" style={{ backgroundColor: '#237227' }}>
+                      <Ionicons name="time" size={24} color="#f8fafb" />
+                    </View>
+                    <View style={{ width: 1, height: 40, backgroundColor: '#e7e5e4', marginLeft: 16 }} />
+                    <View className="flex-1 ml-4">
+                      <Text className="text-sm text-stone-500">Operating Hours</Text>
+                      <Text className="mt-1 text-base font-semibold text-stone-900">
+                        {selectedMobileSite?.start_time || '--'} - {selectedMobileSite?.end_time || '--'}
+                      </Text>
+                    </View>
+                  </View>
+                )}
+              </View>
+            </View>
+          </ScrollView>
+        </View>
+      </Modal>
+
+      {/* Fullscreen Map Modal */}
+      <Modal visible={mobileMapFullscreen} animationType="fade" transparent={false}>
+        <View className="flex-1 bg-white">
+          {/* Header */}
+          <View className="px-5 pt-12 pb-4 bg-white border-b border-stone-100">
+            <View className="flex-row items-center justify-between">
+              <TouchableOpacity
+                onPress={() => setMobileMapFullscreen(false)}
+                className="items-center justify-center w-10 h-10 rounded-full bg-stone-100">
+                <Ionicons name="close" size={20} color="#44403c" />
+              </TouchableOpacity>
+              <Text className="text-lg font-bold text-stone-900">Map View</Text>
+            </View>
+          </View>
+
+          {/* Fullscreen Map */}
+          <View className="flex-1">
+            <View
+              id="fullscreen-mobile-map"
+              style={{
+                height: '100%',
+                width: '100%',
+                backgroundColor: '#ffffff',
+              }}
+            />
           </View>
         </View>
       </Modal>
@@ -2194,7 +2734,6 @@ export default function SiteManagement({ onNavigate, isMobileMenuOpen, setIsMobi
             <View className="px-6 pt-6 pb-4 border-b border-stone-100">
               <View className="flex-row items-center justify-between">
                 <View>
-                  <Text className="text-xl font-bold text-stone-900">{selectedSite?.name}</Text>
                   <Text className="mt-1 text-xs text-stone-500">Location on Map</Text>
                 </View>
                 <TouchableOpacity

@@ -303,7 +303,7 @@ export default function EditProfile({ onBackToSettings }: { onBackToSettings?: (
   };
 
   return (
-    <View className="w-full flex-1 bg-white">
+    <View className="flex-1 w-full bg-white">
       <StatusBar barStyle="light-content" />
 
       <SweetAlertModal
@@ -315,12 +315,12 @@ export default function EditProfile({ onBackToSettings }: { onBackToSettings?: (
         onConfirm={handleSuccessAlertConfirm}
       />
 
-      <View className="w-full flex-1 flex-col">
+      <View className="flex-col flex-1 w-full">
         {/* HEADER WITH BACK BUTTON */}
-        <View className="flex-row items-center gap-4 bg-white px-6 pb-6 pt-6">
+        <View className="flex-row items-center gap-4 px-6 pt-6 pb-6 bg-white">
           <TouchableOpacity
             onPress={onBackToSettings}
-            className="h-10 w-10 items-center justify-center rounded-full bg-green-100 active:scale-95">
+            className="items-center justify-center w-10 h-10 bg-green-100 rounded-full active:scale-95">
             <Ionicons name="chevron-back" size={24} color="#10b981" />
           </TouchableOpacity>
           <Text className="text-2xl font-extrabold text-gray-900">Edit Profile</Text>
@@ -328,13 +328,13 @@ export default function EditProfile({ onBackToSettings }: { onBackToSettings?: (
 
         {/* SCROLLABLE CONTENT */}
         <ScrollView
-          className="w-full flex-1"
+          className="flex-1 w-full"
           contentContainerStyle={{ paddingHorizontal: 24, paddingTop: 16, paddingBottom: 30 }}
           showsVerticalScrollIndicator={true}>
           {/* Profile Picture Section */}
-          <View className="mb-8 items-center">
+          <View className="items-center mb-8">
             <TouchableOpacity onPress={pickImage} activeOpacity={0.7} className="relative">
-              <View className="h-32 w-32 items-center justify-center overflow-hidden rounded-full border-4 border-green-200 bg-green-100">
+              <View className="items-center justify-center w-32 h-32 overflow-hidden bg-green-100 border-4 border-green-200 rounded-full">
                 {profilePicture ? (
                   <>
                     <Image
@@ -354,11 +354,11 @@ export default function EditProfile({ onBackToSettings }: { onBackToSettings?: (
                   <Ionicons name="person" size={64} color="#10b981" />
                 )}
               </View>
-              <View className="absolute bottom-0 right-0 rounded-full border-4 border-white bg-green-500 p-3 active:scale-90">
+              <View className="absolute bottom-0 right-0 p-3 bg-green-500 border-4 border-white rounded-full active:scale-90">
                 <Ionicons name="camera" size={20} color="white" />
               </View>
             </TouchableOpacity>
-            <Text className="mt-4 text-center text-sm text-gray-500">
+            <Text className="mt-4 text-sm text-center text-gray-500">
               Tap to change profile picture
             </Text>
           </View>
@@ -370,10 +370,10 @@ export default function EditProfile({ onBackToSettings }: { onBackToSettings?: (
             {/* Full Name Input */}
             <View className="mb-5">
               <Text className="mb-2 font-semibold text-gray-700">Full Name</Text>
-              <View className="flex-row items-center rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3">
+              <View className="flex-row items-center px-4 py-3 border border-gray-200 rounded-2xl bg-gray-50">
                 <Ionicons name="person-outline" size={20} color="#10b981" />
                 <TextInput
-                  className="ml-3 flex-1 font-medium text-gray-900"
+                  className="flex-1 ml-3 font-medium text-gray-900"
                   placeholder="Enter your full name"
                   placeholderTextColor="#9ca3af"
                   value={fullName}
@@ -386,10 +386,10 @@ export default function EditProfile({ onBackToSettings }: { onBackToSettings?: (
             {/* Email Input (Read-only) */}
             <View className="mb-5">
               <Text className="mb-2 font-semibold text-gray-700">Email</Text>
-              <View className="flex-row items-center rounded-2xl border border-gray-200 bg-gray-100 px-4 py-3">
+              <View className="flex-row items-center px-4 py-3 bg-gray-100 border border-gray-200 rounded-2xl">
                 <Ionicons name="mail-outline" size={20} color="#10b981" />
                 <TextInput
-                  className="ml-3 flex-1 font-medium text-gray-600"
+                  className="flex-1 ml-3 font-medium text-gray-600"
                   placeholder="Email"
                   placeholderTextColor="#9ca3af"
                   value={email}
@@ -402,10 +402,10 @@ export default function EditProfile({ onBackToSettings }: { onBackToSettings?: (
             {/* Phone Number Input */}
             <View className="mb-5">
               <Text className="mb-2 font-semibold text-gray-700">Phone Number</Text>
-              <View className="flex-row items-center rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3">
+              <View className="flex-row items-center px-4 py-3 border border-gray-200 rounded-2xl bg-gray-50">
                 <Ionicons name="call-outline" size={20} color="#10b981" />
                 <TextInput
-                  className="ml-3 flex-1 font-medium text-gray-900"
+                  className="flex-1 ml-3 font-medium text-gray-900"
                   placeholder="Enter your phone number"
                   placeholderTextColor="#9ca3af"
                   value={phoneNumber}
@@ -422,7 +422,7 @@ export default function EditProfile({ onBackToSettings }: { onBackToSettings?: (
             onPress={handleSave}
             disabled={saving}
             activeOpacity={0.8}
-            className="flex-row items-center justify-center rounded-2xl bg-green-500 p-4 shadow-md shadow-green-300 active:scale-95 disabled:opacity-60">
+            className="flex-row items-center justify-center p-4 bg-green-500 shadow-md rounded-2xl shadow-green-300 active:scale-95 disabled:opacity-60">
             {saving ? (
               <ActivityIndicator size="small" color="white" />
             ) : (
@@ -438,7 +438,7 @@ export default function EditProfile({ onBackToSettings }: { onBackToSettings?: (
             onPress={onBackToSettings}
             disabled={saving}
             activeOpacity={0.8}
-            className="mt-3 flex-row items-center justify-center rounded-2xl bg-red-500 p-4 shadow-md shadow-red-300 active:scale-95 disabled:opacity-60">
+            className="flex-row items-center justify-center p-4 mt-3 bg-red-500 shadow-md rounded-2xl shadow-red-300 active:scale-95 disabled:opacity-60">
             <Ionicons name="close" size={24} color="white" />
             <Text className="ml-3 text-lg font-bold text-white">Cancel</Text>
           </TouchableOpacity>

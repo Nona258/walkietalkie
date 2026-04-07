@@ -20,6 +20,7 @@ import {
   getSiteMemberInfo,
   getSiteMembers,
 } from '../../utils/siteMemberSlots';
+import { notifyLeaderSiteAccepted } from '../../utils/notifications';
 import type { Site } from './Sites';
 import * as ImagePicker from 'expo-image-picker';
 import * as ImageManipulator from 'expo-image-manipulator';
@@ -29,13 +30,62 @@ interface SiteDetailsProps {
   onBack?: () => void;
   onViewOnMap?: () => void;
   onSiteUpdated?: (nextTab?: 'Pending' | 'Finished') => void;
+  onSiteMapPress?: (site: Site) => void;
 }
 
+// ------------------------------------------------------------
+// Custom SweetAlert component (centered modal)
+// ------------------------------------------------------------
+interface SweetAlertProps {
+  visible: boolean;
+  title: string;
+  message: string;
+  type?: 'success' | 'error' | 'info';
+  onClose: () => void;
+}
+
+const SweetAlert: React.FC<SweetAlertProps> = ({
+  visible,
+  title,
+  message,
+  type = 'success',
+  onClose,
+}) => {
+  const iconColor = type === 'success' ? '#10b981' : type === 'error' ? '#ef4444' : '#3b82f6';
+  const iconName =
+    type === 'success' ? 'checkmark-circle' : type === 'error' ? 'alert-circle' : 'information-circle';
+
+  return (
+    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
+      <View className="items-center justify-center flex-1 bg-black/50">
+        <View className="w-4/5 max-w-sm p-6 bg-white shadow-2xl rounded-3xl">
+          <View className="items-center">
+            <View className="items-center justify-center mb-3 rounded-full h-14 w-14 bg-green-50">
+              <Ionicons name={iconName} size={32} color={iconColor} />
+            </View>
+            <Text className="mb-2 text-xl font-bold text-center text-gray-900">{title}</Text>
+            <Text className="mb-6 text-sm text-center text-gray-600">{message}</Text>
+            <TouchableOpacity
+              onPress={onClose}
+              className="w-full py-3 bg-green-500 rounded-full active:scale-95">
+              <Text className="font-bold text-center text-white">OK</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </View>
+    </Modal>
+  );
+};
+
+// ------------------------------------------------------------
+// Main SiteDetails component
+// ------------------------------------------------------------
 export default function SiteDetails({
   site,
   onBack,
   onViewOnMap,
   onSiteUpdated,
+  onSiteMapPress,
 }: SiteDetailsProps) {
   const [leaderName, setLeaderName] = useState<string | null>(null);
   const [leaderId, setLeaderId] = useState<string | null>(null);
@@ -70,6 +120,7 @@ export default function SiteDetails({
   >([]);
   const [loadingSiteMembers, setLoadingSiteMembers] = useState(false);
 
+  // Update modal state
   const [updateVisible, setUpdateVisible] = useState(false);
   const [updateSubmitting, setUpdateSubmitting] = useState(false);
   const [updateTriedSubmit, setUpdateTriedSubmit] = useState(false);
@@ -78,6 +129,14 @@ export default function SiteDetails({
   const [technicalIssuePickerVisible, setTechnicalIssuePickerVisible] = useState(false);
   const [issueDescription, setIssueDescription] = useState('');
   const [evidenceAssets, setEvidenceAssets] = useState<ImagePicker.ImagePickerAsset[]>([]);
+
+  // SweetAlert state
+  const [sweetAlert, setSweetAlert] = useState({
+    visible: false,
+    title: '',
+    message: '',
+    type: 'success' as 'success' | 'error' | 'info',
+  });
 
   const technicalIssueOptions = useMemo(
     () => [
@@ -146,6 +205,9 @@ export default function SiteDetails({
   const isLeaderForThisSite = !!currentUserId && !!leaderId && currentUserId === leaderId;
   const hasNoLeader = !leaderId;
 
+  // Helper to check if site has valid coordinates
+  const hasValidCoordinates = site?.latitude != null && site?.longitude != null;
+
   // Handler for becoming leader and joining site
   const handleBecomeLeaderAndJoin = async () => {
     if (!site?.id || !currentUserId) return;
@@ -196,15 +258,26 @@ export default function SiteDetails({
         console.warn('Skipping chat_groups insert:', (e as any)?.message || String(e));
       }
 
-      Alert.alert('Success', 'You are now the team leader and have joined the site. A chat group has been created.');
+      setSweetAlert({
+        visible: true,
+        title: 'Success',
+        message: 'You are now the team leader and have joined the site. A chat group has been created.',
+        type: 'success',
+      });
       onSiteUpdated?.('Pending');
       onBack?.();
     } catch (err: any) {
-      Alert.alert('Error', err?.message || 'Failed to become leader. Please try again.');
+      setSweetAlert({
+        visible: true,
+        title: 'Error',
+        message: err?.message || 'Failed to become leader. Please try again.',
+        type: 'error',
+      });
     } finally {
       setAcceptLoading(false);
     }
   };
+
   useEffect(() => {
     const loadTeamInfo = async () => {
       try {
@@ -431,7 +504,6 @@ export default function SiteDetails({
 
   useEffect(() => {
     // When opening the Update modal, prefill fields from the latest DB record.
-    // This makes the form more "formal" and editable if values already exist.
     (async () => {
       if (!updateVisible || !site?.id) return;
       try {
@@ -454,6 +526,13 @@ export default function SiteDetails({
       }
     })();
   }, [updateVisible, site?.id]);
+
+  // Clear issue description when "None" is selected (field will be hidden)
+  useEffect(() => {
+    if ((technicalIssue || '').trim().toLowerCase() === 'none') {
+      setIssueDescription('');
+    }
+  }, [technicalIssue]);
 
   const pickEvidencePhotos = async () => {
     try {
@@ -485,32 +564,47 @@ export default function SiteDetails({
     if (!site?.id) return;
 
     if (!isLeaderForThisSite) {
-      Alert.alert('Not allowed', 'Only the assigned leader can update and finish this site.');
+      setSweetAlert({
+        visible: true,
+        title: 'Not allowed',
+        message: 'Only the assigned leader can update and finish this site.',
+        type: 'error',
+      });
       return;
     }
 
-    // Helper: allow finishing (archive) only when leader; require different fields
     const serial = starlinkSerial.trim();
     const issue = technicalIssue.trim();
-    const desc = issueDescription.trim();
     const isNone = issue.toLowerCase() === 'none';
 
     setUpdateTriedSubmit(true);
-    // Starlink serial is always required
     if (!serial) {
-      Alert.alert('Validation', 'Please provide the Starlink serial before submitting.');
+      setSweetAlert({
+        visible: true,
+        title: 'Validation',
+        message: 'Please provide the Starlink serial before submitting.',
+        type: 'error',
+      });
       return;
     }
 
-    // If finishing (None selected): require at least one evidence photo.
     if (isNone && evidenceAssets.length === 0) {
-      Alert.alert('Validation', 'Please attach at least one evidence photo to finish this site.');
+      setSweetAlert({
+        visible: true,
+        title: 'Validation',
+        message: 'Please attach at least one evidence photo to finish this site.',
+        type: 'error',
+      });
       return;
     }
 
-    // If reporting an issue (not None): require issue + description; photos optional
-    if (!isNone && (!issue || !desc)) {
-      Alert.alert('Validation', 'Please complete the technical issue and description before submitting.');
+    if (!isNone && (!issue || !issueDescription.trim())) {
+      setSweetAlert({
+        visible: true,
+        title: 'Validation',
+        message: 'Please complete the technical issue and description before submitting.',
+        type: 'error',
+      });
       return;
     }
 
@@ -556,17 +650,15 @@ export default function SiteDetails({
       if (fetchError || !siteRow) throw fetchError || new Error('Site not found');
 
       const nowIso = new Date().toISOString();
-      const today = nowIso.slice(0, 10);
       const archivedRow = {
         ...siteRow,
         status: 'Finished',
         updated_at: nowIso,
-        date_accomplished: today,
         finished_at: nowIso,
         finished_by: userId,
         starlink_serial: serial,
         technical_issue: issue,
-        issue_description: desc,
+        issue_description: issueDescription.trim(),
         evidence_urls: uploadedUrls,
       };
 
@@ -610,19 +702,26 @@ export default function SiteDetails({
       if (userUpdateError) throw userUpdateError;
 
       // Delete from sites
-      const { error: deleteError } = await supabase
-        .from('sites')
-        .delete()
-        .eq('id', site.id);
+      const { error: deleteError } = await supabase.from('sites').delete().eq('id', site.id);
       if (deleteError) throw deleteError;
 
-      Alert.alert('Success', 'Site archived and removed from active sites.');
+      setSweetAlert({
+        visible: true,
+        title: 'Site Finished',
+        message: 'The site has been successfully archived and removed from active sites.',
+        type: 'success',
+      });
       setUpdateVisible(false);
       resetUpdateForm();
       onSiteUpdated?.('Finished');
       onBack?.();
     } catch (err: any) {
-      Alert.alert('Error', err?.message || 'Failed to update site');
+      setSweetAlert({
+        visible: true,
+        title: 'Error',
+        message: err?.message || 'Failed to update site',
+        type: 'error',
+      });
     } finally {
       setUpdateSubmitting(false);
     }
@@ -632,7 +731,12 @@ export default function SiteDetails({
     if (!site?.id) return;
 
     if (!isLeaderForThisSite) {
-      Alert.alert('Not allowed', 'Only the assigned leader can submit an issue report.');
+      setSweetAlert({
+        visible: true,
+        title: 'Not allowed',
+        message: 'Only the assigned leader can submit an issue report.',
+        type: 'error',
+      });
       return;
     }
 
@@ -643,7 +747,12 @@ export default function SiteDetails({
     setUpdateTriedSubmit(true);
 
     if (!serial || !issue || !desc) {
-      Alert.alert('Validation', 'Please provide Starlink serial, technical issue and description.');
+      setSweetAlert({
+        visible: true,
+        title: 'Validation',
+        message: 'Please provide Starlink serial, technical issue and description.',
+        type: 'error',
+      });
       return;
     }
 
@@ -687,12 +796,22 @@ export default function SiteDetails({
       const { error: updateErr } = await supabase.from('sites').update(updatePayload).eq('id', site.id);
       if (updateErr) throw updateErr;
 
-      Alert.alert('Issue Submitted', 'The technical issue has been submitted to the system.');
+      setSweetAlert({
+        visible: true,
+        title: 'Issue Submitted',
+        message: 'The technical issue has been submitted to the system.',
+        type: 'success',
+      });
       setUpdateVisible(false);
       resetUpdateForm();
       onSiteUpdated?.();
     } catch (err: any) {
-      Alert.alert('Error', err?.message || 'Failed to submit issue');
+      setSweetAlert({
+        visible: true,
+        title: 'Error',
+        message: err?.message || 'Failed to submit issue',
+        type: 'error',
+      });
     } finally {
       setUpdateSubmitting(false);
     }
@@ -702,18 +821,33 @@ export default function SiteDetails({
     if (!site?.id) return;
 
     if (site?.status === 'Finished') {
-      Alert.alert('Not available', 'This site is already finished.');
+      setSweetAlert({
+        visible: true,
+        title: 'Not available',
+        message: 'This site is already finished.',
+        type: 'error',
+      });
       return;
     }
 
     if (!currentUserId) {
-      Alert.alert('Not signed in', 'You need to be signed in to accept a site.');
+      setSweetAlert({
+        visible: true,
+        title: 'Not signed in',
+        message: 'You need to be signed in to accept a site.',
+        type: 'error',
+      });
       return;
     }
 
     // Leaders (already assigned as a group leader) should only update their pending site.
     if (isUserLeaderAny) {
-      Alert.alert('Not allowed', 'Leaders cannot accept new sites.');
+      setSweetAlert({
+        visible: true,
+        title: 'Not allowed',
+        message: 'Leaders cannot accept new sites.',
+        type: 'error',
+      });
       return;
     }
 
@@ -727,7 +861,12 @@ export default function SiteDetails({
       if (userRow?.site_id) {
         setHasAccepted(true);
         setCurrentUserSiteId(String(userRow.site_id));
-        Alert.alert('Already accepted', 'This site is already assigned to you.');
+        setSweetAlert({
+          visible: true,
+          title: 'Already accepted',
+          message: 'This site is already assigned to you.',
+          type: 'info',
+        });
         return;
       }
     } catch {
@@ -741,15 +880,22 @@ export default function SiteDetails({
       // - For Pending sites: joinable if it already has a leader assigned
       // - For Active sites: not joinable (no leader yet)
       if (isActive) {
-        Alert.alert(
-          'Not available',
-          'This site is not yet open for joining. Please wait for a leader assignment.'
-        );
+        setSweetAlert({
+          visible: true,
+          title: 'Not available',
+          message: 'This site is not yet open for joining. Please wait for a leader assignment.',
+          type: 'error',
+        });
         return;
       }
 
       if (!isPending) {
-        Alert.alert('Not available', 'This site cannot be accepted at this time.');
+        setSweetAlert({
+          visible: true,
+          title: 'Not available',
+          message: 'This site cannot be accepted at this time.',
+          type: 'error',
+        });
         return;
       }
 
@@ -763,7 +909,12 @@ export default function SiteDetails({
 
       const existingLeaderId = siteRow?.leader_id ? String(siteRow.leader_id) : null;
       if (!existingLeaderId) {
-        Alert.alert('Not available', 'This site has no leader assigned yet.');
+        setSweetAlert({
+          visible: true,
+          title: 'Not available',
+          message: 'This site has no leader assigned yet.',
+          type: 'error',
+        });
         return;
       }
 
@@ -782,7 +933,12 @@ export default function SiteDetails({
       // CHECK FOR AVAILABLE SLOTS before accepting
       const slotCheckResult = await joinSiteWithSlotManagement(site.id, currentUserId);
       if (!slotCheckResult.success) {
-        Alert.alert('Cannot Join', slotCheckResult.message);
+        setSweetAlert({
+          visible: true,
+          title: 'Cannot Join',
+          message: slotCheckResult.message,
+          type: 'error',
+        });
         // Refresh member info to show site is full
         const updatedInfo = await getSiteMemberInfo(site.id);
         setMemberInfo(updatedInfo);
@@ -795,6 +951,17 @@ export default function SiteDetails({
         .update({ site_id: site.id })
         .eq('id', currentUserId);
       if (updateUserError) throw updateUserError;
+
+      // Best-effort: notify the site leader that someone accepted/joined.
+      try {
+        await notifyLeaderSiteAccepted({
+          leaderId: existingLeaderId,
+          siteName: site?.name || 'Unnamed site',
+          acceptedByUserId: currentUserId,
+        });
+      } catch (e) {
+        console.warn('notifyLeaderSiteAccepted failed:', (e as any)?.message || String(e));
+      }
 
       // Best-effort: insert membership row (if your DB has group_members)
       try {
@@ -821,11 +988,21 @@ export default function SiteDetails({
       const successMessage = slotCheckResult.siteIsFull
         ? 'Site accepted. This site is now full!'
         : slotCheckResult.message;
-      Alert.alert('Site accepted', successMessage);
+      setSweetAlert({
+        visible: true,
+        title: 'Site accepted',
+        message: successMessage,
+        type: 'success',
+      });
       onSiteUpdated?.('Pending');
       onBack?.();
     } catch (err: any) {
-      Alert.alert('Error', err?.message || 'Failed to accept site. Please try again.');
+      setSweetAlert({
+        visible: true,
+        title: 'Error',
+        message: err?.message || 'Failed to accept site. Please try again.',
+        type: 'error',
+      });
     } finally {
       setAcceptLoading(false);
     }
@@ -836,121 +1013,149 @@ export default function SiteDetails({
   return (
     <View className="flex-1 bg-white">
       <StatusBar barStyle="dark-content" />
+
+      {/* SweetAlert Modal */}
+      <SweetAlert
+        visible={sweetAlert.visible}
+        title={sweetAlert.title}
+        message={sweetAlert.message}
+        type={sweetAlert.type}
+        onClose={() => setSweetAlert((prev) => ({ ...prev, visible: false }))}
+      />
+
+      {/* Update Modal (same as before, already modern) */}
       <Modal
         visible={updateVisible}
         transparent
-        animationType="slide"
+        animationType="fade"
         onRequestClose={() => {
           if (updateSubmitting) return;
           setUpdateVisible(false);
         }}>
-        <View className="flex-1 justify-end bg-black/40">
-          <View className="rounded-t-3xl border-t border-gray-200 bg-white">
-            <View className="flex-row items-center justify-between border-b border-gray-100 px-6 pb-4 pt-5">
+        <View className="items-center justify-center flex-1 p-4 bg-black/50">
+          <View className="w-full max-w-md bg-white shadow-2xl rounded-3xl">
+            {/* Header */}
+            <View className="flex-row items-center justify-between px-5 py-5 border-b border-gray-100">
               <View>
-                <Text className="text-lg font-extrabold text-gray-900">Update Site</Text>
-                <Text className="mt-1 text-xs text-gray-500">
+                <Text className="text-2xl font-extrabold text-gray-900">Update Site</Text>
+                <Text className="mt-1 text-sm text-gray-500">
                   Fill the required details to finish this site.
                 </Text>
               </View>
               <TouchableOpacity
                 disabled={updateSubmitting}
-                className="h-10 w-10 items-center justify-center rounded-2xl bg-gray-100"
-                onPress={() => {
-                  setUpdateVisible(false);
-                }}>
+                className="items-center justify-center bg-gray-100 rounded-full h-9 w-9"
+                onPress={() => setUpdateVisible(false)}>
                 <Ionicons name="close" size={18} color="#111827" />
               </TouchableOpacity>
             </View>
 
-            <ScrollView className="px-6 pt-5" showsVerticalScrollIndicator={false} bounces={false}>
+            <ScrollView
+              className="max-h-[70vh] px-5 py-2"
+              showsVerticalScrollIndicator={false}
+              bounces={false}>
+              {/* Starlink Serial */}
               <View className="mb-5">
-                <Text className="text-xs font-semibold text-gray-700">Starlink Serial</Text>
-                <Text className="mt-1 text-[11px] text-gray-500">Required</Text>
+                <Text className="text-sm font-semibold text-gray-700">Starlink Serial</Text>
+                <Text className="mt-0.5 text-xs text-gray-500">Required</Text>
                 <TextInput
                   value={starlinkSerial}
                   onChangeText={setStarlinkSerial}
                   placeholder="Enter starlink serial"
                   placeholderTextColor="#9ca3af"
                   autoCapitalize="characters"
-                  className="mt-2 rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3 font-semibold text-gray-900"
+                  className="px-4 py-3 mt-2 font-medium text-gray-900 border border-gray-200 rounded-xl bg-gray-50"
                 />
                 {!!updateTriedSubmit && !!validation.serialError && (
-                  <Text className="mt-2 text-xs text-red-600">{validation.serialError}</Text>
+                  <Text className="mt-1 text-xs text-red-600">{validation.serialError}</Text>
                 )}
               </View>
 
+              {/* Technical Issue */}
               <View className="mb-5">
-                <Text className="text-xs font-semibold text-gray-700">Technical Issue</Text>
-                <Text className="mt-1 text-[11px] text-gray-500">{isNoneSelected ? 'Optional' : 'Required'}</Text>
+                <Text className="text-sm font-semibold text-gray-700">Technical Issue</Text>
+                <Text className="mt-0.5 text-xs text-gray-500">
+                  {isNoneSelected ? 'Optional' : 'Required'}
+                </Text>
                 <TouchableOpacity
                   disabled={updateSubmitting}
                   onPress={() => setTechnicalIssuePickerVisible(true)}
-                  className="mt-2 flex-row items-center rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3">
+                  className="flex-row items-center justify-between px-4 py-3 mt-2 border border-gray-200 rounded-xl bg-gray-50">
                   <Text
-                    className={`flex-1 font-semibold ${technicalIssue ? 'text-gray-900' : 'text-gray-400'}`}>
+                    className={`flex-1 font-medium ${
+                      technicalIssue ? 'text-gray-900' : 'text-gray-400'
+                    }`}>
                     {technicalIssue || 'Select technical issue'}
                   </Text>
-                  <Ionicons name="chevron-down" size={18} color="#6b7280" />
+                  <Ionicons name="chevron-down" size={20} color="#6b7280" />
                 </TouchableOpacity>
                 {!!updateTriedSubmit && !!validation.issueError && (
-                  <Text className="mt-2 text-xs text-red-600">{validation.issueError}</Text>
+                  <Text className="mt-1 text-xs text-red-600">{validation.issueError}</Text>
                 )}
               </View>
 
+              {/* Issue Description (hidden when "None" selected) */}
+              {!isNoneSelected && (
+                <View className="mb-5">
+                  <Text className="text-sm font-semibold text-gray-700">Issue Description</Text>
+                  <Text className="mt-0.5 text-xs text-gray-500">Required</Text>
+                  <TextInput
+                    value={issueDescription}
+                    onChangeText={setIssueDescription}
+                    placeholder={issueDescriptionPlaceholder}
+                    placeholderTextColor="#9ca3af"
+                    multiline
+                    numberOfLines={4}
+                    className="px-4 py-3 mt-2 font-medium text-gray-900 border border-gray-200 rounded-xl bg-gray-50"
+                    style={{ textAlignVertical: 'top', minHeight: 100 }}
+                  />
+                  {!!updateTriedSubmit && !!validation.descError && (
+                    <Text className="mt-1 text-xs text-red-600">{validation.descError}</Text>
+                  )}
+                </View>
+              )}
+
+              {/* Evidence Photos - Simplified & Modern */}
               <View className="mb-5">
-                <Text className="text-xs font-semibold text-gray-700">Issue Description</Text>
-                <Text className="mt-1 text-[11px] text-gray-500">{isNoneSelected ? 'Optional' : 'Required'}</Text>
-                <TextInput
-                  value={issueDescription}
-                  onChangeText={setIssueDescription}
-                  placeholder={issueDescriptionPlaceholder}
-                  placeholderTextColor="#9ca3af"
-                  multiline
-                  className="mt-2 min-h-[110px] rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3 font-semibold text-gray-900"
-                />
-                {!!updateTriedSubmit && !!validation.descError && (
-                  <Text className="mt-2 text-xs text-red-600">{validation.descError}</Text>
-                )}
-              </View>
-
-              <View className="mb-6">
                 <View className="flex-row items-center justify-between">
                   <View>
-                    <Text className="text-xs font-semibold text-gray-700">Evidence Photos</Text>
-                    <Text className="mt-1 text-[11px] text-gray-500">
+                    <Text className="text-sm font-semibold text-gray-700">Evidence Photos</Text>
+                    <Text className="mt-0.5 text-xs text-gray-500">
                       {isNoneSelected ? 'Required' : 'Optional'} • {evidenceAssets.length} selected
                     </Text>
                   </View>
                   <TouchableOpacity
                     disabled={updateSubmitting}
                     onPress={pickEvidencePhotos}
-                    className="rounded-2xl border border-green-200 bg-green-50 px-3 py-2">
-                    <Text className="text-xs font-semibold text-green-700">Add Photos</Text>
+                    className="px-4 py-2 border border-green-200 rounded-full bg-green-50 active:scale-95">
+                    <Text className="text-sm font-medium text-green-700">Add Photos</Text>
                   </TouchableOpacity>
                 </View>
 
                 {evidenceAssets.length > 0 ? (
-                  <View className="mt-3 flex-row flex-wrap gap-2">
-                    {evidenceAssets.map((asset) => (
-                      <View key={asset.uri} className="relative">
+                  <View className="flex-row flex-wrap gap-2 mt-3">
+                    {evidenceAssets.map((asset, idx) => (
+                      <View key={asset.uri + idx} className="relative">
                         <Image
                           source={{ uri: asset.uri }}
-                          className="h-20 w-20 rounded-2xl border border-gray-200"
+                          className="w-20 h-20 border border-gray-200 rounded-xl bg-gray-50"
                         />
                         <TouchableOpacity
                           disabled={updateSubmitting}
                           onPress={() =>
                             setEvidenceAssets((prev) => prev.filter((a) => a.uri !== asset.uri))
                           }
-                          className="absolute -right-2 -top-2 h-7 w-7 items-center justify-center rounded-full border border-gray-200 bg-white">
-                          <Ionicons name="close" size={14} color="#111827" />
+                          className="absolute items-center justify-center w-6 h-6 bg-white border border-gray-200 rounded-full shadow-sm -right-2 -top-2">
+                          <Ionicons name="close" size={12} color="#111827" />
                         </TouchableOpacity>
                       </View>
                     ))}
                   </View>
                 ) : (
-                  <Text className="mt-2 text-xs text-gray-500">No photos selected</Text>
+                  <View className="flex-row items-center justify-center py-6 mt-3 border border-gray-300 border-dashed rounded-xl bg-gray-50">
+                    <Ionicons name="images-outline" size={20} color="#9ca3af" />
+                    <Text className="ml-2 text-xs text-gray-500">No photos selected</Text>
+                  </View>
                 )}
 
                 {!!updateTriedSubmit && !!validation.evidenceError && (
@@ -959,11 +1164,12 @@ export default function SiteDetails({
               </View>
             </ScrollView>
 
-            <View className="px-6 pb-6">
+            {/* Footer with Submit Button */}
+            <View className="px-5 pt-4 pb-6 border-t border-gray-100">
               <TouchableOpacity
                 disabled={updateSubmitting || !validation.isValid}
                 onPress={isNoneSelected ? uploadEvidenceAndFinish : submitIssueReport}
-                className={`w-full items-center justify-center rounded-2xl px-4 py-3 ${
+                className={`w-full items-center justify-center rounded-xl px-4 py-3 ${
                   updateSubmitting || !validation.isValid
                     ? 'bg-gray-300'
                     : 'bg-green-500 active:scale-95'
@@ -972,7 +1178,9 @@ export default function SiteDetails({
                   <ActivityIndicator color="#ffffff" />
                 ) : (
                   <Text
-                    className={`text-base font-bold ${updateSubmitting || !validation.isValid ? 'text-gray-600' : 'text-white'}`}>
+                    className={`text-base font-bold ${
+                      updateSubmitting || !validation.isValid ? 'text-gray-600' : 'text-white'
+                    }`}>
                     {isNoneSelected ? 'Submit & Finish' : 'Submit Issue'}
                   </Text>
                 )}
@@ -982,17 +1190,18 @@ export default function SiteDetails({
         </View>
       </Modal>
 
+      {/* Technical Issue Picker Modal */}
       <Modal
         visible={technicalIssuePickerVisible}
         transparent
         animationType="fade"
         onRequestClose={() => setTechnicalIssuePickerVisible(false)}>
-        <View className="flex-1 items-center justify-center bg-black/40 p-6">
-          <View className="w-full overflow-hidden rounded-3xl border border-gray-200 bg-white">
-            <View className="flex-row items-center justify-between border-b border-gray-100 bg-white px-5 py-4">
+        <View className="items-center justify-center flex-1 p-6 bg-black/40">
+          <View className="w-full max-w-sm overflow-hidden bg-white border border-gray-200 rounded-3xl">
+            <View className="flex-row items-center justify-between px-5 py-4 bg-white border-b border-gray-100">
               <Text className="text-base font-extrabold text-gray-900">Select Technical Issue</Text>
               <TouchableOpacity
-                className="h-9 w-9 items-center justify-center rounded-2xl bg-gray-100"
+                className="items-center justify-center bg-gray-100 h-9 w-9 rounded-2xl"
                 onPress={() => setTechnicalIssuePickerVisible(false)}>
                 <Ionicons name="close" size={16} color="#111827" />
               </TouchableOpacity>
@@ -1007,9 +1216,13 @@ export default function SiteDetails({
                       setTechnicalIssue(opt);
                       setTechnicalIssuePickerVisible(false);
                     }}
-                    className={`flex-row items-center border-b border-gray-100 px-5 py-4 ${selected ? 'bg-green-50' : 'bg-white'}`}>
+                    className={`flex-row items-center border-b border-gray-100 px-5 py-4 ${
+                      selected ? 'bg-green-50' : 'bg-white'
+                    }`}>
                     <Text
-                      className={`flex-1 font-semibold ${selected ? 'text-green-700' : 'text-gray-900'}`}>
+                      className={`flex-1 font-semibold ${
+                        selected ? 'text-green-700' : 'text-gray-900'
+                      }`}>
                       {opt}
                     </Text>
                     {selected ? <Ionicons name="checkmark" size={18} color="#10b981" /> : null}
@@ -1021,11 +1234,12 @@ export default function SiteDetails({
         </View>
       </Modal>
 
+      {/* Main content */}
       {!site ? (
-        <View className="flex-1 items-center justify-center bg-white">
+        <View className="items-center justify-center flex-1 bg-white">
           <TouchableOpacity
             onPress={onBack}
-            className="mb-4 rounded-full border border-green-100 bg-green-50 px-4 py-2">
+            className="px-4 py-2 mb-4 border border-green-100 rounded-full bg-green-50">
             <Text className="font-semibold text-green-600">Back to Sites</Text>
           </TouchableOpacity>
           <Text className="font-semibold text-gray-500">No site selected</Text>
@@ -1033,9 +1247,9 @@ export default function SiteDetails({
       ) : (
         <>
           <ScrollView className="flex-1" showsVerticalScrollIndicator={false}>
-            {/* Top hero section with live map */}
-            <View className="overflow-hidden rounded-b-3xl border-b border-green-100 bg-green-50">
-              <View className="h-64 w-full">
+            {/* Map section with placeholder if coordinates missing */}
+            {hasValidCoordinates ? (
+              <View className="relative w-full h-64">
                 <SiteLocationMap
                   latitude={site.latitude}
                   longitude={site.longitude}
@@ -1044,106 +1258,67 @@ export default function SiteDetails({
                   onBack={onBack}
                 />
               </View>
-              <View className="absolute left-6 right-6 top-12 flex-row items-center justify-between">
-                <Text className="rounded-full bg-white bg-opacity-80 px-3 py-1 text-base font-semibold text-gray-900">
-                  Site Information
-                </Text>
-                <View className="w-10" />
+            ) : (
+              <View className="items-center justify-center w-full h-64 bg-gray-100">
+                <Ionicons name="location-outline" size={48} color="#9ca3af" />
+                <Text className="mt-2 text-sm text-gray-500">Location not available</Text>
+                <Text className="text-xs text-gray-400">No coordinates provided for this site</Text>
               </View>
-              <TouchableOpacity
-                onPress={onViewOnMap}
-                className="absolute bottom-6 right-6 rounded-full border border-green-100 bg-white px-4 py-1.5 shadow-sm">
-                <Text className="text-xs font-semibold tracking-widest text-green-600">
-                  VIEW ON MAP
-                </Text>
-              </TouchableOpacity>
-            </View>
+            )}
 
-            {/* Site basic info */}
+            {/* Site name and company */}
             <View className="px-6 pt-6">
-              {!!onBack && (
-                <TouchableOpacity
-                  onPress={onBack}
-                  className="mb-4 self-start rounded-full border border-green-100 bg-green-50 px-4 py-2">
-                  <Text className="font-semibold text-green-600">Back to Sites</Text>
-                </TouchableOpacity>
-              )}
-              <Text className="text-2xl font-extrabold text-gray-900">{site.name}</Text>
+              <Text className="text-2xl font-bold text-gray-900">{site.name}</Text>
               {site.companyName && (
-                <Text className="mt-1 text-base text-gray-500">{site.companyName}</Text>
+                <Text className="mt-1 text-sm text-gray-500">{site.companyName}</Text>
               )}
             </View>
 
-            {/* Detail cards */}
-            <View className="px-6 pb-24 pt-6">
-              {/* Branch card */}
-              <View className="mb-4 flex-row items-center rounded-3xl border border-gray-100 bg-white p-4 shadow-sm">
-                <View className="mr-4 h-10 w-10 items-center justify-center rounded-2xl bg-green-50">
-                  <Ionicons name="git-branch-outline" size={22} color="#10b981" />
-                </View>
-                <View className="flex-1">
-                  <Text className="text-[10px] font-semibold tracking-widest text-gray-400">
-                    MAIN BRANCH
-                  </Text>
-                  <Text className="mt-1 text-base font-semibold text-gray-900">
-                    {site.branchName || 'N/A'}
+            {/* Unified info card */}
+            <View className="mx-6 mt-6 bg-white border border-gray-100 rounded-xl">
+              {/* Branch */}
+              <View className="flex-row items-center p-4 border-b border-gray-100">
+                <Ionicons name="business-outline" size={20} color="#6b7280" />
+                <View className="flex-1 ml-3">
+                  <Text className="text-xs text-gray-500">Branch</Text>
+                  <Text className="text-base font-medium text-gray-900">
+                    {site.branchName || 'Not specified'}
                   </Text>
                 </View>
               </View>
 
-              {/* Workforce card */}
-              <View className="mb-4 flex-row items-center rounded-3xl border border-gray-100 bg-white p-4 shadow-sm">
-                <View className="mr-4 h-10 w-10 items-center justify-center rounded-2xl bg-green-50">
-                  <Ionicons name="people-outline" size={22} color="#10b981" />
-                </View>
-                <View className="flex-1">
-                  <Text className="text-[10px] font-semibold tracking-widest text-gray-400">
-                    SITE WORKFORCE
-                  </Text>
-                  <Text className="mt-1 text-base font-semibold text-gray-900">
+              {/* Workforce */}
+              <View className="flex-row items-center p-4 border-b border-gray-100">
+                <Ionicons name="people-outline" size={20} color="#6b7280" />
+                <View className="flex-1 ml-3">
+                  <Text className="text-xs text-gray-500">Workforce</Text>
+                  <Text className="text-base font-medium text-gray-900">
                     {workforceLabel}
                   </Text>
                 </View>
               </View>
 
-              {/* Member Slots card */}
+              {/* Member Slots */}
               {memberInfo && (
-                <View
-                  className={`mb-4 flex-row items-center rounded-3xl border p-4 shadow-sm ${
-                    memberInfo.isFull
-                      ? 'border-red-100 bg-red-50'
-                      : 'border-green-100 bg-green-50'
-                  }`}>
-                  <View
-                    className={`mr-4 h-10 w-10 items-center justify-center rounded-2xl ${
-                      memberInfo.isFull ? 'bg-red-100' : 'bg-green-100'
-                    }`}>
-                    <Ionicons
-                      name={memberInfo.isFull ? 'close-circle-outline' : 'checkmark-circle-outline'}
-                      size={22}
-                      color={memberInfo.isFull ? '#dc2626' : '#10b981'}
-                    />
-                  </View>
-                  <View className="flex-1">
-                    <Text className="text-[10px] font-semibold tracking-widest text-gray-600">
-                      MEMBER SLOTS
-                    </Text>
-                    <View className="mt-1 flex-row items-center justify-between">
-                      <Text className="text-base font-semibold text-gray-900">
+                <View className={`flex-row items-center border-b border-gray-100 p-4 ${memberInfo.isFull ? 'bg-red-50' : 'bg-green-50'}`}>
+                  <Ionicons
+                    name={memberInfo.isFull ? 'close-circle-outline' : 'checkmark-circle-outline'}
+                    size={20}
+                    color={memberInfo.isFull ? '#dc2626' : '#10b981'}
+                  />
+                  <View className="flex-1 ml-3">
+                    <Text className="text-xs text-gray-500">Member Slots</Text>
+                    <View className="flex-row items-center justify-between">
+                      <Text className="text-base font-medium text-gray-900">
                         {memberInfo.maxMembers !== null
                           ? `${memberInfo.currentMembers} / ${memberInfo.maxMembers}`
                           : 'No limit'}
                       </Text>
                       {memberInfo.maxMembers !== null && (
-                        <Text
-                          className={`text-xs font-semibold ${
-                            memberInfo.isFull ? 'text-red-600' : 'text-green-600'
-                          }`}>
+                        <Text className={`text-xs font-semibold ${memberInfo.isFull ? 'text-red-600' : 'text-green-600'}`}>
                           {memberInfo.isFull
                             ? 'FULL'
-                            : memberInfo.availableSlots === null
-                              ? 'N/A'
-                              : `${memberInfo.availableSlots} slot${memberInfo.availableSlots !== 1 ? 's' : ''} left`}
+                            : `${memberInfo.availableSlots} slot${memberInfo.availableSlots !== 1 ? 's' : ''} left`}
                         </Text>
                       )}
                     </View>
@@ -1151,161 +1326,121 @@ export default function SiteDetails({
                 </View>
               )}
 
-              {/* Member Slots Loading */}
               {loadingMemberInfo && !memberInfo && (
-                <View className="mb-4 flex-row items-center rounded-3xl border border-gray-100 bg-white p-4 shadow-sm">
-                  <View className="mr-4 h-10 w-10 items-center justify-center rounded-2xl bg-green-50">
-                    <ActivityIndicator size="small" color="#10b981" />
-                  </View>
-                  <View className="flex-1">
-                    <Text className="text-[10px] font-semibold tracking-widest text-gray-400">
-                      MEMBER SLOTS
-                    </Text>
-                    <Text className="mt-1 text-xs text-gray-500">Loading slot information...</Text>
+                <View className="flex-row items-center p-4 border-b border-gray-100">
+                  <ActivityIndicator size="small" color="#10b981" />
+                  <View className="flex-1 ml-3">
+                    <Text className="text-xs text-gray-500">Member Slots</Text>
+                    <Text className="text-sm text-gray-500">Loading slot information...</Text>
                   </View>
                 </View>
               )}
 
-              {/* Leader card */}
-              <View className="mb-4 flex-row items-center rounded-3xl border border-gray-100 bg-white p-4 shadow-sm">
-                <View className="mr-4 h-10 w-10 items-center justify-center rounded-2xl bg-green-50">
-                  <Ionicons name="person-circle-outline" size={22} color="#10b981" />
-                </View>
-                <View className="flex-1">
-                  <Text className="text-[10px] font-semibold tracking-widest text-gray-400">
-                    TEAM LEADER
-                  </Text>
+              {/* Team Leader */}
+              <View className="flex-row items-center p-4 border-b border-gray-100">
+                <Ionicons name="person-circle-outline" size={20} color="#6b7280" />
+                <View className="flex-1 ml-3">
+                  <Text className="text-xs text-gray-500">Team Leader</Text>
                   {loadingGroupInfo ? (
-                    <View className="mt-1 flex-row items-center">
-                      <ActivityIndicator size="small" color="#10b981" />
-                      <Text className="ml-2 text-xs text-gray-500">Loading leader...</Text>
-                    </View>
+                    <ActivityIndicator size="small" color="#10b981" />
                   ) : (
-                    <Text className="mt-1 text-base font-semibold text-gray-900">
+                    <Text className="text-base font-medium text-gray-900">
                       {leaderName || 'No leader assigned'}
                     </Text>
                   )}
                 </View>
               </View>
 
-              {/* Status card */}
-              <View className="mb-4 flex-row items-center rounded-3xl border border-gray-100 bg-white p-4 shadow-sm">
-                <View className="mr-4 h-10 w-10 items-center justify-center rounded-2xl bg-green-50">
-                  <Ionicons
-                    name={
-                      isFinished
-                        ? 'checkmark-circle-outline'
-                        : isActiveish
-                          ? 'alert-circle-outline'
-                          : 'alert-circle-outline'
-                    }
-                    size={22}
-                    color={isFinished ? '#9ca3af' : '#22c55e'}
-                  />
-                </View>
-                <View className="flex-1">
-                  <Text className="text-[10px] font-semibold tracking-widest text-gray-400">
-                    SITE STATUS
-                  </Text>
-                  <Text
-                    className={`mt-1 text-base font-semibold ${
-                      isFinished ? 'text-gray-500' : 'text-green-600'
-                    }`}>
+              {/* Site Status */}
+              <View className="flex-row items-center p-4 border-b border-gray-100">
+                <Ionicons
+                  name={isFinished ? 'checkmark-circle-outline' : 'alert-circle-outline'}
+                  size={20}
+                  color={isFinished ? '#9ca3af' : '#10b981'}
+                />
+                <View className="flex-1 ml-3">
+                  <Text className="text-xs text-gray-500">Status</Text>
+                  <Text className={`text-base font-medium ${isFinished ? 'text-gray-500' : 'text-green-600'}`}>
                     {site.status}
                   </Text>
                 </View>
               </View>
 
-              {/* Site Members Section */}
-              <View className="mb-4 rounded-3xl border border-gray-100 bg-white shadow-sm">
-                <View className="flex-row items-center border-b border-gray-100 p-4">
-                  <View className="mr-4 h-10 w-10 items-center justify-center rounded-2xl bg-blue-50">
-                    <Ionicons name="people-outline" size={22} color="#3b82f6" />
-                  </View>
-                  <View className="flex-1">
-                    <Text className="text-[10px] font-semibold tracking-widest text-gray-400">
-                      SITE MEMBERS
-                    </Text>
-                    <Text className="mt-1 text-base font-semibold text-gray-900">
-                      {siteMembers.length} {siteMembers.length === 1 ? 'Member' : 'Members'}
-                    </Text>
-                  </View>
-                </View>
-
-                {loadingSiteMembers ? (
-                  <View className="flex-row items-center justify-center px-4 py-6">
-                    <ActivityIndicator size="small" color="#3b82f6" />
-                    <Text className="ml-2 text-xs text-gray-500">Loading members...</Text>
-                  </View>
-                ) : siteMembers.length === 0 ? (
-                  <View className="flex-row items-center justify-center px-4 py-6">
-                    <Text className="text-xs text-gray-500">No members joined yet</Text>
-                  </View>
-                ) : (
-                  <View className="px-4 pb-4">
-                    {siteMembers.map((member, index) => (
-                      <View
-                        key={member.id}
-                        className={`flex-row items-center py-3 ${index < siteMembers.length - 1 ? 'border-b border-gray-50' : ''}`}>
-                        <View className="mr-3 h-8 w-8 items-center justify-center rounded-full bg-blue-100">
-                          {member.profilePictureUrl ? (
-                            <Image
-                              source={{ uri: member.profilePictureUrl }}
-                              className="h-8 w-8 rounded-full"
-                            />
-                          ) : (
-                            <Ionicons name="person" size={16} color="#3b82f6" />
-                          )}
-                        </View>
-                        <View className="flex-1">
-                          <Text className="font-semibold text-gray-900">{member.fullName}</Text>
-                          <Text className="text-xs text-gray-500">{member.email}</Text>
-                          {member.phoneNumber && (
-                            <Text className="mt-1 text-xs text-gray-500">{member.phoneNumber}</Text>
-                          )}
-                        </View>
-                        <View className="ml-2 rounded-full bg-blue-50 px-2 py-1">
-                          <Text className="text-xs font-semibold text-blue-600 capitalize">
-                            {member.role}
-                          </Text>
-                        </View>
-                      </View>
-                    ))}
-                  </View>
-                )}
-              </View>
-
-              {/* Coordinates card */}
-              <View className="flex-row items-center rounded-3xl border border-gray-100 bg-white p-4 shadow-sm">
-                <View className="mr-4 h-10 w-10 items-center justify-center rounded-2xl bg-green-50">
-                  <Ionicons name="location-outline" size={22} color="#10b981" />
-                </View>
-                <View className="flex-1">
-                  <Text className="text-[10px] font-semibold tracking-widest text-gray-400">
-                    COORDINATES
-                  </Text>
-                  <Text className="mt-1 text-base font-semibold text-gray-900">
-                    {coordinateText}
-                  </Text>
+              {/* Coordinates */}
+              <View className="flex-row items-center p-4">
+                <Ionicons name="location-outline" size={20} color="#6b7280" />
+                <View className="flex-1 ml-3">
+                  <Text className="text-xs text-gray-500">Coordinates</Text>
+                  <Text className="text-base font-medium text-gray-900">{coordinateText}</Text>
                 </View>
               </View>
             </View>
+
+            {/* Site Members Card */}
+            <View className="p-4 mx-6 mt-6 bg-white border border-gray-100 rounded-xl">
+              <View className="flex-row items-center mb-3">
+                <Ionicons name="people-outline" size={20} color="#3b82f6" />
+                <Text className="ml-2 text-base font-semibold text-gray-900">Site Members</Text>
+                <Text className="ml-auto text-sm text-gray-500">
+                  {siteMembers.length} {siteMembers.length === 1 ? 'Member' : 'Members'}
+                </Text>
+              </View>
+
+              {loadingSiteMembers ? (
+                <View className="items-center justify-center py-4">
+                  <ActivityIndicator size="small" color="#3b82f6" />
+                </View>
+              ) : siteMembers.length === 0 ? (
+                <Text className="py-4 text-sm text-center text-gray-500">No members joined yet</Text>
+              ) : (
+                <View>
+                  {siteMembers.map((member, index) => (
+                    <View
+                      key={member.id}
+                      className={`flex-row items-center py-3 ${index < siteMembers.length - 1 ? 'border-b border-gray-50' : ''}`}>
+                      <View className="items-center justify-center w-8 h-8 bg-blue-100 rounded-full">
+                        {member.profilePictureUrl ? (
+                          <Image source={{ uri: member.profilePictureUrl }} className="w-8 h-8 rounded-full" />
+                        ) : (
+                          <Ionicons name="person" size={16} color="#3b82f6" />
+                        )}
+                      </View>
+                      <View className="flex-1 ml-3">
+                        <Text className="font-semibold text-gray-900">{member.fullName}</Text>
+                        <Text className="text-xs text-gray-500">{member.email}</Text>
+                        {member.phoneNumber && (
+                          <Text className="mt-0.5 text-xs text-gray-500">{member.phoneNumber}</Text>
+                        )}
+                      </View>
+                      <View className="px-2 py-1 rounded-full bg-blue-50">
+                        <Text className="text-xs font-semibold text-blue-600 capitalize">
+                          {member.role}
+                        </Text>
+                      </View>
+                    </View>
+                  ))}
+                </View>
+              )}
+            </View>
+
+            <View className="h-24" />
           </ScrollView>
 
-          {/* Accept/Become Leader button fixed at bottom */}
-          <View className="absolute bottom-0 left-0 right-0 border-t border-gray-200 bg-white px-6 py-4">
+          {/* Fixed Action Button */}
+          <View className="absolute bottom-0 left-0 right-0 px-6 py-4 bg-white border-t border-gray-200">
             {isFinished ? (
               <TouchableOpacity
                 disabled
-                className="w-full items-center justify-center rounded-2xl bg-gray-300 px-4 py-3">
+                className="items-center justify-center w-full py-3 bg-gray-300 rounded-xl">
                 <Text className="text-base font-bold text-gray-600">Site Finished</Text>
               </TouchableOpacity>
             ) : isActive && hasNoLeader ? (
               <TouchableOpacity
                 onPress={handleBecomeLeaderAndJoin}
                 disabled={acceptLoading}
-                className={`w-full items-center justify-center rounded-2xl px-4 py-3 ${acceptLoading ? 'bg-gray-300' : 'bg-green-500 active:scale-95'}`}
-              >
+                className={`w-full items-center justify-center rounded-xl py-3 ${
+                  acceptLoading ? 'bg-gray-300' : 'bg-green-500 active:scale-95'
+                }`}>
                 {acceptLoading ? (
                   <ActivityIndicator color="#ffffff" />
                 ) : (
@@ -1315,22 +1450,20 @@ export default function SiteDetails({
             ) : isPending && isLeaderForThisSite ? (
               <TouchableOpacity
                 onPress={() => setUpdateVisible(true)}
-                className="w-full items-center justify-center rounded-2xl bg-green-500 px-4 py-3 active:scale-95">
+                className="items-center justify-center w-full py-3 bg-green-500 rounded-xl active:scale-95">
                 <Text className="text-base font-bold text-white">Update Site</Text>
               </TouchableOpacity>
             ) : isPending && isUserLeaderAny ? (
               <TouchableOpacity
                 disabled
-                className="w-full items-center justify-center rounded-2xl bg-gray-300 px-4 py-3">
-                <Text className="text-base font-bold text-gray-600">
-                  Assigned to another leader
-                </Text>
+                className="items-center justify-center w-full py-3 bg-gray-300 rounded-xl">
+                <Text className="text-base font-bold text-gray-600">Assigned to another leader</Text>
               </TouchableOpacity>
             ) : isPending ? (
               <TouchableOpacity
                 onPress={handleAcceptSite}
                 disabled={acceptLoading || hasAccepted || !!currentUserSiteId || isUserLeaderAny || memberInfo?.isFull}
-                className={`w-full items-center justify-center rounded-2xl px-4 py-3 ${
+                className={`w-full items-center justify-center rounded-xl py-3 ${
                   hasAccepted || !!currentUserSiteId || memberInfo?.isFull
                     ? 'bg-gray-300'
                     : 'bg-green-500 active:scale-95'
@@ -1339,7 +1472,9 @@ export default function SiteDetails({
                   <ActivityIndicator color="#ffffff" />
                 ) : (
                   <Text
-                    className={`text-base font-bold ${hasAccepted || !!currentUserSiteId || memberInfo?.isFull ? 'text-gray-600' : 'text-white'}`}>
+                    className={`text-base font-bold ${
+                      hasAccepted || !!currentUserSiteId || memberInfo?.isFull ? 'text-gray-600' : 'text-white'
+                    }`}>
                     {memberInfo?.isFull ? 'Site is Full' : hasAccepted || !!currentUserSiteId ? 'Joined' : 'Accept & Join'}
                   </Text>
                 )}
@@ -1347,15 +1482,13 @@ export default function SiteDetails({
             ) : isActive ? (
               <TouchableOpacity
                 disabled
-                className={`w-full items-center justify-center rounded-2xl px-4 py-3 ${'bg-gray-300'}`}>
-                <Text className="text-base font-bold text-gray-600">
-                  Waiting for leader assignment
-                </Text>
+                className="items-center justify-center w-full py-3 bg-gray-300 rounded-xl">
+                <Text className="text-base font-bold text-gray-600">Waiting for leader assignment</Text>
               </TouchableOpacity>
             ) : (
               <TouchableOpacity
                 disabled
-                className="w-full items-center justify-center rounded-2xl bg-gray-300 px-4 py-3">
+                className="items-center justify-center w-full py-3 bg-gray-300 rounded-xl">
                 <Text className="text-base font-bold text-gray-600">Pending (Leader only)</Text>
               </TouchableOpacity>
             )}

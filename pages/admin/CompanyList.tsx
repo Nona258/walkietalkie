@@ -629,17 +629,17 @@ export default function CompanyList({ onNavigate, isMobileMenuOpen, setIsMobileM
     <View className="flex-1 bg-[#f8fafb]">
       <ScrollView className="flex-1 bg-[#f8fafb]" showsVerticalScrollIndicator={false}>
         {/* ── Header ──────────────────────────────────────────────────────── */}
-        <View className="px-4 pt-4 pb-3 bg-white border-b border-stone-200 md:px-5">
+        <View className="px-3 pt-3 pb-3 bg-white border-b border-stone-200 md:px-5 md:pt-4">
           <View className="flex-row items-center justify-between">
             <View className="flex-row items-center flex-1">
               <TouchableOpacity
-                className="items-center justify-center mr-3 h-9 w-9 lg:hidden"
+                className="items-center justify-center mr-2 h-8 w-8 lg:hidden"
                 onPress={() => setIsMobileMenuOpen?.(true)}>
-                <Ionicons name="menu" size={28} color="#237227" />
+                <Ionicons name="menu" size={24} color="#237227" />
               </TouchableOpacity>
               <View className="flex-1">
-                <Text className="text-lg font-bold text-stone-900 lg:text-2xl">Company List</Text>
-                <Text className="mt-0.5 text-xs text-stone-500 lg:text-sm">
+                <Text className="text-[15px] font-bold text-stone-900 md:text-lg lg:text-2xl">Company List</Text>
+                <Text className="mt-0.5 text-[11px] text-stone-500 md:text-xs lg:text-sm">
                   Welcome back, Administrator
                 </Text>
               </View>
@@ -648,99 +648,134 @@ export default function CompanyList({ onNavigate, isMobileMenuOpen, setIsMobileM
         </View>
 
         {/* ── Page Title & Add Button ─────────────────────────────────────── */}
-        <View className="flex-row items-center justify-between px-4 py-4 pt-6 md:px-5 lg:px-8">
-          <View className="flex-row items-center gap-[10px]">
-            <Ionicons name="business-outline" size={18} color="#1a2e1b" />
-            <Text className="text-sm font-bold text-stone-900 lg:text-base">All Companies</Text>
-            <View className="rounded-full bg-[#e8f5e9] px-[10px] py-[2px]">
-              <Text className="text-xs font-bold lg:text-sm" style={{ color: '#237227' }}>{companies.length}</Text>
+        <View className="flex-row items-center justify-between px-3 py-3 md:py-4 md:px-5 lg:px-8">
+          <View className="flex-row items-center gap-2">
+            <Ionicons name="business-outline" size={18} color="#44403c" />
+            <Text className="text-[15px] font-bold text-stone-900 md:text-sm lg:text-base">All Companies</Text>
+            <View className="rounded-full bg-[#e8f5e9] px-2.5 py-0.5 ml-1">
+              <Text className="text-[12px] font-bold" style={{ color: '#237227' }}>{companies.length}</Text>
             </View>
           </View>
           <TouchableOpacity
-            className="flex-row items-center gap-[6px] rounded-[6px] px-3 py-2 md:px-4"
+            className="h-10 w-10 items-center justify-center rounded-[10px]"
             style={{ backgroundColor: '#237227' }}
             onPress={() => setIsAddModalOpen(true)}>
-            <Ionicons name="add" size={16} color="#ffffff" />
-            <Text className="text-xs font-semibold text-white lg:text-sm">Add Company</Text>
+            <Ionicons name="add" size={22} color="#ffffff" />
           </TouchableOpacity>
         </View>
 
         {/* ── Companies List Layout ───────────────────────────────────────── */}
-        <View className="w-full px-4 pb-12 md:px-5 lg:px-8">
+        <View className="w-full px-3 pb-12 md:px-5 lg:px-8">
           {loading ? (
-            <View className="items-center justify-center py-[60px] bg-white border border-[#e5e7eb] rounded-[10px]">
+            <View className="items-center justify-center py-16 bg-white border border-[#e5e7eb] rounded-[12px]">
               <ActivityIndicator size="large" color="#237227" />
             </View>
           ) : companies.length === 0 ? (
-            <View className="items-center justify-center py-[60px] gap-[10px] bg-white border border-[#e5e7eb] rounded-[10px]">
-              <View className="h-12 w-12 items-center justify-center rounded-[12px] bg-[#e8f5e9]">
-                <Ionicons name="business-outline" size={22} color="#237227" />
+            <View className="items-center justify-center py-12 gap-2 bg-white border border-[#e5e7eb] rounded-[12px]">
+              <View className="h-12 w-12 items-center justify-center rounded-full bg-[#e8f5e9]">
+                <Ionicons name="business-outline" size={20} color="#237227" />
               </View>
-              <Text className="text-[14px] font-semibold text-[#1a2e1b]">No companies found</Text>
-              <Text className="text-[12px] text-[#8fa88f]">Click &quot;Add Company&quot; to create your first company</Text>
+              <Text className="text-[13px] font-semibold text-[#1a2e1b]">No companies found</Text>
+              <Text className="text-[11px] text-[#8fa88f] text-center px-4">Click &quot;Add&quot; to create your first company</Text>
             </View>
           ) : (
             <>
-              {/* Mobile Card Layout */}
-              <View className="gap-3 md:hidden">
-                {paginatedCompanies.map((company) => (
-                  <View
-                    key={company.id}
-                    className="bg-white border border-[#e5e7eb] rounded-[10px] p-4 gap-3">
-                    {/* Card Header */}
-                    <View className="flex-row items-center gap-3">
-                      <View className="h-10 w-10 items-center justify-center rounded-full bg-[#237227]">
-                        <Text className="text-[14px] font-bold text-white">{company.initials}</Text>
+              {/* Mobile List Layout */}
+              <View className="md:hidden bg-white border border-[#e5e7eb] rounded-[12px] overflow-hidden">
+                {paginatedCompanies.map((company, index) => (
+                  <View key={company.id}>
+                    <View className="p-4">
+                      {/* Header Row - Avatar + Name + Badge */}
+                      <View className="flex-row items-center gap-3 mb-2">
+                        <View className="h-11 w-11 items-center justify-center rounded-full bg-[#237227]">
+                          <Text className="text-[13px] font-bold text-white">{company.initials}</Text>
+                        </View>
+                        <View className="flex-1">
+                          <View className="flex-row items-center gap-2">
+                            <Text className="text-[14px] font-semibold text-[#237227]" numberOfLines={1}>
+                              {company.name}
+                            </Text>
+                            <View className="bg-[#e8f5e9] px-2 py-0.5 rounded-full">
+                              <Text className="text-[10px] font-semibold text-[#237227]">
+                                {company.branches} {company.branches === 1 ? 'Branch' : 'Branches'}
+                              </Text>
+                            </View>
+                          </View>
+                          <Text className="text-[12px] text-[#44403c]">Company</Text>
+                        </View>
                       </View>
-                      <View className="flex-1">
-                        <Text className="text-[15px] font-bold text-[#1a2e1b]" numberOfLines={1}>
-                          {company.name}
-                        </Text>
-                        <Text className="text-[12px] text-[#8fa88f] mt-0.5">
-                          {company.branches} {company.branches === 1 ? 'Branch' : 'Branches'}
-                        </Text>
+
+                      {/* Details */}
+                      <View className="ml-14 gap-1 mb-3">
+                        <View className="flex-row items-center gap-2">
+                          <Ionicons name="briefcase-outline" size={14} color="#8fa88f" />
+                          <Text className="text-[12px] text-[#44403c]" numberOfLines={1}>
+                            {company.industry}
+                          </Text>
+                        </View>
+                      </View>
+
+                      {/* Action Buttons */}
+                      <View className="flex-row gap-3 ml-14">
+                        <TouchableOpacity
+                          className="flex-1 flex-row items-center justify-center gap-1 h-9 rounded-full border border-[#237227] bg-white"
+                          onPress={() => handleCompanyPress(company)}>
+                          <Ionicons name="create-outline" size={14} color="#237227" />
+                          <Text className="text-[12px] font-medium text-[#237227]">Edit</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                          className="flex-1 flex-row items-center justify-center gap-1 h-9 rounded-full border border-[#ef4444] bg-white"
+                          onPress={() =>
+                            openSweet(
+                              'warning',
+                              'Delete company',
+                              'Are you sure you want to delete this company?',
+                              true,
+                              () => handleDeleteCompany(company.id)
+                            )
+                          }>
+                          <Ionicons name="trash-outline" size={14} color="#ef4444" />
+                          <Text className="text-[12px] font-medium text-[#ef4444]">Delete</Text>
+                        </TouchableOpacity>
                       </View>
                     </View>
 
-                    {/* Card Content */}
-                    <View className="border-t border-[#f0f4f0] pt-3 gap-2">
-                      <View className="flex-row items-center gap-2">
-                        <Ionicons name="briefcase-outline" size={14} color="#8fa88f" />
-                        <Text className="text-[13px] text-[#1a2e1b] flex-1" numberOfLines={2}>
-                          {company.industry}
+                    {/* Divider */}
+                    {index < paginatedCompanies.length - 1 && (
+                      <View className="h-[1px] bg-[#f0f4f0]" />
+                    )}
+                  </View>
+                ))}
+
+                {/* Mobile Footer - Inside Container */}
+                <View className="border-t border-[#f0f4f0] bg-[#f8fafb] px-4 py-3">
+                  <View className="flex-row items-center justify-between">
+                    <Text className="text-[12px] text-[#44403c]">
+                      Showing {showingCount} of {companies.length} {companies.length === 1 ? 'company' : 'companies'}
+                    </Text>
+                    <View className="flex-row items-center gap-2">
+                      <TouchableOpacity
+                        onPress={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                        disabled={currentPage <= 1}
+                        className={currentPage <= 1 ? 'opacity-30' : ''}
+                      >
+                        <Ionicons name="chevron-back" size={18} color="#44403c" />
+                      </TouchableOpacity>
+                      <View className="px-3 py-1 rounded-md border border-[#e5e7eb] bg-white">
+                        <Text className="text-[12px] font-medium text-[#44403c]">
+                          {currentPage} / {totalPages}
                         </Text>
                       </View>
-                    </View>
-
-                    {/* Card Actions */}
-                    <View className="flex-row items-center gap-2 border-t border-[#f0f4f0] pt-3">
                       <TouchableOpacity
-                        className="flex-1 h-[36px] items-center justify-center rounded-[8px] bg-[#f8fafb] border border-[#237227] flex-row gap-2"
-                        onPress={() => handleCompanyPress(company)}>
-                        <Ionicons name="create-outline" size={16} color="#237227" />
-                        <Text className="text-[12px] font-semibold text-[#237227]">Edit</Text>
-                      </TouchableOpacity>
-                      <TouchableOpacity
-                        className="h-[36px] w-[36px] items-center justify-center rounded-[8px] bg-[#f8fafb] border border-[#237227]"
-                        onPress={() => handleViewCompany(company)}>
-                        <Ionicons name="eye-outline" size={16} color="#237227" />
-                      </TouchableOpacity>
-                      <TouchableOpacity
-                        className="h-[36px] w-[36px] items-center justify-center rounded-[8px] bg-[#fef2f2] border border-[#ef4444]"
-                        onPress={() =>
-                          openSweet(
-                            'warning',
-                            'Delete company',
-                            'Are you sure you want to delete this company?',
-                            true,
-                            () => handleDeleteCompany(company.id)
-                          )
-                        }>
-                        <Ionicons name="trash-outline" size={16} color="#ef4444" />
+                        onPress={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                        disabled={currentPage >= totalPages}
+                        className={currentPage >= totalPages ? 'opacity-30' : ''}
+                      >
+                        <Ionicons name="chevron-forward" size={18} color="#44403c" />
                       </TouchableOpacity>
                     </View>
                   </View>
-                ))}
+                </View>
               </View>
 
               {/* Desktop Table Layout */}
@@ -855,13 +890,6 @@ export default function CompanyList({ onNavigate, isMobileMenuOpen, setIsMobileM
                     </View>
                   </ScrollView>
                 </View>
-              </View>
-
-              {/* Mobile Footer */}
-              <View className="md:hidden mt-4 bg-white border border-[#e5e7eb] rounded-[10px] px-4 py-3">
-                <Text className="text-[12px] text-center text-[#8fa88f]">
-                  Showing {showingCount} {companies.length === 1 ? 'company' : 'companies'}
-                </Text>
               </View>
             </>
           )}

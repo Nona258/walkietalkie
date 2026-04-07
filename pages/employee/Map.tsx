@@ -56,7 +56,7 @@ export default function Map({ onBack, selectedSite }: { onBack?: () => void; sel
       const { data, error } = await supabase
         .from('sites')
         .select('id, name, latitude, longitude, company_id, branch_id, status')
-        .eq('status', 'Active');
+        .in('status', ['Active', 'Pending']);
 
       if (!error && data) {
         setSitesData(data || []);
@@ -84,8 +84,8 @@ export default function Map({ onBack, selectedSite }: { onBack?: () => void; sel
           // Handle INSERT, UPDATE, DELETE events
           if (payload.eventType === 'INSERT' || payload.eventType === 'UPDATE') {
             const newSite = payload.new as Site;
-            // Only add if status is Active
-            if (newSite.status === 'Active') {
+            // Show both Active and Pending sites on the map
+            if (newSite.status === 'Active' || newSite.status === 'Pending') {
               setSitesData((prevSites) => {
                 // Check if site already exists
                 const siteExists = prevSites.some((s) => s.id === newSite.id);
@@ -98,7 +98,7 @@ export default function Map({ onBack, selectedSite }: { onBack?: () => void; sel
                 }
               });
             } else {
-              // If status is not Active, remove it if it exists
+              // If status is not Active/Pending, remove it if it exists
               setSitesData((prevSites) => prevSites.filter((s) => s.id !== newSite.id));
             }
           } else if (payload.eventType === 'DELETE') {
@@ -280,8 +280,8 @@ export default function Map({ onBack, selectedSite }: { onBack?: () => void; sel
         <View style={{ flex: 1, width: '100%', height: '100%', position: 'relative' } as any}>
           <MapIframe iframeRef={iframeRef} onIframeReady={handleIframeLoad} />
           {!isStreetViewActive && (
-            <View className="absolute left-0 right-0 top-4 z-50 px-4 py-4 pt-4">
-              <View className="flex-1 flex-row items-center rounded-2xl border border-gray-300 bg-white bg-opacity-95 px-4 py-3 shadow-lg">
+            <View className="absolute left-0 right-0 z-50 px-4 py-4 pt-4 top-4">
+              <View className="flex-row items-center flex-1 px-4 py-3 bg-white border border-gray-300 shadow-lg rounded-2xl bg-opacity-95">
                 <TouchableOpacity onPress={onBack}>
                   <Ionicons name="arrow-back" size={20} color="#10b981" />
                 </TouchableOpacity>
@@ -290,14 +290,14 @@ export default function Map({ onBack, selectedSite }: { onBack?: () => void; sel
                   value={searchText}
                   onChangeText={setSearchText}
                   onSubmitEditing={() => handleSearch(searchText)}
-                  className="ml-3 flex-1 text-base font-medium text-gray-900"
+                  className="flex-1 ml-3 text-base font-medium text-gray-900"
                   placeholderTextColor="#9ca3af"
                   returnKeyType="search"
                 />
                 <Ionicons name="location" size={20} color="#10b981" />
               </View>
               {showResults && searchResults.length > 0 && searchText.trim().length > 0 && (
-                <View className="mt-1 overflow-hidden rounded-2xl border border-gray-300 bg-white shadow-lg">
+                <View className="mt-1 overflow-hidden bg-white border border-gray-300 shadow-lg rounded-2xl">
                   <ScrollView
                     style={{ maxHeight: searchResults.length > 4 ? 280 : undefined }}
                     scrollEnabled={searchResults.length > 4}>
@@ -305,7 +305,7 @@ export default function Map({ onBack, selectedSite }: { onBack?: () => void; sel
                       <TouchableOpacity
                         key={index}
                         onPress={() => handleSelectResult(result.location, result.address)}
-                        className="border-b border-gray-200 px-4 py-2 last:border-b-0">
+                        className="px-4 py-2 border-b border-gray-200 last:border-b-0">
                         <View className="flex-row items-start gap-2">
                           <Ionicons
                             name="location"
@@ -328,12 +328,12 @@ export default function Map({ onBack, selectedSite }: { onBack?: () => void; sel
             </View>
           )}
           {selectedSite && !isStreetViewActive && (
-            <View className="absolute bottom-4 left-4 right-0 px-0">
+            <View className="absolute right-0 px-0 bottom-4 left-4">
               <View
-                className="rounded-2xl border border-green-200 bg-green-50 bg-opacity-90 px-4 py-3 shadow-lg"
+                className="px-4 py-3 border border-green-200 shadow-lg rounded-2xl bg-green-50 bg-opacity-90"
                 style={{ maxWidth: '70%' }}>
                 <View>
-                  <Text className="text-xs font-semibold uppercase text-gray-600">
+                  <Text className="text-xs font-semibold text-gray-600 uppercase">
                     Site Location
                   </Text>
                   <Text className="mt-1 text-lg font-bold text-gray-900" numberOfLines={2}>
@@ -350,7 +350,7 @@ export default function Map({ onBack, selectedSite }: { onBack?: () => void; sel
                   iframeRef.current.contentWindow.postMessage({ type: 'exitStreetView' }, '*');
                 }
               }}
-              className="absolute bottom-16 right-3 z-50 animate-bounce rounded-full bg-white p-3 shadow-lg">
+              className="absolute z-50 p-3 bg-white rounded-full shadow-lg bottom-16 right-3 animate-bounce">
               <Ionicons name="map" size={24} color="#10b981" />
             </TouchableOpacity>
           )}
@@ -360,7 +360,7 @@ export default function Map({ onBack, selectedSite }: { onBack?: () => void; sel
           {WebView ? (
             <WebView source={{ html: googleMapHtml }} style={{ flex: 1 }} />
           ) : (
-            <View className="flex-1 items-center justify-center">
+            <View className="items-center justify-center flex-1">
               <Text className="text-base font-semibold text-gray-500">Map not available</Text>
             </View>
           )}

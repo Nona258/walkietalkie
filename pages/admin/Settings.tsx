@@ -1,6 +1,7 @@
 import React, { useMemo, useState } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, Modal, Pressable, TextInput, Dimensions } from 'react-native';
+import { View, Text, ScrollView, TouchableOpacity, Modal, Pressable, TextInput, Dimensions, Alert } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import supabase, { getCurrentUser } from '../../utils/supabase';
 import '../../global.css';
 
 // ─── Design Tokens ─────────────────────────────────────────────────────────────
@@ -92,6 +93,35 @@ export default function Settings({ onNavigate, isMobileMenuOpen, setIsMobileMenu
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
+  const [changingPassword, setChangingPassword] = useState(false);
+  const [passwordError, setPasswordError] = useState<string | null>(null);
+
+  React.useEffect(() => {
+    const loadProfile = async () => {
+      try {
+        const user = await getCurrentUser();
+        if (user) {
+          setFullName(user.user_metadata?.full_name || 'Admin User');
+          setEmail(user.email || '');
+          return;
+        }
+      } catch (err) {
+        console.error('Failed to load admin profile:', err);
+      }
+
+      try {
+        const {
+          data: { user },
+        } = await supabase.auth.getUser();
+        setFullName(user?.user_metadata?.full_name || 'Admin User');
+        setEmail(user?.email || '');
+      } catch (err) {
+        console.error('Fallback load profile failed:', err);
+      }
+    };
+
+    loadProfile();
+  }, []);
 
   const initials = useMemo(
     () =>
@@ -105,10 +135,80 @@ export default function Settings({ onNavigate, isMobileMenuOpen, setIsMobileMenu
     [fullName]
   );
 
-  const handleSave = () => {
-    setIsEditMode(false);
-    setIsSaved(true);
-    setTimeout(() => setIsSaved(false), 2500);
+  const handleSave = async () => {
+    setPasswordError(null);
+
+    const wantsPasswordChange = !!(
+      currentPassword.trim() ||
+      newPassword.trim() ||
+      confirmPassword.trim()
+    );
+
+    if (wantsPasswordChange) {
+      if (!currentPassword.trim()) {
+        setPasswordError('Please enter your current password');
+        return;
+      }
+      if (!newPassword.trim()) {
+        setPasswordError('Please enter a new password');
+        return;
+      }
+      if (newPassword.length < 6) {
+        setPasswordError('New password must be at least 6 characters');
+        return;
+      }
+      if (newPassword !== confirmPassword) {
+        setPasswordError('New passwords do not match');
+        return;
+      }
+    }
+
+    if (wantsPasswordChange) {
+      setChangingPassword(true);
+    }
+
+    try {
+      if (wantsPasswordChange) {
+        const { error: signInError } = await supabase.auth.signInWithPassword({
+          email,
+          password: currentPassword,
+        });
+
+        if (signInError) {
+          setPasswordError('Current password is incorrect');
+          setChangingPassword(false);
+          return;
+        }
+
+        const { error: updateError } = await supabase.auth.updateUser({
+          password: newPassword,
+        });
+
+        if (updateError) {
+          console.error('Password update error:', updateError);
+          Alert.alert('Error', updateError.message || 'Failed to change password');
+          setChangingPassword(false);
+          return;
+        }
+
+        Alert.alert('Success', 'Your password has been changed successfully.');
+        setCurrentPassword('');
+        setNewPassword('');
+        setConfirmPassword('');
+        setPasswordError(null);
+      }
+
+      setIsEditMode(false);
+      setIsSaved(true);
+      setTimeout(() => setIsSaved(false), 2500);
+    } catch (err: any) {
+      console.error('Save settings error:', err);
+      Alert.alert('Error', err.message || 'An error occurred while saving changes');
+    } finally {
+      if (wantsPasswordChange) {
+        setChangingPassword(false);
+      }
+    }
   };
 
   const handleCancel = () => {
@@ -147,7 +247,7 @@ export default function Settings({ onNavigate, isMobileMenuOpen, setIsMobileMenu
         </View>
 
         {/* ── Page Body ────────────────────────────────────────────────────── */}
-        <View className="px-5 py-4 lg:px-8 lg:py-6 w-full">
+        <View className="w-full px-5 py-4 lg:px-8 lg:py-6">
           <View className={`${isWebView ? 'flex-row' : 'flex-col'} items-stretch ${isWebView ? 'gap-5' : 'gap-4'}`}>
             {/* ── LEFT COLUMN — Profile Card ───────────────────────────────── */}
             <View className={isWebView ? 'w-[280px] shrink-0 self-stretch' : 'w-full'}>
@@ -232,6 +332,7 @@ export default function Settings({ onNavigate, isMobileMenuOpen, setIsMobileMenu
                     <View className="w-full gap-2.5">
                       <TouchableOpacity
                         onPress={handleSave}
+                        disabled={changingPassword}
                         className="w-full h-10 rounded-lg items-center justify-center flex-row bg-[#237227] gap-1.5"
                       >
                         <Ionicons name="checkmark-outline" size={16} color={COLORS.white} />
@@ -349,6 +450,9 @@ export default function Settings({ onNavigate, isMobileMenuOpen, setIsMobileMenu
                     placeholder={isEditMode ? 'Confirm new password' : '••••••••'}
                     secureTextEntry={isEditMode}
                   />
+                  {passwordError && (
+                    <Text className="text-xs text-red-500">{passwordError}</Text>
+                  )}
                 </View>
               </View>
             </View>

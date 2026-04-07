@@ -1,9 +1,11 @@
 import { StatusBar } from 'expo-status-bar';
 import { useState, useEffect, useRef } from 'react';
-import { View, ActivityIndicator } from 'react-native';
+import { View, ActivityIndicator, Platform } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as Linking from 'expo-linking';
 import SignIn from './pages/SignIn';
 import SignUp from './pages/SignUp';
+import ForgotPassword from './pages/ForgotPassword';
 import Dashboard from './pages/employee/Dashboard';
 import AdminDashboard from './pages/admin/Dashboard';
 import Contacts from './pages/employee/Contacts';
@@ -12,16 +14,20 @@ import Map from './pages/employee/Map';
 import Logs from './pages/employee/Logs';
 import Settings from './pages/employee/Settings';
 import EditProfile from './pages/employee/EditProfile';
+import ChangePassword from './pages/employee/ChangePassword';
 import Navbar from './components/Navbar';
 import TechnicalSupport from 'pages/admin/TechnicalSupport';
 import LiveLocationTracker from './components/LiveLocationTracker';
 import supabase, { getOrCreateConversation } from './utils/supabase';
 import { hasAcceptedEula, signOutUser } from './utils/eula';
+import SweetAlertModal from './components/SweetAlertModal';
 
 import './global.css';
 
 export default function App() {
-  const [currentPage, setCurrentPage] = useState<'signin' | 'signup' | 'dashboard'>('signin');
+  const [currentPage, setCurrentPage] = useState<
+    'signin' | 'signup' | 'forgot-password' | 'dashboard'
+  >('signin');
   const [activeTab, setActiveTab] = useState<string>('dashboard');
   const [selectedContact, setSelectedContact] = useState<any>(null);
   const [selectedSite, setSelectedSite] = useState<any>(null);
@@ -29,7 +35,25 @@ export default function App() {
   const [userRole, setUserRole] = useState<string>('employee');
   const [loading, setLoading] = useState(true);
   const [isInSignupFlow, setIsInSignupFlow] = useState(false);
+  const [isInRecoveryFlow, setIsInRecoveryFlow] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
+
+  const [globalAlertVisible, setGlobalAlertVisible] = useState(false);
+  const [globalAlertConfig, setGlobalAlertConfig] = useState({
+    title: '',
+    message: '',
+    type: 'info' as 'success' | 'error' | 'warning' | 'info',
+    confirmText: 'OK',
+    onConfirm: () => setGlobalAlertVisible(false),
+  });
+
+  const goToWebRoot = () => {
+    if (Platform.OS !== 'web') return;
+    try {
+      // Ensure the browser URL returns to http://localhost:8081/ (root)
+      Linking.openURL(Linking.createURL('/'));
+    } catch {}
+  };
 
   // Walkie-talkie recording refs
   const wtMediaRecorderRef = useRef<any>(null);
@@ -47,6 +71,16 @@ export default function App() {
         const { data } = await supabase.auth.getSession();
         if (data?.session?.user) {
           const sessionUser = data.session.user;
+
+          // During password recovery, we must not redirect away from the reset screen
+          // (e.g., due to EULA / approval gates). The recovery link itself is the gate.
+          if (isInRecoveryFlow) {
+            setUser(sessionUser);
+            setUserRole(sessionUser.user_metadata?.role || 'employee');
+            setCurrentPage('forgot-password');
+            return;
+          }
+
           // Fetch role/approval from the database first (more reliable than user_metadata)
           let role = sessionUser.user_metadata?.role || 'employee';
           let isApproved = role === 'admin';
@@ -115,11 +149,13 @@ export default function App() {
             setCurrentPage('signin');
           }
         } else {
-          setCurrentPage('signin');
+          // If the user is in the recovery flow, keep them on the reset screen even
+          // without a session so they can request a new email.
+          if (!isInRecoveryFlow) setCurrentPage('signin');
         }
       } catch (error) {
         console.error('Error checking auth session:', error);
-        setCurrentPage('signin');
+        if (!isInRecoveryFlow) setCurrentPage('signin');
       } finally {
         setLoading(false);
       }
@@ -149,6 +185,148 @@ export default function App() {
         window.removeEventListener('beforeunload', handleBeforeUnload);
       }
     };
+  }, [isInRecoveryFlow]);
+
+  useEffect(() => {
+    const parseParams = (url: string): Record<string, string> => {
+      const out: Record<string, string> = {};
+
+      const readPart = (part: string) => {
+        const p = (part || '').replace(/^\?/, '').replace(/^#/, '');
+        if (!p) return;
+        const sp = new URLSearchParams(p);
+        sp.forEach((v, k) => {
+          out[k] = v;
+        });
+      };
+
+      const qIndex = url.indexOf('?');
+      const hIndex = url.indexOf('#');
+
+      if (qIndex >= 0) {
+        const end = hIndex >= 0 ? hIndex : url.length;
+        readPart(url.slice(qIndex + 1, end));
+      }
+      if (hIndex >= 0) {
+        readPart(url.slice(hIndex + 1));
+      }
+
+      return out;
+    };
+
+    const handleIncomingUrl = async (url: string) => {
+      if (!url) return;
+
+      const parsed = Linking.parse(url);
+      const path = (parsed?.path || '').toLowerCase();
+      const params = parseParams(url);
+
+      const accessToken = params['access_token'];
+      const refreshToken = params['refresh_token'];
+      const type = params['type'];
+      const code = params['code'];
+      const errorCode = (params['error_code'] || '').toLowerCase();
+      const errorDescription = (params['error_description'] || '').toLowerCase();
+      const error = (params['error'] || '').toLowerCase();
+
+      // When a recovery link is expired/invalid, Supabase often redirects back to the
+      // redirect URL with error params instead of tokens.
+      const isExpiredRecoveryLink =
+        errorCode === 'otp_expired' ||
+        errorDescription.includes('expired') ||
+        errorDescription.includes('invalid') ||
+        (error === 'access_denied' && (errorCode || errorDescription));
+
+      if (isExpiredRecoveryLink) {
+        setIsInSignupFlow(false);
+        setIsInRecoveryFlow(false);
+        setCurrentPage('signin');
+        goToWebRoot();
+        setGlobalAlertConfig({
+          title: 'Link Expired',
+          message: 'This password reset link has expired. Please request a new one.',
+          type: 'warning',
+          confirmText: 'OK',
+          onConfirm: () => setGlobalAlertVisible(false),
+        });
+        setGlobalAlertVisible(true);
+        return;
+      }
+
+      // Supabase password recovery links include tokens in the URL fragment.
+      if (type === 'recovery' && accessToken && refreshToken) {
+        try {
+          await supabase.auth.setSession({ access_token: accessToken, refresh_token: refreshToken });
+        } catch (e: any) {
+          console.error('Failed to set recovery session from deep link:', e);
+          setIsInSignupFlow(false);
+          setIsInRecoveryFlow(false);
+          setCurrentPage('signin');
+          goToWebRoot();
+          setGlobalAlertConfig({
+            title: 'Link Expired',
+            message: 'This password reset link has expired. Please request a new one.',
+            type: 'warning',
+            confirmText: 'OK',
+            onConfirm: () => setGlobalAlertVisible(false),
+          });
+          setGlobalAlertVisible(true);
+          return;
+        }
+        setIsInSignupFlow(false);
+        setIsInRecoveryFlow(true);
+        setCurrentPage('forgot-password');
+        return;
+      }
+
+      // Some Supabase configurations use PKCE and send a one-time `code`.
+      if (code) {
+        try {
+          const { error } = await supabase.auth.exchangeCodeForSession(code);
+          if (error) throw error;
+        } catch (e: any) {
+          console.error('Failed to exchange code for session:', e);
+          setIsInSignupFlow(false);
+          setIsInRecoveryFlow(false);
+          setCurrentPage('signin');
+          goToWebRoot();
+          setGlobalAlertConfig({
+            title: 'Link Expired',
+            message: 'This password reset link has expired. Please request a new one.',
+            type: 'warning',
+            confirmText: 'OK',
+            onConfirm: () => setGlobalAlertVisible(false),
+          });
+          setGlobalAlertVisible(true);
+          return;
+        }
+        setIsInSignupFlow(false);
+        setIsInRecoveryFlow(true);
+        setCurrentPage('forgot-password');
+        return;
+      }
+
+      // If user just opened the route without tokens, still navigate there.
+      if (path.includes('forgot-password')) {
+        setIsInSignupFlow(false);
+        setIsInRecoveryFlow(false);
+        setCurrentPage('forgot-password');
+      }
+    };
+
+    Linking.getInitialURL()
+      .then((url) => {
+        if (url) handleIncomingUrl(url);
+      })
+      .catch(() => {});
+
+    const sub = Linking.addEventListener('url', (event) => {
+      handleIncomingUrl(event.url);
+    });
+
+    return () => {
+      sub?.remove?.();
+    };
   }, []);
 
   // Separate effect for auth state changes
@@ -171,7 +349,7 @@ export default function App() {
         }
       } else {
         setUser(null);
-        if (!isInSignupFlow) {
+        if (!isInSignupFlow && !isInRecoveryFlow) {
           setCurrentPage('signin');
         }
         setActiveTab('dashboard');
@@ -181,7 +359,7 @@ export default function App() {
     return () => {
       subscription?.subscription.unsubscribe();
     };
-  }, [isInSignupFlow]);
+  }, [isInSignupFlow, isInRecoveryFlow]);
 
   // Save active tab to storage whenever it changes
   useEffect(() => {
@@ -357,6 +535,11 @@ export default function App() {
             setIsInSignupFlow(true);
             setCurrentPage('signup');
           }}
+          onNavigateToForgotPassword={() => {
+            setIsInSignupFlow(false);
+            setIsInRecoveryFlow(false);
+            setCurrentPage('forgot-password');
+          }}
           onSignInSuccess={async (signedInUser) => {
             setUser(signedInUser);
             let role = signedInUser.user_metadata?.role || 'employee';
@@ -367,9 +550,18 @@ export default function App() {
                 .eq('id', signedInUser.id)
                 .single();
               if (dbUser?.role) role = dbUser.role;
-            } catch (_) {}
+            } catch (err) {}
             setUserRole(role);
             setCurrentPage('dashboard');
+          }}
+        />
+      ) : currentPage === 'forgot-password' ? (
+        <ForgotPassword
+          onBackToSignIn={() => {
+            setIsInSignupFlow(false);
+            setIsInRecoveryFlow(false);
+            setCurrentPage('signin');
+            goToWebRoot();
           }}
         />
       ) : currentPage === 'signup' ? (
@@ -427,7 +619,10 @@ export default function App() {
             <Contacts onContactSelected={setSelectedContact} />
           ) : activeTab === 'sites' ? (
             <Sites
-              onMapPress={() => setActiveTab('map')}
+              onMapPress={() => {
+                setSelectedSite(null);
+                setActiveTab('map');
+              }}
               onSiteMapPress={(site) => {
                 setSelectedSite(site);
                 setActiveTab('map');
@@ -453,9 +648,12 @@ export default function App() {
               }}
               onBackToDashboard={() => setActiveTab('dashboard')}
               onNavigateToEditProfile={() => setActiveTab('edit-profile')}
+              onNavigateToChangePassword={() => setActiveTab('change-password')}
             />
           ) : activeTab === 'edit-profile' ? (
             <EditProfile onBackToSettings={() => setActiveTab('settings')} />
+          ) : activeTab === 'change-password' ? (
+            <ChangePassword onBackToSettings={() => setActiveTab('settings')} />
           ) : (
             <Dashboard
               onLogout={async () => {
@@ -471,6 +669,7 @@ export default function App() {
             !selectedContact &&
             activeTab !== 'settings' &&
             activeTab !== 'edit-profile' &&
+            activeTab !== 'change-password' &&
             activeTab !== 'map' && (
               <Navbar
                 activeTab={activeTab}
@@ -485,6 +684,15 @@ export default function App() {
           )}
         </View>
       )}
+
+      <SweetAlertModal
+        visible={globalAlertVisible}
+        title={globalAlertConfig.title}
+        message={globalAlertConfig.message}
+        type={globalAlertConfig.type}
+        confirmText={globalAlertConfig.confirmText}
+        onConfirm={globalAlertConfig.onConfirm}
+      />
       <StatusBar style="dark" />
     </View>
   );

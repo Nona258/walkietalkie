@@ -134,20 +134,20 @@ export default function Logs() {
       <StatusBar barStyle="dark-content" />
 
       {/* Header Section - Clean White */}
-      <View className="bg-white px-6 pt-12 pb-4 border-b border-gray-100">
+      <View className="px-6 pt-12 pb-4 bg-white border-b border-gray-100">
         <View className="mb-6">
-          <Text className="text-3xl font-bold text-black">Logs</Text>
-          <Text className="mt-1 text-sm text-gray-500">All work activity</Text>
+          <Text className="text-3xl font-extrabold text-gray-900">Logs</Text>
+          <Text className="mt-1 text-xs font-semibold text-green-600">All work activity</Text>
         </View>
 
         {/* Search Bar - Light Gray Border */}
-        <View className="flex-row items-center rounded-xl bg-gray-50 border border-gray-200 px-4 py-3">
+        <View className="flex-row items-center px-4 py-3 rounded-xl bg-gray-50">
           <Ionicons name="search-outline" size={18} color="#6B7280" />
           <TextInput
             placeholder="Search activity..."
             value={searchText}
             onChangeText={setSearchText}
-            className="ml-3 flex-1 text-base text-gray-900"
+            className="flex-1 ml-3 text-base text-gray-900"
             placeholderTextColor="#9CA3AF"
           />
           {searchText.length > 0 && (
@@ -165,7 +165,7 @@ export default function Logs() {
         showsVerticalScrollIndicator={false}
       >
         {loading ? (
-          <View className="flex-1 items-center justify-center py-16">
+          <View className="items-center justify-center flex-1 py-16">
             <ActivityIndicator size="large" color="#1F2937" />
             <Text className="mt-4 text-base text-gray-500">Loading activity...</Text>
           </View>
@@ -174,51 +174,32 @@ export default function Logs() {
             {filteredLogs.map((log) => (
               <TouchableOpacity
                 key={log.id}
-                className="bg-white rounded-2xl border border-gray-200 p-5 shadow-sm"
+                className="mb-4 bg-white rounded-2xl border border-gray-200 p-4 shadow-sm shadow-gray-200 active:scale-[0.98]"
                 activeOpacity={0.7}
               >
-                {/* Header with Title and Status */}
-                <View className="mb-4 flex-row items-start justify-between">
-                  <View className="flex-1">
-                    <Text className="text-lg font-bold text-gray-900">{log.siteName}</Text>
-                    <View className="mt-1.5 flex-row items-center gap-1">
-                      <Ionicons name="location-outline" size={14} color="#6B7280" />
-                      <Text className="text-sm text-gray-600">{log.location}</Text>
-                    </View>
-                  </View>
+                {/* Header row: site name + status */}
+                <View className="flex-row items-center justify-between mb-3">
+                  <Text className="flex-1 text-lg font-bold text-gray-900">{log.siteName}</Text>
                   <View
-                    className={`rounded-full px-3 py-1 ${
-                      log.status === 'active'
-                        ? 'bg-gray-100'
-                        : 'bg-gray-100'
+                    className={`h-2.5 w-2.5 rounded-full ${
+                      log.status === 'completed' ? 'bg-gray-400' : 'bg-green-500'
                     }`}
-                  >
-                    <Text
-                      className={`text-xs font-semibold ${
-                        log.status === 'active' ? 'text-gray-700' : 'text-gray-700'
-                      }`}
-                    >
-                      {log.status === 'active' ? 'Active' : 'Completed'}
-                    </Text>
-                  </View>
+                  />
                 </View>
 
-                {/* Time Section - Clean */}
-                <View className="mb-4 flex-row items-center justify-between bg-gray-50 p-3 rounded-xl">
-                  <View className="flex-1">
-                    <Text className="text-xs font-medium text-gray-500">Time In</Text>
-                    <Text className="mt-0.5 text-lg font-semibold text-gray-900">{log.timeIn}</Text>
+                <Text className="mb-2 text-xs font-semibold text-gray-500">{log.location}</Text>
+
+                <View className="flex-row items-center gap-4 mb-3">
+                  <View>
+                    <Text className="text-xs font-semibold text-gray-500">Time In</Text>
+                    <Text className="text-base font-bold text-gray-900">{log.timeIn}</Text>
                   </View>
-
-                  <View className="h-8 w-px bg-gray-300" />
-
-                  <View className="flex-1 pl-4">
-                    <Text className="text-xs font-medium text-gray-500">
+                  <View className="w-px h-8 bg-gray-200" />
+                  <View>
+                    <Text className="text-xs font-semibold text-gray-500">
                       {log.timeOut ? 'Time Out' : 'Status'}
                     </Text>
-                    <Text className={`mt-0.5 text-lg font-semibold ${
-                      log.status === 'active' ? 'text-gray-600' : 'text-gray-900'
-                    }`}>
+                    <Text className={`text-base font-bold ${log.status === 'active' ? 'text-green-700' : 'text-gray-700'}`}>
                       {log.timeOut || (log.status === 'active' ? 'In Progress' : '--')}
                     </Text>
                   </View>
@@ -226,16 +207,13 @@ export default function Logs() {
 
                 {/* Footer */}
                 <View className="flex-row items-center justify-between">
-                  <View className="flex-row items-center gap-1">
+                  <View className="flex-row items-center gap-2">
                     <Ionicons name="calendar-outline" size={14} color="#6B7280" />
-                    <Text className="text-sm text-gray-500">{log.date}</Text>
+                    <Text className="text-sm font-semibold text-gray-700">{log.date}</Text>
                   </View>
-
-                  {log.duration && (
-                    <View className="rounded-md bg-gray-100 px-2 py-1">
-                      <Text className="text-xs font-medium text-gray-700">{log.duration}</Text>
-                    </View>
-                  )}
+                  <View className="px-2 py-1 rounded-md bg-green-50">
+                    <Text className="text-xs font-semibold text-green-700">{log.duration || '0h 00m'}</Text>
+                  </View>
                 </View>
               </TouchableOpacity>
             ))}
