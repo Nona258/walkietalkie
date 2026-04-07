@@ -10,16 +10,15 @@ interface Props {
 
 export default function TechnicalSupport({ onNavigate }: Props) {
   const [items, setItems] = useState<any[]>([]);
-  const [loading, setLoading] = useState(false);
   const [imageModalVisible, setImageModalVisible] = useState(false);
-  const [activeImage, setActiveImage] = useState<string | null>(null);
+  const [activeEvidenceUrls, setActiveEvidenceUrls] = useState<string[]>([]);
+  const [activeEvidenceIndex, setActiveEvidenceIndex] = useState(0);
 
   useEffect(() => {
     fetchIssues();
   }, []);
 
   const fetchIssues = async () => {
-    setLoading(true);
     try {
       const { data, error } = await supabase
         .from('sites')
@@ -75,7 +74,6 @@ export default function TechnicalSupport({ onNavigate }: Props) {
       console.warn('Failed to fetch technical issues', e);
       setItems([]);
     } finally {
-      setLoading(false);
     }
   };
 
@@ -120,15 +118,12 @@ export default function TechnicalSupport({ onNavigate }: Props) {
                   {Array.isArray(s.evidence_urls) && s.evidence_urls.length > 0 ? (
                     <TouchableOpacity
                       onPress={() => {
-                        setActiveImage(String(s.evidence_urls[0]));
+                        setActiveEvidenceUrls((s.evidence_urls || []).map((u: any) => String(u)));
+                        setActiveEvidenceIndex(0);
                         setImageModalVisible(true);
                       }}
-                      className="h-10 w-10 items-center justify-center rounded-md overflow-hidden border border-stone-200">
-                      <Image
-                        source={{ uri: String(s.evidence_urls[0]) }}
-                        className="h-10 w-10"
-                        onError={(e) => console.warn(`Failed to load image: ${s.evidence_urls[0]}`, e.nativeEvent.error)}
-                      />
+                      className="h-10 w-10 items-center justify-center rounded-md border border-stone-200 bg-white">
+                      <Ionicons name="eye-outline" size={18} color="#0f172a" />
                     </TouchableOpacity>
                   ) : (
                     <Text className="text-xs text-stone-400">—</Text>
@@ -143,15 +138,69 @@ export default function TechnicalSupport({ onNavigate }: Props) {
           <View className="flex-1 items-center justify-center bg-black/60 p-6">
             <View className="w-full max-w-3xl rounded-2xl bg-white p-4">
               <View className="flex-row items-center justify-between">
-                <Text className="text-base font-bold text-stone-900">Evidence Photo</Text>
-                <Pressable onPress={() => setImageModalVisible(false)}>
+                <Text className="text-base font-bold text-stone-900">
+                  Evidence Photos
+                </Text>
+                <Pressable
+                  onPress={() => {
+                    setImageModalVisible(false);
+                    setActiveEvidenceUrls([]);
+                    setActiveEvidenceIndex(0);
+                  }}>
                   <Ionicons name="close" size={20} color="#111827" />
                 </Pressable>
               </View>
-              {activeImage ? (
-                <Image source={{ uri: activeImage }} className="mt-4 h-96 w-full rounded-md" />
+              {activeEvidenceUrls.length > 0 ? (
+                <>
+                  <Text className="mt-2 text-xs text-stone-500">
+                    {Math.min(activeEvidenceIndex + 1, activeEvidenceUrls.length)} / {activeEvidenceUrls.length}
+                  </Text>
+                  <Image
+                    source={{ uri: activeEvidenceUrls[Math.min(activeEvidenceIndex, activeEvidenceUrls.length - 1)] }}
+                    className="mt-3 h-96 w-full rounded-md bg-stone-100"
+                    resizeMode="contain"
+                    onError={(e) =>
+                      console.warn(
+                        `Failed to load image: ${activeEvidenceUrls[Math.min(activeEvidenceIndex, activeEvidenceUrls.length - 1)]}`,
+                        e.nativeEvent.error
+                      )
+                    }
+                  />
+                  <View className="mt-4 flex-row items-center justify-between">
+                    <TouchableOpacity
+                      disabled={activeEvidenceIndex <= 0}
+                      onPress={() => setActiveEvidenceIndex((i) => Math.max(0, i - 1))}
+                      className={`h-10 w-24 flex-row items-center justify-center rounded-md border border-stone-200 ${
+                        activeEvidenceIndex <= 0 ? 'bg-stone-100' : 'bg-white'
+                      }`}>
+                      <Ionicons name="chevron-back" size={18} color={activeEvidenceIndex <= 0 ? '#a8a29e' : '#0f172a'} />
+                      <Text className={`ml-1 text-sm ${activeEvidenceIndex <= 0 ? 'text-stone-400' : 'text-stone-800'}`}>Prev</Text>
+                    </TouchableOpacity>
+
+                    <TouchableOpacity
+                      disabled={activeEvidenceIndex >= activeEvidenceUrls.length - 1}
+                      onPress={() =>
+                        setActiveEvidenceIndex((i) => Math.min(activeEvidenceUrls.length - 1, i + 1))
+                      }
+                      className={`h-10 w-24 flex-row items-center justify-center rounded-md border border-stone-200 ${
+                        activeEvidenceIndex >= activeEvidenceUrls.length - 1 ? 'bg-stone-100' : 'bg-white'
+                      }`}>
+                      <Text
+                        className={`mr-1 text-sm ${
+                          activeEvidenceIndex >= activeEvidenceUrls.length - 1 ? 'text-stone-400' : 'text-stone-800'
+                        }`}>
+                        Next
+                      </Text>
+                      <Ionicons
+                        name="chevron-forward"
+                        size={18}
+                        color={activeEvidenceIndex >= activeEvidenceUrls.length - 1 ? '#a8a29e' : '#0f172a'}
+                      />
+                    </TouchableOpacity>
+                  </View>
+                </>
               ) : (
-                <Text className="mt-4 text-sm text-stone-500">No image</Text>
+                <Text className="mt-4 text-sm text-stone-500">No evidence images</Text>
               )}
             </View>
           </View>

@@ -58,8 +58,6 @@ function buildLiveLocationMapHtml(
     longitude: s.longitude,
     company_id: s.company_id,
     branch_id: s.branch_id,
-    start_time: s.start_time,
-    end_time: s.end_time,
     date_accomplished: s.date_accomplished,
     members_count: s.members_count,
   }));
@@ -428,8 +426,6 @@ const LIVE_LOCATION_MAP_HTML = `
                   '<div><b>Status:</b> ' + fmt(site.status) + '</div>' +
                   '<div><b>Company ID:</b> ' + fmt(site.company_id) + '</div>' +
                   '<div><b>Branch ID:</b> ' + fmt(site.branch_id) + '</div>' +
-                  '<div><b>Start Time:</b> ' + fmt(site.start_time) + '</div>' +
-                  '<div><b>End Time:</b> ' + fmt(site.end_time) + '</div>' +
                   '<div><b>Date Accomplished:</b> ' + fmt(site.date_accomplished) + '</div>' +
                   '<div><b>Members Count:</b> ' + fmt(site.members_count) + '</div>' +
                   '<div><b>Latitude:</b> ' + fmt(site.latitude) + '</div>' +
@@ -1065,8 +1061,6 @@ interface Site {
   longitude?: number | null;
   company_id?: number | null;
   branch_id?: number | null;
-  start_time?: string | null;
-  end_time?: string | null;
   date_accomplished?: string | null;
   members_count?: number | null;
   location?: string;

@@ -15,7 +15,6 @@ import supabase from '../utils/supabase';
 import { acceptEula, signOutUser } from '../utils/eula';
 import SweetAlertModal from '../components/SweetAlertModal';
 import EulaModal from '../components/EulaModal';
-import '../global.css';
 
 interface SignUpProps {
   onNavigateToSignIn: () => void;
@@ -24,10 +23,6 @@ interface SignUpProps {
 
 function getPasswordValidationError(value: string): string | null {
   const password = value ?? '';
-
-  if (password === '123456') return 'Password cannot be 123456.';
-
-  if (password.length < 8) return 'Password must be at least 8 characters.';
   if (!/[A-Za-z]/.test(password)) return 'Password must include at least one letter.';
   if (!/\d/.test(password)) return 'Password must include at least one number.';
   if (!/[^A-Za-z0-9]/.test(password))

@@ -23,8 +23,6 @@ export interface Site {
   longitude: number | null;
   status: 'Active' | 'Pending' | 'Finished';
   securityLevel: 'high' | 'medium' | 'low';
-  startTime?: string | null;
-  endTime?: string | null;
   membersCount?: number | null;
   createdAt?: string | null;
   finishedAt?: string | null;

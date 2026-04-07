@@ -19,6 +19,71 @@ import supabase, {
 } from '../../utils/supabase';
 import '../../global.css';
 
+const EMPLOYEE_ROLES = ['admin', 'employee'] as const;
+type EmployeeRole = (typeof EMPLOYEE_ROLES)[number];
+
+function normalizeEmployeeRole(role: unknown): EmployeeRole {
+  return EMPLOYEE_ROLES.includes(role as EmployeeRole) ? (role as EmployeeRole) : 'employee';
+}
+
+function getPasswordValidationError(value: string): string | null {
+  const password = value ?? '';
+  if (!/[A-Za-z]/.test(password)) return 'Password must include at least one letter.';
+  if (!/\d/.test(password)) return 'Password must include at least one number.';
+  if (!/[^A-Za-z0-9]/.test(password))
+    return 'Password must include at least one special character (e.g. ! @ #).';
+
+  return null;
+}
+
+type PasswordStrength = {
+  label: 'Low' | 'Medium' | 'Strong';
+  percent: number;
+  barClassName: string;
+  textClassName: string;
+};
+
+function getPasswordStrength(value: string): PasswordStrength {
+  const password = value ?? '';
+
+  const hasLetter = /[A-Za-z]/.test(password);
+  const hasNumber = /\d/.test(password);
+  const hasSpecial = /[^A-Za-z0-9]/.test(password);
+  const len = password.length;
+
+  let score = 0;
+  if (len >= 8) score += 1;
+  if (len >= 12) score += 1;
+  if (hasLetter) score += 1;
+  if (hasNumber) score += 1;
+  if (hasSpecial) score += 1;
+
+  if (score >= 5) {
+    return {
+      label: 'Strong',
+      percent: 100,
+      barClassName: 'bg-emerald-500',
+      textClassName: 'text-emerald-600',
+    };
+  }
+
+  if (score >= 3) {
+    return {
+      label: 'Medium',
+      percent: 66,
+      barClassName: 'bg-yellow-500',
+      textClassName: 'text-yellow-600',
+    };
+  }
+
+  return {
+    label: 'Low',
+    percent: password.length ? 33 : 0,
+    barClassName: 'bg-red-500',
+    textClassName: 'text-red-500',
+  };
+}
+
 interface EmployeesProps {
   onNavigate: (
     page:
@@ -35,7 +100,7 @@ interface EmployeesProps {
 
 export default function Employees({ onNavigate, pendingUsersCount = 0 }: EmployeesProps) {
   // UI-only states for visibility
-  const [isDrawerOpen, setIsDrawerOpen] = useState(false);
+  const [, setIsDrawerOpen] = useState(false);
   const [isNotificationOpen, setIsNotificationOpen] = useState(false);
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
@@ -65,6 +130,17 @@ export default function Employees({ onNavigate, pendingUsersCount = 0 }: Employe
   });
   const [addingEmployee, setAddingEmployee] = useState(false);
   const [formErrors, setFormErrors] = useState<Record<string, string>>({});
+
+  const passwordStrength = getPasswordStrength(addForm.password);
+
+  const clearFormError = (key: string) => {
+    setFormErrors((prev) => {
+      if (!prev[key]) return prev;
+      const next = { ...prev };
+      delete next[key];
+      return next;
+    });
+  };
 
   // Edit employee state
   const [editEmployee, setEditEmployee] = useState<any>(null);
@@ -182,8 +258,13 @@ export default function Employees({ onNavigate, pendingUsersCount = 0 }: Employe
     if (!addForm.email.trim()) errors.email = 'Email is required';
     else if (!/\S+@\S+\.\S+/.test(addForm.email)) errors.email = 'Email is invalid';
     if (!addForm.password) errors.password = 'Password is required';
-    else if (addForm.password.length < 6) errors.password = 'Password must be at least 6 characters';
-    if (addForm.password !== addForm.confirmPassword) errors.confirmPassword = 'Passwords do not match';
+    else {
+      const passwordError = getPasswordValidationError(addForm.password);
+      if (passwordError) errors.password = passwordError;
+    }
+    if (!addForm.confirmPassword) errors.confirmPassword = 'Confirm password is required';
+    else if (addForm.password !== addForm.confirmPassword)
+      errors.confirmPassword = 'Passwords do not match';
     if (!addForm.role) errors.role = 'Role is required';
     setFormErrors(errors);
     return Object.keys(errors).length === 0;
@@ -213,9 +294,8 @@ export default function Employees({ onNavigate, pendingUsersCount = 0 }: Employe
       const userId = authData.user.id;
 
       // 2. Insert or update the user in public.users with is_approved = true
-      const { error: upsertError } = await supabase
-        .from('users')
-        .upsert({
+      const { error: upsertError } = await supabase.from('users').upsert(
+        {
           id: userId,
           email: addForm.email.trim(),
           full_name: addForm.fullName.trim(),
@@ -224,7 +304,9 @@ export default function Employees({ onNavigate, pendingUsersCount = 0 }: Employe
           is_approved: true,
           created_at: new Date().toISOString(),
           updated_at: new Date().toISOString(),
-        }, { onConflict: 'id' });
+        },
+        { onConflict: 'id' }
+      );
 
       if (upsertError) throw upsertError;
 
@@ -255,7 +337,7 @@ export default function Employees({ onNavigate, pendingUsersCount = 0 }: Employe
     setEditForm({
       fullName: employee.full_name || '',
       phoneNumber: employee.phone_number || '',
-      role: employee.role || 'employee',
+      role: normalizeEmployeeRole(employee.role),
       email: employee.email || '',
     });
     setEditErrors({});
@@ -266,6 +348,8 @@ export default function Employees({ onNavigate, pendingUsersCount = 0 }: Employe
     const errors: Record<string, string> = {};
     if (!editForm.fullName.trim()) errors.fullName = 'Full name is required';
     if (!editForm.role) errors.role = 'Role is required';
+    else if (!EMPLOYEE_ROLES.includes(editForm.role as EmployeeRole))
+      errors.role = 'Invalid role selected';
     setEditErrors(errors);
     return Object.keys(errors).length === 0;
   };
@@ -597,7 +681,9 @@ export default function Employees({ onNavigate, pendingUsersCount = 0 }: Employe
             }}>
             <View className="border-b border-stone-100 px-6 pb-4 pt-6">
               <Text className="text-base font-bold text-stone-900">Add New Employee</Text>
-              <Text className="mt-0.5 text-xs text-stone-400">Fill in the employee details below</Text>
+              <Text className="mt-0.5 text-xs text-stone-400">
+                Fill in the employee details below
+              </Text>
             </View>
 
             <ScrollView className="max-h-[70%] px-6 py-5">
@@ -610,9 +696,14 @@ export default function Employees({ onNavigate, pendingUsersCount = 0 }: Employe
                   placeholderTextColor="#a8a29e"
                   className="rounded-lg border border-stone-100 bg-stone-50 px-3 py-2.5 text-sm text-stone-900"
                   value={addForm.fullName}
-                  onChangeText={(text) => setAddForm({ ...addForm, fullName: text })}
+                  onChangeText={(text) => {
+                    setAddForm({ ...addForm, fullName: text });
+                    clearFormError('fullName');
+                  }}
                 />
-                {formErrors.fullName && <Text className="mt-1 text-xs text-red-500">{formErrors.fullName}</Text>}
+                {formErrors.fullName && (
+                  <Text className="mt-1 text-xs text-red-500">{formErrors.fullName}</Text>
+                )}
               </View>
 
               <View className="mb-4">
@@ -626,9 +717,14 @@ export default function Employees({ onNavigate, pendingUsersCount = 0 }: Employe
                   keyboardType="email-address"
                   className="rounded-lg border border-stone-100 bg-stone-50 px-3 py-2.5 text-sm text-stone-900"
                   value={addForm.email}
-                  onChangeText={(text) => setAddForm({ ...addForm, email: text })}
+                  onChangeText={(text) => {
+                    setAddForm({ ...addForm, email: text });
+                    clearFormError('email');
+                  }}
                 />
-                {formErrors.email && <Text className="mt-1 text-xs text-red-500">{formErrors.email}</Text>}
+                {formErrors.email && (
+                  <Text className="mt-1 text-xs text-red-500">{formErrors.email}</Text>
+                )}
               </View>
 
               <View className="mb-4">
@@ -653,11 +749,32 @@ export default function Employees({ onNavigate, pendingUsersCount = 0 }: Employe
                   placeholder="••••••••"
                   placeholderTextColor="#a8a29e"
                   secureTextEntry
-                  className="rounded-lg border border-stone-100 bg-stone-50 px-3 py-2.5 text-sm text-stone-900"
+                  className={`rounded-lg border bg-stone-50 px-3 py-2.5 text-sm text-stone-900 ${
+                    formErrors.password ? 'border-red-300' : 'border-stone-100'
+                  }`}
                   value={addForm.password}
-                  onChangeText={(text) => setAddForm({ ...addForm, password: text })}
+                  onChangeText={(text) => {
+                    setAddForm({ ...addForm, password: text });
+                    clearFormError('password');
+                    clearFormError('confirmPassword');
+                  }}
                 />
-                {formErrors.password && <Text className="mt-1 text-xs text-red-500">{formErrors.password}</Text>}
+                {!!addForm.password && (
+                  <View className="mt-2">
+                    <View className="h-2 w-full overflow-hidden rounded-full bg-stone-200">
+                      <View
+                        className={`h-2 ${passwordStrength.barClassName}`}
+                        style={{ width: `${passwordStrength.percent}%` }}
+                      />
+                    </View>
+                    <Text className={`mt-1 text-xs ${passwordStrength.textClassName}`}>
+                      Password strength: {passwordStrength.label}
+                    </Text>
+                  </View>
+                )}
+                {formErrors.password && (
+                  <Text className="mt-1 text-xs text-red-500">{formErrors.password}</Text>
+                )}
               </View>
 
               <View className="mb-4">
@@ -668,11 +785,18 @@ export default function Employees({ onNavigate, pendingUsersCount = 0 }: Employe
                   placeholder="••••••••"
                   placeholderTextColor="#a8a29e"
                   secureTextEntry
-                  className="rounded-lg border border-stone-100 bg-stone-50 px-3 py-2.5 text-sm text-stone-900"
+                  className={`rounded-lg border bg-stone-50 px-3 py-2.5 text-sm text-stone-900 ${
+                    formErrors.confirmPassword ? 'border-red-300' : 'border-stone-100'
+                  }`}
                   value={addForm.confirmPassword}
-                  onChangeText={(text) => setAddForm({ ...addForm, confirmPassword: text })}
+                  onChangeText={(text) => {
+                    setAddForm({ ...addForm, confirmPassword: text });
+                    clearFormError('confirmPassword');
+                  }}
                 />
-                {formErrors.confirmPassword && <Text className="mt-1 text-xs text-red-500">{formErrors.confirmPassword}</Text>}
+                {formErrors.confirmPassword && (
+                  <Text className="mt-1 text-xs text-red-500">{formErrors.confirmPassword}</Text>
+                )}
               </View>
 
               <View className="mb-4">
@@ -696,7 +820,9 @@ export default function Employees({ onNavigate, pendingUsersCount = 0 }: Employe
                     </TouchableOpacity>
                   ))}
                 </View>
-                {formErrors.role && <Text className="mt-1 text-xs text-red-500">{formErrors.role}</Text>}
+                {formErrors.role && (
+                  <Text className="mt-1 text-xs text-red-500">{formErrors.role}</Text>
+                )}
               </View>
             </ScrollView>
 
@@ -760,7 +886,9 @@ export default function Employees({ onNavigate, pendingUsersCount = 0 }: Employe
                   value={editForm.fullName}
                   onChangeText={(text) => setEditForm({ ...editForm, fullName: text })}
                 />
-                {editErrors.fullName && <Text className="mt-1 text-xs text-red-500">{editErrors.fullName}</Text>}
+                {editErrors.fullName && (
+                  <Text className="mt-1 text-xs text-red-500">{editErrors.fullName}</Text>
+                )}
               </View>
 
               <View className="mb-4">
@@ -796,7 +924,7 @@ export default function Employees({ onNavigate, pendingUsersCount = 0 }: Employe
                   Role *
                 </Text>
                 <View className="flex-row rounded-lg border border-stone-100 bg-stone-50 p-1">
-                  {['admin', 'employee', 'technician'].map((role) => (
+                  {EMPLOYEE_ROLES.map((role) => (
                     <TouchableOpacity
                       key={role}
                       className={`flex-1 items-center rounded-md py-2 ${
@@ -812,7 +940,9 @@ export default function Employees({ onNavigate, pendingUsersCount = 0 }: Employe
                     </TouchableOpacity>
                   ))}
                 </View>
-                {editErrors.role && <Text className="mt-1 text-xs text-red-500">{editErrors.role}</Text>}
+                {editErrors.role && (
+                  <Text className="mt-1 text-xs text-red-500">{editErrors.role}</Text>
+                )}
               </View>
             </ScrollView>
 
@@ -854,9 +984,7 @@ export default function Employees({ onNavigate, pendingUsersCount = 0 }: Employe
             }}>
             <View className="border-b border-stone-100 px-6 pb-4 pt-6">
               <Text className="text-base font-bold text-stone-900">Delete Employee</Text>
-              <Text className="mt-0.5 text-xs text-stone-400">
-                This action cannot be undone.
-              </Text>
+              <Text className="mt-0.5 text-xs text-stone-400">This action cannot be undone.</Text>
             </View>
 
             <View className="px-6 py-5">
@@ -872,10 +1000,12 @@ export default function Employees({ onNavigate, pendingUsersCount = 0 }: Employe
                 </View>
               </View>
               <Text className="mb-4 text-sm text-stone-600">
-                Are you sure you want to delete this employee? They will be permanently removed from the system.
+                Are you sure you want to delete this employee? They will be permanently removed from
+                the system.
               </Text>
               <Text className="mb-4 text-xs text-stone-500">
-                Note: After deletion, please also remove this user from Supabase Auth to prevent sign-up issues.
+                Note: After deletion, please also remove this user from Supabase Auth to prevent
+                sign-up issues.
               </Text>
             </View>
 
@@ -969,7 +1099,9 @@ export default function Employees({ onNavigate, pendingUsersCount = 0 }: Employe
                 </View>
               ) : (
                 pendingUsers.map((user: any) => (
-                  <View key={user.id} className="mb-6 last:mb-0 rounded-xl border border-stone-100 p-4">
+                  <View
+                    key={user.id}
+                    className="mb-6 rounded-xl border border-stone-100 p-4 last:mb-0">
                     <View className="mb-3">
                       <Text className="text-base font-bold text-stone-900">
                         {user.full_name || 'N/A'}

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   View,
   Text,
@@ -23,8 +23,6 @@ interface Site {
   company?: string; // optional company name (used when attaching display data)
   branch?: string;  // optional branch name (used when attaching display data)
   branch_id?: string | number | null;
-  start_time?: string | null;
-  end_time?: string | null;
   members_count?: number | null;
   status: string;
   leader_id?: string | null;
@@ -102,8 +100,6 @@ export default function SiteManagement({ onNavigate }: SiteManagementProps) {
   const [siteName, setSiteName] = useState('');
   const [company, setCompany] = useState(''); // stores company id
   const [branch_id, setBranchId] = useState('');
-  const [startTime, setStartTime] = useState('');
-  const [endTime, setEndTime] = useState('');
   const [membersCount, setMembersCount] = useState('');
   const [latitude, setLatitude] = useState<number | null>(null);
   const [longitude, setLongitude] = useState<number | null>(null);
@@ -151,7 +147,7 @@ export default function SiteManagement({ onNavigate }: SiteManagementProps) {
         } else {
           urls = [raw];
         }
-      } catch (e) {
+      } catch {
         urls = [raw];
       }
     } else if (Array.isArray(raw)) {
@@ -215,7 +211,78 @@ export default function SiteManagement({ onNavigate }: SiteManagementProps) {
   const viewStreetRef = useRef<any>(null);
   const editMapRef = useRef<any>(null);
   const editMarkerRef = useRef<any>(null);
-  const [showMapControls, setShowMapControls] = useState(false);
+  
+
+  const GOOGLE_MAPS_API_KEY =
+    process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY ?? 'AIzaSyAq58TD9PputxnK8ZO9jRUX8KW7bTuPTPQ';
+
+  const googleMapsLoadPromiseRef = useRef<Promise<void> | null>(null);
+
+  const ensureGoogleMapsLoaded = useCallback((): Promise<void> => {
+    if (typeof window === 'undefined') {
+      return Promise.reject(new Error('Google Maps requires a browser environment'));
+    }
+
+    const w = window as any;
+    if (w.google && w.google.maps) {
+      return Promise.resolve();
+    }
+
+    if (!GOOGLE_MAPS_API_KEY) {
+      return Promise.reject(new Error('Missing Google Maps API key'));
+    }
+
+    if (googleMapsLoadPromiseRef.current) {
+      return googleMapsLoadPromiseRef.current;
+    }
+
+    googleMapsLoadPromiseRef.current = new Promise<void>((resolve, reject) => {
+      const scriptId = 'gmaps-script';
+      const existing = document.getElementById(scriptId) as HTMLScriptElement | null;
+
+      const finish = () => {
+        const ok = (window as any).google && (window as any).google.maps;
+        if (ok) resolve();
+        else reject(new Error('Google Maps script loaded but google.maps is missing'));
+      };
+
+      const startPollingFallback = () => {
+        const interval = window.setInterval(() => {
+          if ((window as any).google && (window as any).google.maps) {
+            clearInterval(interval);
+            resolve();
+          }
+        }, 100);
+        window.setTimeout(() => clearInterval(interval), 15000);
+      };
+
+      if (existing) {
+        // If load already happened before we attached listeners, polling will catch it.
+        const onLoad = () => finish();
+        const onError = () => reject(new Error('Failed to load Google Maps script'));
+        existing.addEventListener('load', onLoad);
+        existing.addEventListener('error', onError);
+        startPollingFallback();
+        return;
+      }
+
+      const script = document.createElement('script');
+      script.id = scriptId;
+      script.src = `https://maps.googleapis.com/maps/api/js?key=${GOOGLE_MAPS_API_KEY}&libraries=places`;
+      script.async = true;
+      script.defer = true;
+      script.onload = () => finish();
+      script.onerror = () => reject(new Error('Failed to load Google Maps script'));
+      document.head.appendChild(script);
+
+      startPollingFallback();
+    }).catch((err) => {
+      googleMapsLoadPromiseRef.current = null;
+      throw err;
+    });
+
+    return googleMapsLoadPromiseRef.current;
+  }, [GOOGLE_MAPS_API_KEY]);
 
   // Fetch sites from Supabase (active or archived)
   const fetchSites = async () => {
@@ -298,204 +365,216 @@ export default function SiteManagement({ onNavigate }: SiteManagementProps) {
 
   // Initialize Google Maps when add modal opens
   useEffect(() => {
-    if (isAddModalOpen && typeof window !== 'undefined') {
-      const API_KEY = 'AIzaSyAq58TD9PputxnK8ZO9jRUX8KW7bTuPTPQ';
+    if (!isAddModalOpen || typeof window === 'undefined') return;
 
-      const loadGoogleMaps = () => {
-        if ((window as any).google && (window as any).google.maps) {
-          initMap();
-          return;
-        }
+    let cancelled = false;
 
-        const scriptId = 'gmaps-script';
-        if (document.getElementById(scriptId)) {
-          const check = setInterval(() => {
-            if ((window as any).google && (window as any).google.maps) {
-              clearInterval(check);
-              initMap();
-            }
-          }, 100);
-          return;
-        }
+    const initMap = (attempt = 0) => {
+      const g = (window as any).google;
+      if (!g || !g.maps || mapRef.current) return;
 
-        const script = document.createElement('script');
-        script.id = scriptId;
-        script.src = `https://maps.googleapis.com/maps/api/js?key=${API_KEY}&libraries=places`;
-        script.async = true;
-        script.defer = true;
-        script.onload = () => initMap();
-        document.head.appendChild(script);
-      };
+      const mapEl = document.getElementById('leaflet-map');
+      if (!mapEl) {
+        if (attempt < 25 && !cancelled) setTimeout(() => initMap(attempt + 1), 50);
+        return;
+      }
 
-      const initMap = () => {
-        const g = (window as any).google;
-        if (!g || !g.maps || mapRef.current) return;
+      const iliganLat = 8.228;
+      const iliganLng = 124.2452;
 
-        const iliganLat = 8.228;
-        const iliganLng = 124.2452;
+      const map = new g.maps.Map(mapEl, {
+        center: { lat: iliganLat, lng: iliganLng },
+        zoom: 13,
+        mapTypeControl: false,
+        zoomControl: true,
+      });
 
-        const mapEl = document.getElementById('leaflet-map');
-        if (!mapEl) return;
+      const marker = new g.maps.Marker({
+        position: { lat: iliganLat, lng: iliganLng },
+        map,
+        draggable: true,
+      });
 
-        const map = new g.maps.Map(mapEl, {
-          center: { lat: iliganLat, lng: iliganLng },
-          zoom: 13,
-          mapTypeControl: false,
-          zoomControl: true,
-        });
+      setLatitude(iliganLat);
+      setLongitude(iliganLng);
 
-        const marker = new g.maps.Marker({
-          position: { lat: iliganLat, lng: iliganLng },
-          map,
-          draggable: true,
-        });
+      marker.addListener('dragend', (e: any) => {
+        const pos = e.latLng;
+        setLatitude(pos.lat());
+        setLongitude(pos.lng());
+        setErrors((prev) => ({ ...prev, location: undefined }));
+        setLastUpdateSource('map');
+      });
 
-        setLatitude(iliganLat);
-        setLongitude(iliganLng);
+      map.addListener('click', (e: any) => {
+        const pos = e.latLng;
+        marker.setPosition(pos);
+        setLatitude(pos.lat());
+        setLongitude(pos.lng());
+        setErrors((prev) => ({ ...prev, location: undefined }));
+        setLastUpdateSource('map');
+      });
 
-        marker.addListener('dragend', (e: any) => {
-          const pos = e.latLng;
-          setLatitude(pos.lat());
-          setLongitude(pos.lng());
-          setErrors((prev) => ({ ...prev, location: undefined }));
-          setLastUpdateSource('map');
-        });
+      mapRef.current = map;
+      markerRef.current = marker;
 
-        map.addListener('click', (e: any) => {
-          const pos = e.latLng;
-          marker.setPosition(pos);
-          setLatitude(pos.lat());
-          setLongitude(pos.lng());
-          setErrors((prev) => ({ ...prev, location: undefined }));
-          setLastUpdateSource('map');
-        });
+      // If the modal is still animating, a resize helps Google Maps render correctly.
+      setTimeout(() => {
+        try {
+          g.maps.event.trigger(map, 'resize');
+          map.setCenter({ lat: iliganLat, lng: iliganLng });
+        } catch {}
+      }, 0);
+    };
 
-        mapRef.current = map;
-        markerRef.current = marker;
-      };
-
-      loadGoogleMaps();
-    }
+    ensureGoogleMapsLoaded()
+      .then(() => {
+        if (!cancelled) setTimeout(() => initMap(0), 50);
+      })
+      .catch((e) => console.error('Failed to load Google Maps:', e));
 
     return () => {
+      cancelled = true;
       if (markerRef.current) {
         try {
           markerRef.current.setMap(null);
-        } catch (e) {}
+        } catch {}
         markerRef.current = null;
       }
       if (mapRef.current) {
         mapRef.current = null;
       }
     };
-  }, [isAddModalOpen]);
+  }, [isAddModalOpen, ensureGoogleMapsLoaded]);
 
   // Attach Google Places Autocomplete to Site Name input when Add modal opens
   useEffect(() => {
     if (!isAddModalOpen || typeof window === 'undefined') return;
-    const g = (window as any).google;
-    if (!g || !g.maps || !g.maps.places) return;
 
-    const input = document.getElementById('site-name-input');
-    if (!input) return;
+    let cancelled = false;
+    let autocomplete: any = null;
 
-    const autocomplete = new g.maps.places.Autocomplete(input, {
-      types: ['geocode', 'establishment'],
-    });
-    const listener = () => {
-      const place = autocomplete.getPlace();
-      if (!place) return;
-      if (place.formatted_address || place.name) {
-        const name = place.formatted_address || place.name || '';
-        setSiteName(name);
-      }
-      if (place.geometry && place.geometry.location) {
-        const lat = place.geometry.location.lat();
-        const lng = place.geometry.location.lng();
-        setLatitude(lat);
-        setLongitude(lng);
-        setErrors((prev) => ({ ...prev, location: undefined }));
-        setLastUpdateSource('places');
-        try {
-          if (markerRef.current && markerRef.current.setPosition) {
-            markerRef.current.setPosition({ lat, lng });
+    ensureGoogleMapsLoaded()
+      .then(() => {
+        if (cancelled) return;
+        const g = (window as any).google;
+        if (!g || !g.maps || !g.maps.places) return;
+
+        const input = document.getElementById('site-name-input');
+        if (!input) return;
+
+        autocomplete = new g.maps.places.Autocomplete(input, {
+          types: ['geocode', 'establishment'],
+        });
+
+        const listener = () => {
+          const place = autocomplete.getPlace();
+          if (!place) return;
+          if (place.formatted_address || place.name) {
+            const name = place.formatted_address || place.name || '';
+            setSiteName(name);
           }
-          if (mapRef.current && mapRef.current.setCenter) {
-            mapRef.current.setCenter({ lat, lng });
+          if (place.geometry && place.geometry.location) {
+            const lat = place.geometry.location.lat();
+            const lng = place.geometry.location.lng();
+            setLatitude(lat);
+            setLongitude(lng);
+            setErrors((prev) => ({ ...prev, location: undefined }));
+            setLastUpdateSource('places');
+            try {
+              if (markerRef.current && markerRef.current.setPosition) {
+                markerRef.current.setPosition({ lat, lng });
+              }
+              if (mapRef.current && mapRef.current.setCenter) {
+                mapRef.current.setCenter({ lat, lng });
+              }
+            } catch {}
           }
-        } catch (e) {}
-      }
-    };
+        };
 
-    autocomplete.addListener('place_changed', listener);
+        autocomplete.addListener('place_changed', listener);
+      })
+      .catch((e) => console.error('Failed to init Places autocomplete:', e));
 
     return () => {
+      cancelled = true;
       try {
-        g.maps.event.clearInstanceListeners(autocomplete);
+        const g = (window as any).google;
+        if (g && g.maps && autocomplete) {
+          g.maps.event.clearInstanceListeners(autocomplete);
+        }
       } catch {}
     };
-  }, [isAddModalOpen]);
+  }, [isAddModalOpen, ensureGoogleMapsLoaded]);
 
   // Initialize edit map using Google Maps
   useEffect(() => {
-    if (isEditModalOpen && selectedSite && typeof window !== 'undefined') {
-      const initEditMap = () => {
-        const g = (window as any).google;
-        if (!g || !g.maps || editMapRef.current) return;
+    if (!isEditModalOpen || !selectedSite || typeof window === 'undefined') return;
 
-        const lat = selectedSite.latitude || 8.228;
-        const lng = selectedSite.longitude || 124.2452;
+    let cancelled = false;
 
-        const mapEl = document.getElementById('edit-leaflet-map');
-        if (!mapEl) return;
+    const initEditMap = (attempt = 0) => {
+      const g = (window as any).google;
+      if (!g || !g.maps || editMapRef.current) return;
 
-        const map = new g.maps.Map(mapEl, {
-          center: { lat, lng },
-          zoom: 13,
-          mapTypeControl: false,
-          zoomControl: true,
-        });
+      const lat = selectedSite.latitude || 8.228;
+      const lng = selectedSite.longitude || 124.2452;
 
-        const marker = new g.maps.Marker({
-          position: { lat, lng },
-          map,
-          draggable: true,
-        });
-
-        marker.addListener('dragend', (e: any) => {
-          const pos = e.latLng;
-          setLatitude(pos.lat());
-          setLongitude(pos.lng());
-          setErrors((prev) => ({ ...prev, location: undefined }));
-          setLastUpdateSource('map');
-        });
-
-        map.addListener('click', (e: any) => {
-          const pos = e.latLng;
-          marker.setPosition(pos);
-          setLatitude(pos.lat());
-          setLongitude(pos.lng());
-          setErrors((prev) => ({ ...prev, location: undefined }));
-          setLastUpdateSource('map');
-        });
-
-        editMapRef.current = map;
-        editMarkerRef.current = marker;
-      };
-
-      if ((window as any).google && (window as any).google.maps) {
-        setTimeout(initEditMap, 100);
-      } else {
-        const check = setInterval(() => {
-          if ((window as any).google && (window as any).google.maps) {
-            clearInterval(check);
-            initEditMap();
-          }
-        }, 100);
+      const mapEl = document.getElementById('edit-leaflet-map');
+      if (!mapEl) {
+        if (attempt < 25 && !cancelled) setTimeout(() => initEditMap(attempt + 1), 50);
+        return;
       }
-    }
+
+      const map = new g.maps.Map(mapEl, {
+        center: { lat, lng },
+        zoom: 13,
+        mapTypeControl: false,
+        zoomControl: true,
+      });
+
+      const marker = new g.maps.Marker({
+        position: { lat, lng },
+        map,
+        draggable: true,
+      });
+
+      marker.addListener('dragend', (e: any) => {
+        const pos = e.latLng;
+        setLatitude(pos.lat());
+        setLongitude(pos.lng());
+        setErrors((prev) => ({ ...prev, location: undefined }));
+        setLastUpdateSource('map');
+      });
+
+      map.addListener('click', (e: any) => {
+        const pos = e.latLng;
+        marker.setPosition(pos);
+        setLatitude(pos.lat());
+        setLongitude(pos.lng());
+        setErrors((prev) => ({ ...prev, location: undefined }));
+        setLastUpdateSource('map');
+      });
+
+      editMapRef.current = map;
+      editMarkerRef.current = marker;
+
+      setTimeout(() => {
+        try {
+          g.maps.event.trigger(map, 'resize');
+          map.setCenter({ lat, lng });
+        } catch {}
+      }, 0);
+    };
+
+    ensureGoogleMapsLoaded()
+      .then(() => {
+        if (!cancelled) setTimeout(() => initEditMap(0), 50);
+      })
+      .catch((e) => console.error('Failed to load Google Maps:', e));
 
     return () => {
+      cancelled = true;
       if (editMarkerRef.current) {
         try {
           editMarkerRef.current.setMap(null);
@@ -506,80 +585,100 @@ export default function SiteManagement({ onNavigate }: SiteManagementProps) {
         editMapRef.current = null;
       }
     };
-  }, [isEditModalOpen, selectedSite]);
+  }, [isEditModalOpen, selectedSite, ensureGoogleMapsLoaded]);
 
   // Attach Google Places Autocomplete to Site Name input in Edit modal
   useEffect(() => {
     if (!isEditModalOpen || typeof window === 'undefined') return;
-    const g = (window as any).google;
-    if (!g || !g.maps || !g.maps.places) return;
 
-    const input = document.getElementById('edit-site-name-input');
-    if (!input) return;
+    let cancelled = false;
+    let autocomplete: any = null;
 
-    const autocomplete = new g.maps.places.Autocomplete(input, {
-      types: ['geocode', 'establishment'],
-    });
-    const listener = () => {
-      const place = autocomplete.getPlace();
-      if (!place) return;
-      if (place.formatted_address || place.name) {
-        const name = place.formatted_address || place.name || '';
-        setSiteName(name);
-      }
-      if (place.geometry && place.geometry.location) {
-        const lat = place.geometry.location.lat();
-        const lng = place.geometry.location.lng();
-        setLatitude(lat);
-        setLongitude(lng);
-        setErrors((prev) => ({ ...prev, location: undefined }));
-        setLastUpdateSource('places');
-        try {
-          if (editMarkerRef.current && editMarkerRef.current.setPosition) {
-            editMarkerRef.current.setPosition({ lat, lng });
+    ensureGoogleMapsLoaded()
+      .then(() => {
+        if (cancelled) return;
+        const g = (window as any).google;
+        if (!g || !g.maps || !g.maps.places) return;
+
+        const input = document.getElementById('edit-site-name-input');
+        if (!input) return;
+
+        autocomplete = new g.maps.places.Autocomplete(input, {
+          types: ['geocode', 'establishment'],
+        });
+
+        const listener = () => {
+          const place = autocomplete.getPlace();
+          if (!place) return;
+          if (place.formatted_address || place.name) {
+            const name = place.formatted_address || place.name || '';
+            setSiteName(name);
           }
-          if (editMapRef.current && editMapRef.current.setCenter) {
-            editMapRef.current.setCenter({ lat, lng });
+          if (place.geometry && place.geometry.location) {
+            const lat = place.geometry.location.lat();
+            const lng = place.geometry.location.lng();
+            setLatitude(lat);
+            setLongitude(lng);
+            setErrors((prev) => ({ ...prev, location: undefined }));
+            setLastUpdateSource('places');
+            try {
+              if (editMarkerRef.current && editMarkerRef.current.setPosition) {
+                editMarkerRef.current.setPosition({ lat, lng });
+              }
+              if (editMapRef.current && editMapRef.current.setCenter) {
+                editMapRef.current.setCenter({ lat, lng });
+              }
+            } catch {}
           }
-        } catch (e) {}
-      }
-    };
+        };
 
-    autocomplete.addListener('place_changed', listener);
+        autocomplete.addListener('place_changed', listener);
+      })
+      .catch((e) => console.error('Failed to init Places autocomplete:', e));
 
     return () => {
+      cancelled = true;
       try {
-        g.maps.event.clearInstanceListeners(autocomplete);
+        const g = (window as any).google;
+        if (g && g.maps && autocomplete) {
+          g.maps.event.clearInstanceListeners(autocomplete);
+        }
       } catch {}
     };
-  }, [isEditModalOpen]);
+  }, [isEditModalOpen, ensureGoogleMapsLoaded]);
 
   // Initialize view location map using Google Maps
   useEffect(() => {
-    if (isViewLocationOpen && selectedSite && typeof window !== 'undefined') {
-      const initViewMap = () => {
-        const g = (window as any).google;
-        if (!g || !g.maps || viewMapRef.current) return;
+    if (!isViewLocationOpen || !selectedSite || typeof window === 'undefined') return;
 
-        const lat = selectedSite.latitude || 8.228;
-        const lng = selectedSite.longitude || 124.2452;
+    let cancelled = false;
 
-        const mapEl = document.getElementById('view-leaflet-map');
-        if (!mapEl) return;
+    const initViewMap = (attempt = 0) => {
+      const g = (window as any).google;
+      if (!g || !g.maps || viewMapRef.current) return;
 
-        const map = new g.maps.Map(mapEl, {
-          center: { lat, lng },
-          zoom: 15,
-          mapTypeControl: false,
-          zoomControl: false,
-          fullscreenControl: true,
-        });
+      const lat = selectedSite.latitude || 8.228;
+      const lng = selectedSite.longitude || 124.2452;
 
-        const marker = new g.maps.Marker({
-          position: { lat, lng },
-          map,
-          draggable: false,
-        });
+      const mapEl = document.getElementById('view-leaflet-map');
+      if (!mapEl) {
+        if (attempt < 25 && !cancelled) setTimeout(() => initViewMap(attempt + 1), 50);
+        return;
+      }
+
+      const map = new g.maps.Map(mapEl, {
+        center: { lat, lng },
+        zoom: 15,
+        mapTypeControl: false,
+        zoomControl: false,
+        fullscreenControl: true,
+      });
+
+      const marker = new g.maps.Marker({
+        position: { lat, lng },
+        map,
+        draggable: false,
+      });
 
         const companyName = selectedSite.company || 
           (companyOptions.find((opt) => String(opt.id) === String(selectedSite.company_id))?.name || 
@@ -599,29 +698,32 @@ export default function SiteManagement({ onNavigate }: SiteManagementProps) {
         const infoWindow = new g.maps.InfoWindow({ content: infoContent });
         infoWindow.open(map, marker);
 
-        viewMapRef.current = map;
-        viewMarkerRef.current = marker;
-        try {
-          viewTrafficRef.current = new g.maps.TrafficLayer();
-          viewTransitRef.current = new g.maps.TransitLayer();
-          viewBikeRef.current = new g.maps.BicyclingLayer();
-          viewStreetRef.current = map.getStreetView();
-        } catch (e) {}
-      };
+      viewMapRef.current = map;
+      viewMarkerRef.current = marker;
+      try {
+        viewTrafficRef.current = new g.maps.TrafficLayer();
+        viewTransitRef.current = new g.maps.TransitLayer();
+        viewBikeRef.current = new g.maps.BicyclingLayer();
+        viewStreetRef.current = map.getStreetView();
+      } catch {}
 
-      if ((window as any).google && (window as any).google.maps) {
-        setTimeout(initViewMap, 100);
-      } else {
-        const check = setInterval(() => {
-          if ((window as any).google && (window as any).google.maps) {
-            clearInterval(check);
-            initViewMap();
-          }
-        }, 100);
-      }
-    }
+      // Fix blank map when opening inside a modal (container sizes settle after animation)
+      setTimeout(() => {
+        try {
+          g.maps.event.trigger(map, 'resize');
+          map.setCenter({ lat, lng });
+        } catch {}
+      }, 0);
+    };
+
+    ensureGoogleMapsLoaded()
+      .then(() => {
+        if (!cancelled) setTimeout(() => initViewMap(0), 50);
+      })
+      .catch((e) => console.error('Failed to load Google Maps:', e));
 
     return () => {
+      cancelled = true;
       if (viewMarkerRef.current) {
         try {
           viewMarkerRef.current.setMap(null);
@@ -632,7 +734,7 @@ export default function SiteManagement({ onNavigate }: SiteManagementProps) {
         viewMapRef.current = null;
       }
     };
-  }, [isViewLocationOpen, selectedSite, branchOptions, companyOptions]);
+  }, [isViewLocationOpen, selectedSite, branchOptions, companyOptions, ensureGoogleMapsLoaded]);
 
   // Validation functions
   const validateField = (fieldName: string, value: string): string | undefined => {
@@ -707,12 +809,6 @@ export default function SiteManagement({ onNavigate }: SiteManagementProps) {
       case 'branch_id':
         setBranchId(value);
         break;
-      case 'startTime':
-        setStartTime(value);
-        break;
-      case 'endTime':
-        setEndTime(value);
-        break;
       case 'membersCount':
         setMembersCount(value);
         break;
@@ -748,7 +844,7 @@ export default function SiteManagement({ onNavigate }: SiteManagementProps) {
               }
             }
           );
-        } catch (e) {
+        } catch {
           setSiteName('Site');
           setLastUpdateSource(null);
         }
@@ -771,8 +867,6 @@ export default function SiteManagement({ onNavigate }: SiteManagementProps) {
     setSiteName('');
     setCompany('');
     setBranchId('');
-    setStartTime('');
-    setEndTime('');
     setMembersCount('');
     setLeaderId('');
     setLatitude(null);
@@ -915,8 +1009,6 @@ export default function SiteManagement({ onNavigate }: SiteManagementProps) {
           name: safeName,
           company_id: company || null,
           branch_id: branch_id || null,
-          start_time: startTime || null,
-          end_time: endTime || null,
           members_count: membersCount ? parseInt(membersCount) : null,
           leader_id: selectedLeaderId,
           status: selectedLeaderId ? 'Pending' : 'Active',
@@ -979,8 +1071,6 @@ export default function SiteManagement({ onNavigate }: SiteManagementProps) {
     setSiteName(site.name);
     setCompany((site as any).company_id ? String((site as any).company_id) : '');
     setBranchId(site.branch_id ? String(site.branch_id) : '');
-    setStartTime((site as any).start_time || '');
-    setEndTime((site as any).end_time || '');
     setMembersCount(site.members_count ? String(site.members_count) : '');
     setLatitude(site.latitude || null);
     setLongitude(site.longitude || null);
@@ -1003,8 +1093,6 @@ export default function SiteManagement({ onNavigate }: SiteManagementProps) {
         name: safeName,
         company_id: company || null,
         branch_id: branch_id || null,
-        start_time: startTime || null,
-        end_time: endTime || null,
         members_count: membersCount ? parseInt(membersCount) : null,
         latitude: latitude,
         longitude: longitude,
@@ -1757,42 +1845,6 @@ export default function SiteManagement({ onNavigate }: SiteManagementProps) {
               </View>
 
               <View className="-mx-2 flex-row flex-wrap">
-                <View className="mb-4 w-1/2 px-2">
-                  <Text className="mb-2 text-sm font-medium text-stone-700">Start Time</Text>
-                  <div className={`rounded-xl border bg-white px-4 py-3`}>
-                    <input
-                      type="time"
-                      style={{
-                        width: '100%',
-                        background: 'transparent',
-                        border: 'none',
-                        fontSize: 16,
-                        color: '#44403c',
-                      }}
-                      value={startTime}
-                      onChange={(e) => handleFieldChange('startTime', e.target.value)}
-                    />
-                  </div>
-                </View>
-
-                <View className="mb-4 w-1/2 px-2">
-                  <Text className="mb-2 text-sm font-medium text-stone-700">End Time</Text>
-                  <div className={`rounded-xl border bg-white px-4 py-3`}>
-                    <input
-                      type="time"
-                      style={{
-                        width: '100%',
-                        background: 'transparent',
-                        border: 'none',
-                        fontSize: 16,
-                        color: '#44403c',
-                      }}
-                      value={endTime}
-                      onChange={(e) => handleFieldChange('endTime', e.target.value)}
-                    />
-                  </div>
-                </View>
-
                 <View className="mb-4 w-full px-2">
                   <Text className="mb-2 text-sm font-medium text-stone-700">
                     Employees to Deploy <Text className="text-red-500">*</Text>
@@ -2070,42 +2122,6 @@ export default function SiteManagement({ onNavigate }: SiteManagementProps) {
               </View>
 
               <View className="-mx-2 flex-row flex-wrap">
-                <View className="mb-4 w-1/2 px-2">
-                  <Text className="mb-2 text-sm font-medium text-stone-700">Start Time</Text>
-                  <div className={`rounded-xl border bg-white px-4 py-3`}>
-                    <input
-                      type="time"
-                      style={{
-                        width: '100%',
-                        background: 'transparent',
-                        border: 'none',
-                        fontSize: 16,
-                        color: '#44403c',
-                      }}
-                      value={startTime}
-                      onChange={(e) => handleFieldChange('startTime', e.target.value)}
-                    />
-                  </div>
-                </View>
-
-                <View className="mb-4 w-1/2 px-2">
-                  <Text className="mb-2 text-sm font-medium text-stone-700">End Time</Text>
-                  <div className={`rounded-xl border bg-white px-4 py-3`}>
-                    <input
-                      type="time"
-                      style={{
-                        width: '100%',
-                        background: 'transparent',
-                        border: 'none',
-                        fontSize: 16,
-                        color: '#44403c',
-                      }}
-                      value={endTime}
-                      onChange={(e) => handleFieldChange('endTime', e.target.value)}
-                    />
-                  </div>
-                </View>
-
                 <View className="mb-4 w-full px-2">
                   <Text className="mb-2 text-sm font-medium text-stone-700">
                     Employees to Deploy
@@ -2288,14 +2304,6 @@ export default function SiteManagement({ onNavigate }: SiteManagementProps) {
                         <Text style={{ fontSize: 13, color: '#6b7280', marginTop: 2 }}>
                           {selectedSite.branch || 'No branch selected'}
                         </Text>
-                        {((selectedSite as any).start_time || (selectedSite as any).end_time) && (
-                          <Text
-                            style={{
-                              fontSize: 13,
-                              color: '#6b7280',
-                              marginTop: 2,
-                            }}>{`Hours: ${(selectedSite as any).start_time || ''} — ${(selectedSite as any).end_time || ''}`}</Text>
-                        )}
                         {(selectedSite as any).members_count !== undefined && (
                           <Text
                             style={{

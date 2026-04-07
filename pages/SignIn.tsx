@@ -17,10 +17,28 @@ import '../global.css';
 
 interface SignInProps {
   onNavigateToSignUp: () => void;
+  onNavigateToForgotPassword: () => void;
   onSignInSuccess: (user: any) => void;
 }
 
-export default function SignIn({ onNavigateToSignUp, onSignInSuccess }: SignInProps) {
+function getPasswordValidationError(value: string): string | null {
+  const password = value ?? '';
+
+  if (password === '123456') return 'Password cannot be 123456.';
+  if (password.length < 8) return 'Password must be at least 8 characters.';
+  if (!/[A-Za-z]/.test(password)) return 'Password must include at least one letter.';
+  if (!/\d/.test(password)) return 'Password must include at least one number.';
+  if (!/[^A-Za-z0-9]/.test(password))
+    return 'Password must include at least one special character (e.g. ! @ #).';
+
+  return null;
+}
+
+export default function SignIn({
+  onNavigateToSignUp,
+  onNavigateToForgotPassword,
+  onSignInSuccess,
+}: SignInProps) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -42,6 +60,12 @@ export default function SignIn({ onNavigateToSignUp, onSignInSuccess }: SignInPr
   const handleSignIn = async () => {
     if (!email || !password) {
       setError('Please fill in all fields');
+      return;
+    }
+
+    const passwordError = getPasswordValidationError(password);
+    if (passwordError) {
+      setError(passwordError);
       return;
     }
 
@@ -229,7 +253,10 @@ export default function SignIn({ onNavigateToSignUp, onSignInSuccess }: SignInPr
             ) : null}
 
             {/* Forgot Password */}
-            <TouchableOpacity className="mb-8 mt-2 self-end">
+            <TouchableOpacity
+              className="mb-8 mt-2 self-end"
+              onPress={onNavigateToForgotPassword}
+              disabled={loading}>
               <Text className="text-sm font-semibold text-[#10b981]">Forgot password?</Text>
             </TouchableOpacity>
 
