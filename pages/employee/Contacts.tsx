@@ -19,7 +19,8 @@ import {
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Ionicons } from '@expo/vector-icons';
-import supabase, { searchUsers, addContact } from '../../utils/supabase'; // adjust path to your supabase client
+import supabase, { searchUsers } from '../../utils/supabase';
+import { sendContactRequest, respondToContactRequest, getPendingContactRequests } from '../../utils/friendRequests';
 import Chat from './Chat';
 
 interface Contact {
@@ -211,11 +212,12 @@ export default function Contacts({ onContactSelected, currentUserId }: ContactsP
         console.warn('Failed to load my site/team chat:', (e as any)?.message || String(e));
       }
 
-      // 1. Fetch contacts from the `contacts` table (explicitly added contacts)
+      // 1. Fetch contacts from the `contacts` table (only friends)
       const { data: contactRows, error: contactsError } = await supabase
         .from('contacts')
-        .select('contact_id')
-        .eq('user_id', activeChatUserId);
+        .select('contact_id, status')
+        .eq('user_id', activeChatUserId)
+        .eq('status', 'friends');
 
       if (contactsError) console.warn('Error fetching contacts table:', contactsError);
 
@@ -824,13 +826,15 @@ export default function Contacts({ onContactSelected, currentUserId }: ContactsP
     }
     try {
       setAddingId(userId);
-      await addContact(userId);
-      Alert.alert('Contact added', 'User added to contacts');
-      // refresh contacts list
+      // Get current user
+      const { data: { user }, error: authError } = await supabase.auth.getUser();
+      if (authError || !user) throw new Error('Unable to get current user');
+      await sendContactRequest(user.id, userId);
+      Alert.alert('Contact request sent', 'A request has been sent. The user must accept to become friends.');
       fetchContacts();
       closeAddModal();
     } catch (err: any) {
-      Alert.alert('Add failed', err?.message || String(err));
+      Alert.alert('Request failed', err?.message || String(err));
     } finally {
       setAddingId(null);
     }

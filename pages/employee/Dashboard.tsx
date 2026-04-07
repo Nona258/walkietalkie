@@ -9,6 +9,7 @@ import {
   Modal,
   Pressable,
   ActivityIndicator,
+  Alert,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import supabase from '../../utils/supabase';
@@ -19,6 +20,7 @@ import {
   markMyNotificationsViewed,
   type AppNotification,
 } from '../../utils/notifications';
+import { respondToContactRequest } from '../../utils/friendRequests';
 
 type AttendanceRow = {
   id: number;
@@ -152,6 +154,7 @@ export default function Dashboard({
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
   const [notificationsLoading, setNotificationsLoading] = useState(false);
   const [unreadCount, setUnreadCount] = useState(0);
+  const [notifActionLoading, setNotifActionLoading] = useState<Record<number, boolean>>({});
 
   const loadNotifications = useCallback(async () => {
     setNotificationsLoading(true);
@@ -162,6 +165,28 @@ export default function Dashboard({
       setNotificationsLoading(false);
     }
   }, []);
+
+  const handleRespondToRequest = async (notificationId: number, senderId: string, accept: boolean) => {
+    if (!currentUserId) {
+      Alert.alert('Error', 'Unable to determine current user');
+      return;
+    }
+    setNotifActionLoading((s) => ({ ...s, [notificationId]: true }));
+    try {
+      await respondToContactRequest(senderId, currentUserId, accept);
+
+      // remove the notification row (best-effort)
+      await supabase.from('notification').delete().eq('id', notificationId);
+
+      // refresh
+      await Promise.all([loadNotifications(), loadUnreadCount()]);
+    } catch (e: any) {
+      console.error('Failed to respond to contact request:', e);
+      Alert.alert('Error', e?.message || String(e));
+    } finally {
+      setNotifActionLoading((s) => ({ ...s, [notificationId]: false }));
+    }
+  };
 
   const loadUnreadCount = useCallback(async () => {
     const count = await fetchMyUnreadNotificationCount();
@@ -672,19 +697,47 @@ export default function Dashboard({
                   </Text>
                 ) : (
                   <ScrollView showsVerticalScrollIndicator={false}>
-                    {notifications.map((n) => (
-                      <View
-                        key={String(n.id)}
-                        className="mb-3 rounded-xl border border-gray-100 bg-gray-50 p-3">
-                        <Text className="text-sm font-bold text-gray-900">
-                          {n.title || 'Notification'}
-                        </Text>
-                        <Text className="mt-1 text-xs text-gray-600">{n.body || ''}</Text>
-                        <Text className="mt-2 text-[11px] text-gray-400">
-                          {n.created_at ? new Date(n.created_at).toLocaleString() : ''}
-                        </Text>
-                      </View>
-                    ))}
+                    {notifications.map((n) => {
+                      const rawBody = n.body || '';
+                      const senderMatch = rawBody.match(/__sender_id__:(\S+)/);
+                      const senderId = senderMatch ? senderMatch[1] : null;
+                      const bodyWithoutMarker = rawBody.replace(/__sender_id__:\S+\n?/, '').trim();
+
+                      return (
+                        <View
+                          key={String(n.id)}
+                          className="mb-3 rounded-xl border border-gray-100 bg-gray-50 p-3">
+                          <Text className="text-sm font-bold text-gray-900">
+                            {n.title || 'Notification'}
+                          </Text>
+                          <Text className="mt-1 text-xs text-gray-600">{bodyWithoutMarker}</Text>
+                          <Text className="mt-2 text-[11px] text-gray-400">
+                            {n.created_at ? new Date(n.created_at).toLocaleString() : ''}
+                          </Text>
+
+                          {senderId && n.title === 'Contact Request' && (
+                            <View className="mt-3 flex-row gap-2">
+                              <TouchableOpacity
+                                className="flex-1 rounded-xl bg-green-600 py-2"
+                                onPress={() => void handleRespondToRequest(Number(n.id), senderId, true)}
+                                disabled={Boolean(notifActionLoading[Number(n.id)])}>
+                                <Text className="text-center text-sm font-semibold text-white">
+                                  {notifActionLoading[Number(n.id)] ? 'Processing...' : 'Accept'}
+                                </Text>
+                              </TouchableOpacity>
+                              <TouchableOpacity
+                                className="flex-1 rounded-xl bg-gray-100 py-2"
+                                onPress={() => void handleRespondToRequest(Number(n.id), senderId, false)}
+                                disabled={Boolean(notifActionLoading[Number(n.id)])}>
+                                <Text className="text-center text-sm font-semibold text-gray-700">
+                                  {notifActionLoading[Number(n.id)] ? 'Processing...' : 'Deny'}
+                                </Text>
+                              </TouchableOpacity>
+                            </View>
+                          )}
+                        </View>
+                      );
+                    })}
                   </ScrollView>
                 )}
               </View>
