@@ -30,6 +30,7 @@ export default function SignUp({ onNavigateToSignIn, onSignUpSuccess }: SignUpPr
   const [confirmPassword, setConfirmPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const [agreeToTerms, setAgreeToTerms] = useState(false);
   const [loading, setLoading] = useState(false);
   const [showEulaModal, setShowEulaModal] = useState(false);
   const [eulaLoading, setEulaLoading] = useState(false);
@@ -53,6 +54,7 @@ export default function SignUp({ onNavigateToSignIn, onSignUpSuccess }: SignUpPr
     if (!password) return Alert.alert('Error', 'Please enter a password.');
     if (password.length < 6) return Alert.alert('Error', 'Password must be at least 6 characters.');
     if (password !== confirmPassword) return Alert.alert('Error', 'Passwords do not match.');
+    if (!agreeToTerms) return Alert.alert('Error', 'Please agree to the Terms of Service and Privacy Policy.');
 
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!emailRegex.test(email.trim()))
@@ -248,35 +250,23 @@ export default function SignUp({ onNavigateToSignIn, onSignUpSuccess }: SignUpPr
   };
 
   return (
-    <View className="flex-1 overflow-hidden bg-white">
-      {/* Background decorative elements */}
-      <View className="absolute -left-20 top-20 h-48 w-48 rounded-full bg-[#34d399] opacity-10" />
-      <View className="absolute -bottom-32 -left-32 h-80 w-80 rounded-full bg-[#10b981] opacity-10" />
-      <View className="absolute -right-16 bottom-40 h-48 w-48 rounded-full bg-[#059669] opacity-10" />
-
-      {/* Decorative rings */}
-      <View className="absolute -bottom-20 -left-20 h-56 w-56 rounded-full border-2 border-[#10b981]/15" />
-      <View className="absolute -right-12 bottom-48 h-32 w-32 rounded-full border border-[#34d399]/20" />
-
+    <View className="flex-1 bg-white">
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        className="flex-1 overflow-hidden">
-        <View className="flex-1 justify-center overflow-hidden px-8">
-          {/* Logo */}
-          <View className="mb-10 items-center">
-            <View className="mb-6 h-20 w-20 items-center justify-center rounded-3xl bg-[#10b981] shadow-lg shadow-[#10b981]/30">
-              <Ionicons name="radio" size={38} color="#ffffff" />
-            </View>
-            <Text className="text-3xl font-bold italic text-[#111827]">SyncSpeak</Text>
-            <Text className="mt-2 text-base text-[#6b7280]">Create your account</Text>
+        className="flex-1">
+        <View className="justify-center flex-1 px-6">
+          {/* Header */}
+          <View className="mb-8">
+            <Text className="mb-2 text-4xl font-bold text-gray-900">Create your account</Text>
+            <Text className="text-base text-gray-500">Start communicating instantly with walkietalkie</Text>
           </View>
 
           {/* Full Name */}
-          <View className="mb-4 flex-row items-center rounded-xl border border-green-300 px-3 py-3">
-            <Ionicons name="person-outline" size={20} color="#4ade80" />
+          <View className="mb-4">
             <TextInput
-              className="ml-2 flex-1"
-              placeholder="Full Name"
+              className="px-4 text-base border border-gray-300 h-14 rounded-2xl bg-gray-50"
+              placeholder="Full name"
+              placeholderTextColor="#9ca3af"
               autoCapitalize="words"
               value={fullName}
               onChangeText={setFullName}
@@ -284,11 +274,11 @@ export default function SignUp({ onNavigateToSignIn, onSignUpSuccess }: SignUpPr
           </View>
 
           {/* Email */}
-          <View className="mb-4 flex-row items-center rounded-xl border border-green-300 px-3 py-3">
-            <Ionicons name="mail-outline" size={20} color="#4ade80" />
+          <View className="mb-4">
             <TextInput
-              className="ml-2 flex-1"
+              className="px-4 text-base border border-gray-300 h-14 rounded-2xl bg-gray-50"
               placeholder="Email address"
+              placeholderTextColor="#9ca3af"
               keyboardType="email-address"
               autoCapitalize="none"
               value={email}
@@ -297,11 +287,11 @@ export default function SignUp({ onNavigateToSignIn, onSignUpSuccess }: SignUpPr
           </View>
 
           {/* Phone Number */}
-          <View className="mb-4 flex-row items-center rounded-xl border border-green-300 px-3 py-3">
-            <Ionicons name="call-outline" size={20} color="#4ade80" />
+          <View className="mb-4">
             <TextInput
-              className="ml-2 flex-1"
-              placeholder="Phone Number"
+              className="px-4 text-base border border-gray-300 h-14 rounded-2xl bg-gray-50"
+              placeholder="Phone number"
+              placeholderTextColor="#9ca3af"
               keyboardType="phone-pad"
               value={phoneNumber}
               onChangeText={setPhoneNumber}
@@ -309,11 +299,11 @@ export default function SignUp({ onNavigateToSignIn, onSignUpSuccess }: SignUpPr
           </View>
 
           {/* Password */}
-          <View className="mb-4 flex-row items-center rounded-xl border border-green-300 px-3 py-3">
-            <Ionicons name="lock-closed-outline" size={20} color="#4ade80" />
+          <View className="flex-row items-center px-4 mb-4 border border-gray-300 rounded-2xl bg-gray-50">
             <TextInput
-              className="ml-2 flex-1"
+              className="flex-1 text-base h-14"
               placeholder="Password"
+              placeholderTextColor="#9ca3af"
               secureTextEntry={!showPassword}
               value={password}
               onChangeText={setPassword}
@@ -321,18 +311,18 @@ export default function SignUp({ onNavigateToSignIn, onSignUpSuccess }: SignUpPr
             <TouchableOpacity onPress={() => setShowPassword(!showPassword)}>
               <Ionicons
                 name={showPassword ? 'eye-outline' : 'eye-off-outline'}
-                size={20}
+                size={22}
                 color="#9ca3af"
               />
             </TouchableOpacity>
           </View>
 
           {/* Confirm Password */}
-          <View className="mb-6 flex-row items-center rounded-xl border border-green-300 px-3 py-3">
-            <Ionicons name="lock-closed-outline" size={20} color="#4ade80" />
+          <View className="flex-row items-center px-4 mb-6 border border-gray-300 rounded-2xl bg-gray-50">
             <TextInput
-              className="ml-2 flex-1"
-              placeholder="Confirm Password"
+              className="flex-1 text-base h-14"
+              placeholder="Confirm password"
+              placeholderTextColor="#9ca3af"
               secureTextEntry={!showConfirmPassword}
               value={confirmPassword}
               onChangeText={setConfirmPassword}
@@ -340,29 +330,47 @@ export default function SignUp({ onNavigateToSignIn, onSignUpSuccess }: SignUpPr
             <TouchableOpacity onPress={() => setShowConfirmPassword(!showConfirmPassword)}>
               <Ionicons
                 name={showConfirmPassword ? 'eye-outline' : 'eye-off-outline'}
-                size={20}
+                size={22}
                 color="#9ca3af"
               />
             </TouchableOpacity>
           </View>
 
-          {/* Button */}
+          {/* Terms of Service Checkbox */}
           <TouchableOpacity
-            className="h-14 items-center justify-center rounded-2xl bg-[#10b981]"
-            onPress={handleSignUp}
-            disabled={loading}>
-            {loading ? (
-              <ActivityIndicator color="#fff" />
-            ) : (
-              <Text className="text-lg font-bold text-white">Sign Up</Text>
-            )}
+            className="flex-row items-start mb-6"
+            onPress={() => setAgreeToTerms(!agreeToTerms)}
+            activeOpacity={0.7}>
+            <View
+              className={`mr-3 mt-0.5 h-5 w-5 items-center justify-center rounded border-2 ${
+                agreeToTerms ? 'border-[#237227] bg-[#237227]' : 'border-gray-300 bg-white'
+              }`}>
+              {agreeToTerms && <Ionicons name="checkmark" size={14} color="white" />}
+            </View>
+            <Text className="flex-1 text-sm leading-5 text-gray-600">
+              I agree to the{' '}
+              <Text className="font-semibold text-[#237227]">Terms of Service</Text> and{' '}
+              <Text className="font-semibold text-[#237227]">Privacy Policy</Text>
+            </Text>
           </TouchableOpacity>
 
-          {/* Sign In */}
-          <View className="mt-4 flex-row justify-center">
-            <Text>Already have an account? </Text>
+          {/* Create Account Button */}
+          <TouchableOpacity
+            className="items-center justify-center mb-6 bg-[#237227] shadow-sm h-14 rounded-2xl"
+            onPress={handleSignUp}
+            disabled={loading}
+            activeOpacity={0.8}>
+            {loading ? (
+              <ActivityIndicator color="#f8f4fb" />
+            ) : (
+              <Text className="text-lg font-semibold text-white">Create account</Text>
+            )}
+          </TouchableOpacity>
+          {/* Sign In Link */}
+          <View className="flex-row justify-center">
+            <Text className="text-sm text-gray-600">Already have an account? </Text>
             <TouchableOpacity onPress={onNavigateToSignIn}>
-              <Text className="font-bold text-[#10b981]">Sign In</Text>
+              <Text className="text-md font-semibold text-[#237227]">Sign in</Text>
             </TouchableOpacity>
           </View>
         </View>

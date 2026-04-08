@@ -8,6 +8,7 @@ import {
   Platform,
   ActivityIndicator,
   Modal,
+  ScrollView,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import supabase from '../utils/supabase';
@@ -182,106 +183,117 @@ export default function SignIn({
   };
 
   return (
-    <View className="flex-1 overflow-hidden bg-white">
-      {/* Background decorative elements */}
-      <View className="absolute -left-20 top-20 h-48 w-48 rounded-full bg-[#10b981] opacity-10" />
-      <View className="absolute -bottom-32 -left-32 h-80 w-80 rounded-full bg-[#10b981] opacity-10" />
-      <View className="absolute -right-16 bottom-40 h-48 w-48 rounded-full bg-[#10b981] opacity-10" />
-
-      {/* Decorative rings */}
-      <View className="absolute -bottom-20 -left-20 h-56 w-56 rounded-full border-2 border-[#10b981]/15" />
-      <View className="absolute -right-12 bottom-48 h-32 w-32 rounded-full border border-[#10b981]/20" />
-
+    <View className="flex-1 bg-[#f8fafb]">
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        className="flex-1 overflow-hidden">
-        <View className="justify-center flex-1 px-8 overflow-hidden">
-          {/* Logo */}
-          <View className="items-center mb-10">
-            <View className="mb-6 h-20 w-20 items-center justify-center rounded-3xl bg-[#10b981] shadow-lg shadow-[#10b981]/30">
-              <Ionicons name="radio" size={38} color="#ffffff" />
-            </View>
-            <Text className="text-3xl font-bold italic tracking-wide text-[#111827]">
-              SyncSpeak
-            </Text>
-            <Text className="mt-2 text-base tracking-wide text-[#6b7280]">
-              Connect instantly. Talk freely.
-            </Text>
-          </View>
-
-          {/* Form */}
-          <View className="mt-2">
-            {/* Email Input */}
-            <View className="flex-row items-center px-3 py-3 mb-4 bg-white border border-green-300 rounded-xl">
-              <Ionicons name="mail-outline" size={20} color="#10b981" />
-              <TextInput
-                className="flex-1 ml-2 text-base outline-none"
-                placeholder="Email address"
-                placeholderTextColor="#9ca3af"
-                keyboardType="email-address"
-                autoCapitalize="none"
-                value={email}
-                onChangeText={setEmail}
-              />
-            </View>
-
-            {/* Password Input */}
-            <View className="flex-row items-center px-3 py-3 mb-3 bg-white border border-green-300 rounded-xl">
-              <Ionicons name="lock-closed-outline" size={20} color="#10b981" />
-              <TextInput
-                className="flex-1 ml-2 text-base outline-none"
-                placeholder="Password"
-                placeholderTextColor="#9ca3af"
-                secureTextEntry={!showPassword}
-                value={password}
-                onChangeText={setPassword}
-              />
-              <TouchableOpacity onPress={() => setShowPassword(!showPassword)}>
-                <Ionicons
-                  name={showPassword ? 'eye-outline' : 'eye-off-outline'}
-                  size={20}
-                  color="#9ca3af"
-                />
-              </TouchableOpacity>
-            </View>
-
-            {/* Error Message */}
-            {error ? (
-              <View className="px-4 py-3 mt-2 rounded-xl bg-red-50">
-                <Text className="text-sm text-red-500">{error}</Text>
+        className="flex-1">
+        <View className="flex-1">
+          {/* Header - Hidden on mobile, shown on desktop */}
+          <View className="hidden md:flex bg-[#f8fafb] border-b border-[#e5e7eb] px-6 py-4">
+            <View className="flex-row items-center">
+              <View className="mr-3 h-10 w-10 items-center justify-center rounded-lg bg-[#237227]">
+                <Ionicons name="radio" size={22} color="#ffffff" />
               </View>
-            ) : null}
-
-            {/* Forgot Password */}
-            <TouchableOpacity
-              className="self-end mt-2 mb-8"
-              onPress={onNavigateToForgotPassword}
-              disabled={loading}>
-              <Text className="text-sm font-semibold text-[#10b981]">Forgot password?</Text>
-            </TouchableOpacity>
-
-            {/* Sign In Button */}
-            <TouchableOpacity
-              className="mb-6 h-14 items-center justify-center rounded-2xl bg-[#10b981] shadow-lg shadow-[#10b981]/30 active:opacity-90 disabled:opacity-50"
-              onPress={handleSignIn}
-              disabled={loading}>
-              {loading ? (
-                <ActivityIndicator color="#ffffff" />
-              ) : (
-                <View className="flex-row items-center">
-                  <Text className="text-lg font-bold tracking-wide text-white">Sign In</Text>
-                </View>
-              )}
-            </TouchableOpacity>
-
-            {/* Sign Up Link */}
-            <View className="flex-row items-center justify-center mt-2">
-              <Text className="text-base text-[#6b7280]">{"Don't have an account?"} </Text>
-              <TouchableOpacity onPress={onNavigateToSignUp}>
-                <Text className="text-base font-bold text-[#10b981]">Sign Up</Text>
-              </TouchableOpacity>
+              <Text className="text-xl font-bold text-[#111827]">WalkieTalkie</Text>
             </View>
           </View>
+
+          {/* Centered Card - Full screen on mobile, card on desktop */}
+          <View className="items-center justify-center flex-1 px-0 md:px-6">
+            <View className="w-full h-full md:h-auto max-w-md md:rounded-2xl md:border border-[#e5e7eb] bg-white p-6 md:p-8 md:shadow-sm"
+                  style={{ shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 8 }}>
+               <View className="items-center mt-12 mb-6 md:mt-0">
+              <View className="h-16 w-16 items-center justify-center rounded-full bg-[#237227]">
+                <Ionicons name="radio" size={32} color="#f8fafb" />
+              </View>
+            </View>
+
+              {/* Heading */}
+              <Text className="mb-2 text-2xl md:text-3xl text-center font-bold text-[#111827]">Welcome back</Text>
+              <Text className="mb-6 md:mb-8 text-sm md:text-base text-center text-[#237227]">Sign in to your WalkieTalkie account</Text>
+
+              {/* Error Message */}
+              {error ? (
+                <View className="px-4 py-3 mb-4 rounded-lg md:mb-6 bg-red-50">
+                  <Text className="text-sm text-red-600">{error}</Text>
+                </View>
+              ) : null}
+
+              {/* Email Field */}
+              <View className="mb-4 md:mb-6">
+                <Text className="mb-2 text-sm font-medium md:text-md text-stone-900">Email address</Text>
+                <TextInput
+                  className="rounded-lg border border-[#d1d5db] bg-white px-4 py-3 text-base text-[#111827]"
+                  placeholder="you@example.com"
+                  placeholderTextColor="#9ca3af"
+                  keyboardType="email-address"
+                  autoCapitalize="none"
+                  value={email}
+                  onChangeText={setEmail}
+                />
+              </View>
+
+              {/* Password Field */}
+              <View className="mb-2">
+                <Text className="mb-2 text-sm font-medium md:text-md text-stone-900">Password</Text>
+                <View className="relative">
+                  <TextInput
+                    className="rounded-lg border border-[#d1d5db] bg-white px-4 py-3 pr-12 text-base text-[#111827]"
+                    placeholder="Enter your password"
+                    placeholderTextColor="#9ca3af"
+                    secureTextEntry={!showPassword}
+                    value={password}
+                    onChangeText={setPassword}
+                  />
+                  <TouchableOpacity
+                    className="absolute right-4 top-3.5"
+                    onPress={() => setShowPassword(!showPassword)}>
+                    <Ionicons
+                      name={showPassword ? 'eye-outline' : 'eye-off-outline'}
+                      size={20}
+                      color="#9ca3af"
+                    />
+                  </TouchableOpacity>
+                </View>
+              </View>
+
+              {/* Forgot Password */}
+              <TouchableOpacity
+                className="self-end mb-4 md:mb-6"
+                onPress={onNavigateToForgotPassword}
+                disabled={loading}>
+                <Text className="text-sm font-medium text-[#237227]">Forgot password?</Text>
+              </TouchableOpacity>
+
+              {/* Sign In Button */}
+              <TouchableOpacity
+                className="mb-4 md:mb-6 h-12 items-center justify-center rounded-lg bg-[#237227] active:opacity-90 disabled:opacity-50"
+                onPress={handleSignIn}
+                disabled={loading}>
+                {loading ? (
+                  <ActivityIndicator color="#ffffff" />
+                ) : (
+                  <Text className="text-base font-semibold text-white">Sign in</Text>
+                )}
+              </TouchableOpacity>
+              
+              {/* Sign Up Link */}
+              <View className="flex-row items-center justify-center">
+                <Text className="text-sm text-[#6b7280]">{"Don't have an account? "}</Text>
+                <TouchableOpacity onPress={onNavigateToSignUp}>
+                  <Text className="text-sm font-semibold text-[#237227]">Sign up</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+
+          </View>
+        </View>
+
+        {/* Footer - Hidden on mobile, shown on desktop */}
+        <View className="hidden md:flex bg-[bg-[#f8fafb]] border-t border-[#e5e7eb] px-6 py-4">
+          <Text className="text-center text-md text-stone-900">
+            © 2026 WalkieTalkie. All rights reserved.
+          </Text>
         </View>
       </KeyboardAvoidingView>
 

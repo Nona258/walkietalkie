@@ -894,9 +894,6 @@ export default function Employees({
             <Text className="text-[13px] text-[#8fa88f] text-center leading-[18px]">
               <Text className="font-semibold text-[#4b6b4d]">{employeeToDelete?.full_name}</Text> will be permanently removed from the system.
             </Text>
-            <Text className="mt-1 text-[11px] text-center text-[#9ca3af]">
-              Note: Remember to also remove them from your Supabase Auth dashboard.
-            </Text>
             <View className="flex-row gap-[10px] w-full mt-2">
               <TouchableOpacity onPress={() => setIsDeleteModalOpen(false)} className="flex-1 h-10 rounded-[9px] items-center justify-center bg-[#f8fafb] border border-[#237227]">
                 <Text className="text-[14px] font-semibold text-black">Cancel</Text>

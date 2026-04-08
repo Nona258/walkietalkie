@@ -273,49 +273,38 @@ export default function ForgotPassword({ onBackToSignIn }: ForgotPasswordProps) 
   };
 
   return (
-    <View className="flex-1 overflow-hidden bg-white">
-      {/* Background decorative elements */}
-      <View className="absolute -left-20 top-20 h-48 w-48 rounded-full bg-[#10b981] opacity-10" />
-      <View className="absolute -bottom-32 -left-32 h-80 w-80 rounded-full bg-[#10b981] opacity-10" />
-      <View className="absolute -right-16 bottom-40 h-48 w-48 rounded-full bg-[#10b981] opacity-10" />
-
-      {/* Decorative rings */}
-      <View className="absolute -bottom-20 -left-20 h-56 w-56 rounded-full border-2 border-[#10b981]/15" />
-      <View className="absolute -right-12 bottom-48 h-32 w-32 rounded-full border border-[#10b981]/20" />
-
+    <View className="flex-1 bg-white">
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        className="flex-1 overflow-hidden">
-        <View className="justify-center flex-1 px-8 overflow-hidden">
-          {/* Header */}
-          <View className="flex-row items-center mb-8">
-            <TouchableOpacity
-              className="items-center justify-center w-10 h-10 mr-3 bg-green-100 rounded-full"
-              onPress={onBackToSignIn}
-              disabled={loading}>
-              <Ionicons name="chevron-back" size={22} color="#10b981" />
-            </TouchableOpacity>
-            <View className="flex-1">
-              <Text className="text-2xl font-bold text-[#111827]">Forgot Password</Text>
-              <Text className="mt-1 text-sm text-[#6b7280]">
-                {canUpdatePassword
-                  ? 'Set a new password for your account.'
-                  : 'Enter your email to receive a reset link.'}
-              </Text>
-            </View>
-          </View>
-
+        className="flex-1">
+        <View className="justify-center flex-1 px-6">
           {!canUpdatePassword ? (
             <>
-              {/* Email */}
+              {/* Heading */}
+               <View className="h-16 w-16 items-center justify-center rounded-full bg-[#237227] self-center mb-6">
+                              <Ionicons name="radio" size={32} color="#f8fafb" />
+                            </View>
+              <Text className="mb-3 text-3xl font-bold text-center text-gray-900">
+                Forgot password?
+              </Text>
+
+              {/* Subtext */}
+              <Text className="mb-8 text-base text-center text-gray-600">
+                No worries, we&apos;ll send you reset instructions.
+              </Text>
+
+              {/* Email Label */}
+              <Text className="mb-2 text-sm font-medium text-gray-700">Email</Text>
+
+              {/* Email Input */}
               <View
-                className={`mb-1 flex-row items-center rounded-xl border px-3 py-3 ${
-                  fieldErrors.email ? 'border-red-300' : 'border-green-300'
+                className={`flex-row items-center rounded-lg border px-4 py-3.5 mb-6 ${
+                  fieldErrors.email ? 'border-red-500' : 'border-gray-300'
                 }`}>
-                <Ionicons name="mail-outline" size={20} color="#10b981" />
                 <TextInput
-                  className="flex-1 ml-2"
-                  placeholder="Email address"
+                  className="flex-1 text-base text-gray-900"
+                  placeholder="you@example.com"
+                  placeholderTextColor="#9ca3af"
                   keyboardType="email-address"
                   autoCapitalize="none"
                   ref={emailRef}
@@ -327,38 +316,51 @@ export default function ForgotPassword({ onBackToSignIn }: ForgotPasswordProps) 
                 />
               </View>
               {!!fieldErrors.email && (
-                <Text className="mb-4 text-xs text-red-500">{fieldErrors.email}</Text>
+                <Text className="mb-4 -mt-4 text-sm text-red-500">{fieldErrors.email}</Text>
               )}
 
+              {/* Reset Password Button */}
               <TouchableOpacity
-                className="mt-4 h-14 items-center justify-center rounded-2xl bg-[#10b981]"
+                className="h-12 items-center justify-center rounded-lg bg-[#237227] mb-8"
                 onPress={handleSendRecoveryEmail}
                 disabled={loading}>
                 {loading ? (
-                  <ActivityIndicator color="#fff" />
+                  <ActivityIndicator color="#f8fafb" />
                 ) : (
-                  <Text className="text-lg font-bold text-white">Send Reset Link</Text>
+                  <Text className="text-base font-semibold text-white">Reset password</Text>
                 )}
               </TouchableOpacity>
 
-              <View className="flex-row justify-center mt-4">
-                <Text>Remembered your password? </Text>
-                <TouchableOpacity onPress={onBackToSignIn} disabled={loading}>
-                  <Text className="font-bold text-[#10b981]">Sign In</Text>
-                </TouchableOpacity>
-              </View>
+              {/* Back to Sign In Link */}
+              <TouchableOpacity
+                className="flex-row items-center justify-center"
+                onPress={onBackToSignIn}
+                disabled={loading}>
+                <Ionicons name="arrow-back" size={18} color="#6b7280" />
+                <Text className="ml-2 text-sm font-medium text-gray-600">Back to sign in</Text>
+              </TouchableOpacity>
             </>
           ) : (
             <>
+              {/* Password Update View - Keep existing logic */}
+              <Text className="mb-3 text-3xl font-bold text-center text-gray-900">
+                Set new password
+              </Text>
+
+              <Text className="mb-8 text-base text-center text-gray-600">
+                Your new password must be different from previously used passwords.
+              </Text>
+
               {/* New Password */}
+              <Text className="mb-2 text-sm font-medium text-gray-700">New Password</Text>
               <View
-                className={`mb-1 flex-row items-center rounded-xl border px-3 py-3 ${
-                  fieldErrors.newPassword ? 'border-red-300' : 'border-green-300'
+                className={`mb-1 flex-row items-center rounded-lg border px-4 py-3.5 ${
+                  fieldErrors.newPassword ? 'border-red-500' : 'border-gray-300'
                 }`}>
-                <Ionicons name="lock-closed-outline" size={20} color="#10b981" />
                 <TextInput
-                  className="flex-1 ml-2"
-                  placeholder="New Password"
+                  className="flex-1 text-base text-gray-900"
+                  placeholder="Enter new password"
+                  placeholderTextColor="#9ca3af"
                   secureTextEntry={!showNewPassword}
                   ref={newPasswordRef}
                   value={newPassword}
@@ -371,7 +373,7 @@ export default function ForgotPassword({ onBackToSignIn }: ForgotPasswordProps) 
                 <TouchableOpacity onPress={() => setShowNewPassword((s) => !s)}>
                   <Ionicons
                     name={showNewPassword ? 'eye-outline' : 'eye-off-outline'}
-                    size={20}
+                    size={22}
                     color="#9ca3af"
                   />
                 </TouchableOpacity>
@@ -390,18 +392,19 @@ export default function ForgotPassword({ onBackToSignIn }: ForgotPasswordProps) 
                 </View>
               )}
               {!!fieldErrors.newPassword && (
-                <Text className="mb-3 text-xs text-red-500">{fieldErrors.newPassword}</Text>
+                <Text className="mb-3 text-sm text-red-500">{fieldErrors.newPassword}</Text>
               )}
 
-              {/* Confirm */}
+              {/* Confirm Password */}
+              <Text className="mt-4 mb-2 text-sm font-medium text-gray-700">Confirm Password</Text>
               <View
-                className={`mb-1 flex-row items-center rounded-xl border px-3 py-3 ${
-                  fieldErrors.confirmNewPassword ? 'border-red-300' : 'border-green-300'
+                className={`mb-1 flex-row items-center rounded-lg border px-4 py-3.5 ${
+                  fieldErrors.confirmNewPassword ? 'border-red-500' : 'border-gray-300'
                 }`}>
-                <Ionicons name="lock-closed-outline" size={20} color="#10b981" />
                 <TextInput
-                  className="flex-1 ml-2"
-                  placeholder="Confirm New Password"
+                  className="flex-1 text-base text-gray-900"
+                  placeholder="Confirm new password"
+                  placeholderTextColor="#9ca3af"
                   secureTextEntry={!showConfirmNewPassword}
                   ref={confirmNewPasswordRef}
                   value={confirmNewPassword}
@@ -414,26 +417,34 @@ export default function ForgotPassword({ onBackToSignIn }: ForgotPasswordProps) 
                 <TouchableOpacity onPress={() => setShowConfirmNewPassword((s) => !s)}>
                   <Ionicons
                     name={showConfirmNewPassword ? 'eye-outline' : 'eye-off-outline'}
-                    size={20}
+                    size={22}
                     color="#9ca3af"
                   />
                 </TouchableOpacity>
               </View>
               {!!fieldErrors.confirmNewPassword && (
-                <Text className="mb-6 text-xs text-red-500">{fieldErrors.confirmNewPassword}</Text>
+                <Text className="mb-6 text-sm text-red-500">{fieldErrors.confirmNewPassword}</Text>
               )}
 
               {!fieldErrors.confirmNewPassword && <View className="mb-6" />}
 
               <TouchableOpacity
-                className="h-14 items-center justify-center rounded-2xl bg-[#10b981]"
+                className="h-12 items-center justify-center rounded-lg bg-[#10b981] mb-8 mt-4"
                 onPress={handleUpdatePassword}
                 disabled={loading}>
                 {loading ? (
                   <ActivityIndicator color="#fff" />
                 ) : (
-                  <Text className="text-lg font-bold text-white">Update Password</Text>
+                  <Text className="text-base font-semibold text-white">Update password</Text>
                 )}
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                className="flex-row items-center justify-center"
+                onPress={onBackToSignIn}
+                disabled={loading}>
+                <Ionicons name="arrow-back" size={18} color="#6b7280" />
+                <Text className="ml-2 text-sm font-medium text-gray-600">Back to sign in</Text>
               </TouchableOpacity>
             </>
           )}
