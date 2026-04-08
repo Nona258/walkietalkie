@@ -836,7 +836,7 @@ export default function Employees({
                 <View className="gap-[5px]">
                   <Text className="text-[12px] font-semibold text-[#1c1917]">Role *</Text>
                   <View className="flex-row p-1 border rounded-lg border-[#e5e7eb] bg-[#f8fafb]">
-                    {['admin', 'employee', 'technician'].map((role) => (
+                    {['admin', 'employee',].map((role) => (
                       <TouchableOpacity
                         key={role}
                         className={`flex-1 items-center rounded-md py-2 ${editForm.role === role ? 'bg-[#237227]' : 'bg-transparent'}`}
