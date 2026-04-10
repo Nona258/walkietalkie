@@ -13,7 +13,6 @@ TaskManager.defineTask(
     data,
     error,
   }: TaskManager.TaskManagerTaskBody<{ locations: Location.LocationObject[] }>) => {
-    console.log('[BG TASK] invoked', { backgroundUserId: _backgroundUserId });
     if (error) {
       console.error('[BG TASK] error:', error);
       return;

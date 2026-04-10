@@ -420,22 +420,7 @@ export default function Employees({ onNavigate, pendingUsersCount = 0 }: Employe
                 </Text>
               </View>
             </View>
-            <View className="flex-row items-center gap-2">
-              <TouchableOpacity
-                className="h-9 w-9 items-center justify-center rounded-lg border border-stone-100 bg-stone-50"
-                onPress={() => setIsNotificationOpen(true)}>
-                <View className="absolute right-1.5 top-1.5 h-2 w-2 rounded-full bg-red-400" />
-                <Ionicons name="notifications-outline" size={17} color="#78716c" />
-              </TouchableOpacity>
-              <View className="flex-row items-center gap-2 rounded-lg border border-stone-100 bg-stone-50 px-2.5 py-1.5">
-                <View className="h-6 w-6 items-center justify-center rounded-md bg-emerald-500">
-                  <Text className="text-xs font-bold text-white">AD</Text>
-                </View>
-                <View className="hidden lg:flex">
-                  <Text className="text-xs font-semibold text-stone-800">Admin User</Text>
-                </View>
-              </View>
-            </View>
+            {/* Right-side header (notifications + profile) removed per user request */}
           </View>
         </View>
 

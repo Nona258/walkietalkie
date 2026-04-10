@@ -82,17 +82,7 @@ export default function ActivityLogs({ onNavigate }: ActivityLogsProps) {
                 </Text>
               </View>
             </View>
-            <View className="flex-row items-center gap-2.5">
-              <TouchableOpacity
-                className="h-9 w-9 items-center justify-center rounded-full bg-stone-100"
-                onPress={() => setIsNotificationOpen(true)}>
-                <View className="absolute right-1.5 top-1.5 h-2 w-2 rounded-full bg-red-500" />
-                <Ionicons name="notifications-outline" size={18} color="#57534e" />
-              </TouchableOpacity>
-              <View className="h-9 w-9 items-center justify-center rounded-full bg-emerald-100">
-                <Text className="text-xs font-semibold text-emerald-700">AD</Text>
-              </View>
-            </View>
+            {/* Right-side header (notifications + profile) removed per user request */}
           </View>
         </View>
 

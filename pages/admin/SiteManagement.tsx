@@ -1179,74 +1179,7 @@ export default function SiteManagement({ onNavigate }: SiteManagementProps) {
                 </Text>
               </View>
             </View>
-            <View className="flex-row items-center gap-2.5">
-              <TouchableOpacity
-                className="h-9 w-9 items-center justify-center rounded-full bg-stone-100"
-                onPress={() => setIsNotificationOpen(true)}
-                activeOpacity={0.7}>
-                <View className="absolute right-1.5 top-1.5 h-2 w-2 rounded-full bg-red-500" />
-                <Ionicons name="notifications-outline" size={18} color="#57534e" />
-              </TouchableOpacity>
-              <Modal
-                visible={isNotificationOpen}
-                transparent
-                animationType="fade"
-                onRequestClose={() => setIsNotificationOpen(false)}>
-                <Pressable
-                  style={{
-                    flex: 1,
-                    backgroundColor: 'rgba(0,0,0,0.2)',
-                    justifyContent: 'center',
-                    alignItems: 'center',
-                  }}
-                  onPress={() => setIsNotificationOpen(false)}>
-                  <View
-                    style={{
-                      width: 320,
-                      backgroundColor: 'rgba(255,255,255,0.85)',
-                      borderRadius: 16,
-                      padding: 24,
-                      alignItems: 'center',
-                    }}>
-                    <Ionicons
-                      name="notifications-outline"
-                      size={32}
-                      color="#10b981"
-                      style={{ marginBottom: 12 }}
-                    />
-                    <Text
-                      style={{
-                        fontWeight: 'bold',
-                        fontSize: 18,
-                        color: '#44403c',
-                        marginBottom: 8,
-                      }}>
-                      Notifications
-                    </Text>
-                    <Text style={{ color: '#57534e', textAlign: 'center', marginBottom: 16 }}>
-                      You have no new notifications.
-                    </Text>
-                    <TouchableOpacity
-                      style={{
-                        backgroundColor: '#10b981',
-                        borderRadius: 8,
-                        paddingVertical: 8,
-                        paddingHorizontal: 24,
-                      }}
-                      onPress={() => setIsNotificationOpen(false)}>
-                      <Text style={{ color: 'white', fontWeight: 'bold' }}>Close</Text>
-                    </TouchableOpacity>
-                  </View>
-                </Pressable>
-              </Modal>
-              <View className="h-9 w-9 items-center justify-center rounded-full bg-emerald-100">
-                <Text className="text-xs font-semibold text-emerald-700">AD</Text>
-              </View>
-              <View className="ml-2 hidden lg:flex">
-                <Text className="text-sm font-semibold text-stone-900">Admin User</Text>
-                <Text className="text-xs text-stone-500">Super Admin</Text>
-              </View>
-            </View>
+            {/* Right-side header (notifications + profile) removed per user request */}
           </View>
         </View>
 

@@ -15,6 +15,7 @@ import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import * as ImageManipulator from 'expo-image-manipulator';
 import supabase, { getCurrentUser } from '../../utils/supabase';
+import SweetAlertModal from '../../components/SweetAlertModal';
 import '../../global.css';
 
 interface SettingsProps {
@@ -38,6 +39,16 @@ export default function Settings({ onNavigate }: SettingsProps) {
   const [isPasswordModalOpen, setIsPasswordModalOpen] = useState(false);
   const [changingPassword, setChangingPassword] = useState(false);
 
+  // Sweet Alert State
+  const [sweetAlertConfig, setSweetAlertConfig] = useState<{
+    show: boolean;
+    type?: 'success' | 'error' | 'warning' | 'info';
+    title?: string;
+    text?: string;
+  }>({
+    show: false,
+  });
+
   // Password change fields
   const [oldPassword, setOldPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
@@ -53,15 +64,54 @@ export default function Settings({ onNavigate }: SettingsProps) {
   const [newImageSelected, setNewImageSelected] = useState(false);
   const [imageFileName, setImageFileName] = useState<string | null>(null);
 
+  // Store original values for comparison
+  const [originalFullName, setOriginalFullName] = useState('');
+
+  // Confirmation dialog state
+  const [showConfirmation, setShowConfirmation] = useState(false);
+  const [pendingSaveData, setPendingSaveData] = useState<{
+    publicUrl: string | null;
+    nameChanged: boolean;
+    pictureChanged: boolean;
+  } | null>(null);
+
   React.useEffect(() => {
     const loadProfile = async () => {
       try {
-        // try to get DB-backed profile
+        // Get authenticated user
         const user = await getCurrentUser();
         if (user) {
-          setFullName(user.user_metadata?.full_name || 'Admin User');
+          const userId = user.id;
           setEmail(user.email || '');
-          const name = user.user_metadata?.full_name || user.email || 'AD';
+          
+          // Fetch full profile from users table
+          const { data: dbUser, error: dbError } = await supabase
+            .from('users')
+            .select('full_name, profile_picture_url')
+            .eq('id', userId)
+            .single();
+
+          if (dbError) {
+            console.warn('Failed to fetch from users table, falling back to auth metadata:', dbError);
+            // Fallback to auth metadata
+            setFullName(user.user_metadata?.full_name || 'Admin User');
+            if (user.user_metadata?.profile_picture_url) {
+              setProfilePicture(`${user.user_metadata.profile_picture_url}?t=${Date.now()}`);
+            }
+          } else if (dbUser) {
+            // Use database values
+            const fullNameValue = dbUser.full_name || 'Admin User';
+            setFullName(fullNameValue);
+            setOriginalFullName(fullNameValue); // Store original
+
+            if (dbUser.profile_picture_url) {
+              const picUrl = `${dbUser.profile_picture_url}?t=${Date.now()}`;
+              setProfilePicture(picUrl);
+            }
+          }
+
+          // Calculate initials
+          const name = dbUser?.full_name || user.user_metadata?.full_name || user.email || 'AD';
           const initialsComputed = name
             .split(' ')
             .map((p: string) => p[0])
@@ -69,18 +119,16 @@ export default function Settings({ onNavigate }: SettingsProps) {
             .toUpperCase()
             .slice(0, 2);
           setInitials(initialsComputed || 'AD');
-          // If you have profile_picture_url in user_metadata, use it
-          if (user.user_metadata?.profile_picture_url) {
-            setProfilePicture(`${user.user_metadata.profile_picture_url}?t=${Date.now()}`);
-          }
         } else {
-          // fallback to auth metadata
+          // Fallback to auth user
           const {
-            data: { user: fallbackUser },
+            data: { user: authUser },
           } = await supabase.auth.getUser();
-          setFullName(fallbackUser?.user_metadata?.full_name || 'Admin User');
-          setEmail(fallbackUser?.email || '');
-          const name = fallbackUser?.user_metadata?.full_name || fallbackUser?.email || 'AD';
+          const fullNameValue = authUser?.user_metadata?.full_name || 'Admin User';
+          setFullName(fullNameValue);
+          setOriginalFullName(fullNameValue); // Store original
+          setEmail(authUser?.email || '');
+          const name = authUser?.user_metadata?.full_name || authUser?.email || 'AD';
           const initialsComputed = name
             .split(' ')
             .map((p: string) => p[0])
@@ -91,19 +139,25 @@ export default function Settings({ onNavigate }: SettingsProps) {
         }
       } catch (err) {
         console.error('Failed to load admin profile:', err);
-        const {
-          data: { user },
-        } = await supabase.auth.getUser();
-        setFullName(user?.user_metadata?.full_name || 'Admin User');
-        setEmail(user?.email || '');
-        const name = user?.user_metadata?.full_name || user?.email || 'AD';
-        const initialsComputed = name
-          .split(' ')
-          .map((p: string) => p[0])
-          .join('')
-          .toUpperCase()
-          .slice(0, 2);
-        setInitials(initialsComputed || 'AD');
+        try {
+          const {
+            data: { user },
+          } = await supabase.auth.getUser();
+          const fullNameValue = user?.user_metadata?.full_name || 'Admin User';
+          setFullName(fullNameValue);
+          setOriginalFullName(fullNameValue); // Store original
+          setEmail(user?.email || '');
+          const name = user?.user_metadata?.full_name || user?.email || 'AD';
+          const initialsComputed = name
+            .split(' ')
+            .map((p: string) => p[0])
+            .join('')
+            .toUpperCase()
+            .slice(0, 2);
+          setInitials(initialsComputed || 'AD');
+        } catch (authErr) {
+          console.error('Failed to load from auth:', authErr);
+        }
       }
     };
 
@@ -164,31 +218,87 @@ export default function Settings({ onNavigate }: SettingsProps) {
   const uploadProfilePicture = async (userId: string): Promise<string | null> => {
     if (!newImageUri || !imageFileName) return null;
     try {
+      // Fetch the image as blob
       const response = await fetch(newImageUri);
       const blob = await response.blob();
 
-      const { data, error } = await supabase.storage
+      // Upload to the profile_picture bucket with user ID folder
+      const filePath = `${userId}/${imageFileName}`; // Organize by user ID
+      const { error: uploadError } = await supabase.storage
         .from('profile_picture')
-        .upload(imageFileName, blob, { contentType: 'image/jpeg', upsert: true });
+        .upload(filePath, blob, { 
+          contentType: 'image/jpeg', 
+          upsert: true // Overwrite existing file
+        });
 
-      if (error) {
-        console.error('Upload error:', error);
-        throw error;
+      if (uploadError) {
+        console.error('Upload error:', uploadError);
+        throw uploadError;
       }
 
-      const { data: urlData } = supabase.storage
+      // Get the public URL for the uploaded file
+      const { data } = supabase.storage
         .from('profile_picture')
-        .getPublicUrl(imageFileName);
-      return urlData?.publicUrl || null;
+        .getPublicUrl(filePath);
+      
+      const publicUrl = data?.publicUrl;
+      if (!publicUrl) {
+        throw new Error('Failed to get public URL for uploaded image');
+      }
+      
+      console.log('Image uploaded successfully. Public URL:', publicUrl);
+      return publicUrl;
     } catch (err) {
       console.error('Upload failed:', err);
+      Alert.alert('Upload Failed', 'Could not upload profile picture. Please try again.');
       return null;
     }
   };
 
   const handleSaveChanges = async () => {
+    // 1. Validate that name is not empty
+    if (!fullName.trim()) {
+      setSweetAlertConfig({
+        show: true,
+        type: 'error',
+        title: 'Validation Error',
+        text: 'Full name cannot be empty.',
+      });
+      return;
+    }
+
+    // 2. Check what actually changed
+    const nameChanged = fullName !== originalFullName;
+    const pictureChanged = newImageSelected && newImageUri !== null;
+
+    // 3. If nothing changed, show warning
+    if (!nameChanged && !pictureChanged) {
+      setSweetAlertConfig({
+        show: true,
+        type: 'warning',
+        title: 'No Changes',
+        text: 'You haven\'t made any changes to save.',
+      });
+      return;
+    }
+
+    // 4. Store pending data and show confirmation
+    setPendingSaveData({
+      publicUrl: null,
+      nameChanged,
+      pictureChanged,
+    });
+    setShowConfirmation(true);
+  };
+
+  // Handle confirmation of changes
+  const handleConfirmSave = async () => {
     try {
-      setIsEditMode(false); // optimistically close edit UI
+      // Hide confirmation modal
+      setShowConfirmation(false);
+
+      if (!pendingSaveData) return;
+
       // get current user id
       const user = await getCurrentUser();
       const userId = user?.id;
@@ -197,47 +307,104 @@ export default function Settings({ onNavigate }: SettingsProps) {
         return;
       }
 
-      let publicUrl = user?.user_metadata?.profile_picture_url || null;
-      if (newImageSelected && newImageUri) {
+      let publicUrl: string | null = null;
+      
+      // If a new image was selected and uploaded, use the new URL
+      if (pendingSaveData.pictureChanged && newImageUri) {
         const uploaded = await uploadProfilePicture(userId);
         if (uploaded) {
           publicUrl = uploaded;
+        } else {
+          // Upload failed, don't proceed with save
+          return;
         }
       }
 
-      // Update public.users row
-      const { error } = await supabase
+      // Build update object
+      const updateData: any = {};
+      
+      if (pendingSaveData.nameChanged) {
+        updateData.full_name = fullName;
+      }
+      
+      // Only update profile_picture_url if we have a new one
+      if (publicUrl) {
+        updateData.profile_picture_url = publicUrl;
+      }
+
+      // Update users table
+      const { error: dbError } = await supabase
         .from('users')
-        .update({ full_name: fullName, profile_picture_url: publicUrl })
+        .update(updateData)
         .eq('id', userId);
 
-      if (error) {
-        console.error('Failed to update users row:', error);
-        Alert.alert('Error', 'Failed to save changes');
+      if (dbError) {
+        console.error('Failed to update users table:', dbError);
+        setSweetAlertConfig({
+          show: true,
+          type: 'error',
+          title: 'Error',
+          text: 'Failed to save profile changes. Please try again.',
+        });
         return;
       }
 
-      // update auth metadata full_name for consistency
-      try {
-        await supabase.auth.updateUser({ data: { full_name: fullName } });
-      } catch (err) {
-        console.warn('Failed to update auth metadata:', err);
+      // Also update auth metadata for consistency if name changed
+      if (pendingSaveData.nameChanged) {
+        try {
+          await supabase.auth.updateUser({ 
+            data: { full_name: fullName } 
+          });
+        } catch (authErr) {
+          console.warn('Failed to update auth metadata (non-critical):', authErr);
+        }
       }
 
-      // clear image selection flag
+      // Update original values for next comparison
+      if (pendingSaveData.nameChanged) {
+        setOriginalFullName(fullName);
+      }
+
+      // Clear image selection state
       setNewImageSelected(false);
       setNewImageUri(null);
       setImageFileName(null);
 
-      // update local displayed image to the new public URL (with cache-buster)
+      // Update displayed profile picture with cache buster
       if (publicUrl) {
         setProfilePicture(`${publicUrl}?t=${Date.now()}`);
       }
 
-      Alert.alert('Success', 'Profile updated');
+      // Close edit mode after successful save
+      setIsEditMode(false);
+
+      // Clear pending data
+      setPendingSaveData(null);
+      
+      // Show contextual success message
+      let successMessage = 'Profile updated successfully!';
+      if (pendingSaveData.nameChanged && pendingSaveData.pictureChanged) {
+        successMessage = 'Full name and profile picture updated successfully!';
+      } else if (pendingSaveData.nameChanged) {
+        successMessage = 'Full name updated successfully!';
+      } else if (pendingSaveData.pictureChanged) {
+        successMessage = 'Profile picture updated successfully!';
+      }
+
+      setSweetAlertConfig({
+        show: true,
+        type: 'success',
+        title: 'Success!',
+        text: successMessage,
+      });
     } catch (err) {
       console.error('Save error:', err);
-      Alert.alert('Error', 'An error occurred while saving changes');
+      setSweetAlertConfig({
+        show: true,
+        type: 'error',
+        title: 'Error',
+        text: 'An error occurred while saving changes. Please try again.',
+      });
     }
   };
 
@@ -288,7 +455,13 @@ export default function Settings({ onNavigate }: SettingsProps) {
         throw updateError;
       }
 
-      Alert.alert('Success', 'Your password has been changed successfully.');
+      // Show sweet alert success for password change
+      setSweetAlertConfig({
+        show: true,
+        type: 'success',
+        title: 'Success!',
+        text: 'Your password has been changed successfully.',
+      });
       // Reset modal and fields
       setIsPasswordModalOpen(false);
       setOldPassword('');
@@ -297,7 +470,12 @@ export default function Settings({ onNavigate }: SettingsProps) {
       setPasswordError(null);
     } catch (err: any) {
       console.error('Password change error:', err);
-      Alert.alert('Error', err.message || 'Failed to change password');
+      setSweetAlertConfig({
+        show: true,
+        type: 'error',
+        title: 'Error',
+        text: err.message || 'Failed to change password',
+      });
     } finally {
       setChangingPassword(false);
     }
@@ -324,22 +502,7 @@ export default function Settings({ onNavigate }: SettingsProps) {
               </View>
             </View>
 
-            <View className="flex-row items-center gap-2.5">
-              <TouchableOpacity
-                className="h-9 w-9 items-center justify-center rounded-full bg-stone-100"
-                onPress={() => setIsNotificationOpen(true)}>
-                <View className="absolute right-1.5 top-1.5 h-2 w-2 rounded-full bg-red-500" />
-                <Ionicons name="notifications-outline" size={18} color="#57534e" />
-              </TouchableOpacity>
-
-              <View className="h-9 w-9 items-center justify-center rounded-full bg-emerald-100">
-                <Text className="text-xs font-semibold text-emerald-700">{initials}</Text>
-              </View>
-              <View className="ml-2 hidden lg:flex">
-                <Text className="text-sm font-semibold text-stone-900">{fullName}</Text>
-                <Text className="text-xs text-stone-500">Super Admin</Text>
-              </View>
-            </View>
+            {/* Right-side header (notifications + profile) removed per user request */}
           </View>
         </View>
 
@@ -558,6 +721,62 @@ export default function Settings({ onNavigate }: SettingsProps) {
           <Pressable className="flex-1 bg-black/40" onPress={() => setIsDrawerOpen(false)} />
         </View>
       </Modal>
+
+      {/* Confirmation Modal */}
+      <Modal visible={showConfirmation} transparent animationType="fade">
+        <View className="flex-1 bg-black/50 justify-center items-center p-4">
+          <View className="bg-white rounded-2xl p-6 w-full max-w-sm shadow-2xl">
+            {/* Icon */}
+            <View className="items-center mb-4">
+              <Ionicons name="help-circle" size={48} color="#EA580C" />
+            </View>
+
+            {/* Title */}
+            <Text className="text-xl font-bold text-gray-800 text-center mb-2">
+              Confirm Changes
+            </Text>
+
+            {/* Message */}
+            <Text className="text-sm text-gray-600 text-center mb-6">
+              {pendingSaveData?.nameChanged && pendingSaveData?.pictureChanged
+                ? 'Your full name and profile picture will be updated.'
+                : pendingSaveData?.nameChanged
+                ? `Your full name will be changed to "${fullName}".`
+                : 'Your profile picture will be updated.'}
+            </Text>
+
+            {/* Buttons */}
+            <View className="flex-row gap-3">
+              <TouchableOpacity
+                onPress={() => {
+                  setShowConfirmation(false);
+                  setPendingSaveData(null);
+                }}
+                className="flex-1 px-4 py-3 bg-gray-200 rounded-lg"
+              >
+                <Text className="text-center font-semibold text-gray-800">Cancel</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                onPress={handleConfirmSave}
+                className="flex-1 px-4 py-3 bg-orange-500 rounded-lg"
+              >
+                <Text className="text-center font-semibold text-white">Confirm</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Sweet Alert Modal */}
+      <SweetAlertModal
+        visible={sweetAlertConfig.show}
+        type={sweetAlertConfig.type || 'success'}
+        title={sweetAlertConfig.title || 'Success'}
+        message={sweetAlertConfig.text || ''}
+        confirmText="Ok"
+        onConfirm={() => setSweetAlertConfig({ show: false })}
+      />
     </View>
   );
 }

@@ -16,6 +16,7 @@ import {
   Animated,
   Easing,
   PanResponder,
+  Image,
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Ionicons } from '@expo/vector-icons';
@@ -34,6 +35,7 @@ interface Contact {
   lastMessageTime?: string;
   lastMessageTimestamp?: string;
   unreadCount?: number;
+  profile_picture_url?: string | null;
   // additional fields for search
   email: string;
   phone_number?: string;
@@ -292,6 +294,7 @@ export default function Contacts({ onContactSelected, currentUserId }: ContactsP
           initials: getInitials(user.full_name || 'Unknown'),
           status,
           avatar_color: getAvatarColor(user.id),
+          profile_picture_url: user.profile_picture_url || null,
           email: user.email,
           phone_number: user.phone_number,
           // Placeholder for message data (to be replaced with real messages later)
@@ -658,6 +661,7 @@ export default function Contacts({ onContactSelected, currentUserId }: ContactsP
                           ? 'busy'
                           : 'offline',
                     avatar_color: getAvatarColor(userData.id),
+                    profile_picture_url: userData.profile_picture_url || null,
                     email: userData.email,
                     phone_number: userData.phone_number,
                     lastMessage: msgText,
@@ -1070,19 +1074,26 @@ export default function Contacts({ onContactSelected, currentUserId }: ContactsP
                             }}>
                             {/* Avatar */}
                             <View style={{ position: 'relative', marginRight: 12 }}>
-                              <View
-                                style={{
-                                  width: 44,
-                                  height: 44,
-                                  borderRadius: 22,
-                                  backgroundColor: avatarColor,
-                                  alignItems: 'center',
-                                  justifyContent: 'center',
-                                }}>
-                                <Text style={{ color: 'white', fontWeight: '700', fontSize: 15 }}>
-                                  {initials}
-                                </Text>
-                              </View>
+                              {item.profile_picture_url ? (
+                                <Image
+                                  source={{ uri: item.profile_picture_url }}
+                                  style={{ width: 44, height: 44, borderRadius: 22 }}
+                                />
+                              ) : (
+                                <View
+                                  style={{
+                                    width: 44,
+                                    height: 44,
+                                    borderRadius: 22,
+                                    backgroundColor: avatarColor,
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                  }}>
+                                  <Text style={{ color: 'white', fontWeight: '700', fontSize: 15 }}>
+                                    {initials}
+                                  </Text>
+                                </View>
+                              )}
                               <View
                                 style={{
                                   position: 'absolute',
@@ -1264,20 +1275,36 @@ export default function Contacts({ onContactSelected, currentUserId }: ContactsP
                 }}>
                 {/* Avatar */}
                 <View className="relative">
-                  <View
-                    className="h-14 w-14 items-center justify-center rounded-full shadow-md"
-                    style={{ backgroundColor: contact.avatar_color }}>
-                    <Text className="text-base font-bold text-white">{contact.initials}</Text>
-                  </View>
+                  {contact.profile_picture_url ? (
+                    <Image
+                      source={{ uri: contact.profile_picture_url }}
+                      style={{ width: 56, height: 56, borderRadius: 28 }}
+                    />
+                  ) : (
+                    <View
+                      className="h-14 w-14 items-center justify-center rounded-full shadow-md"
+                      style={{ backgroundColor: contact.avatar_color }}>
+                      <Text className="text-base font-bold text-white">{contact.initials}</Text>
+                    </View>
+                  )}
                   {/* Status Indicator */}
                   <View
-                    className={`border-3 absolute bottom-0 right-0 h-4 w-4 rounded-full border-white ${
-                      contact.status === 'online'
-                        ? 'bg-green-500'
-                        : contact.status === 'busy'
-                          ? 'bg-yellow-500'
-                          : 'bg-gray-300'
-                    }`}
+                    style={{
+                      position: 'absolute',
+                      bottom: 0,
+                      right: 0,
+                      height: 16,
+                      width: 16,
+                      borderRadius: 8,
+                      borderWidth: 2,
+                      borderColor: 'white',
+                      backgroundColor:
+                        contact.status === 'online'
+                          ? '#10b981'
+                          : contact.status === 'busy'
+                            ? '#f59e0b'
+                            : '#d1d5db',
+                    }}
                   />
                 </View>
 

@@ -7,6 +7,7 @@ import {
   Modal,
   Pressable,
   TextInput,
+  Image,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import '../../global.css';
@@ -37,6 +38,7 @@ interface Contact {
   isGroup?: boolean;
   siteId?: string;
   userId?: string; // linked user id
+  avatarUrl?: string | null;
 }
 
 interface Message {
@@ -59,6 +61,7 @@ interface User {
   is_active: boolean;
   initials: string;
   color: string;
+  avatarUrl?: string | null;
 }
 
 // Helper function to generate initials
@@ -84,7 +87,6 @@ const padZero = (num: number, length: number = 2): string => {
 
 export default function ContactManagement({ onNavigate }: ContactManagementProps) {
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
-  const [isNotificationOpen, setIsNotificationOpen] = useState(false);
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [selectedContact, setSelectedContact] = useState<Contact | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
@@ -356,7 +358,7 @@ export default function ContactManagement({ onNavigate }: ContactManagementProps
 
       const { data: usersData, error: usersError } = await supabase
         .from('users')
-        .select('id, email, full_name, role, status')
+        .select('id, email, full_name, role, status, profile_picture_url')
         .in('id', userIds.length > 0 ? userIds : ['']);
 
       if (usersError) {
@@ -380,6 +382,7 @@ export default function ContactManagement({ onNavigate }: ContactManagementProps
             color: getRandomColor(),
             online: user.status === 'online',
             userId: user.id,
+            avatarUrl: null,
           } as Contact;
         })
         .filter((c: Contact | null): c is Contact => c !== null);
@@ -415,7 +418,37 @@ export default function ContactManagement({ onNavigate }: ContactManagementProps
       }
 
       const allContacts = [...dbContacts, ...siteContacts];
-      setContacts(allContacts);
+
+      // Enrich contacts with avatar public URLs from profile_picture bucket
+      const enriched = await Promise.all(
+        allContacts.map(async (c) => {
+          // only resolve for direct users (not group/team contacts)
+          if (!c.userId) return c;
+          const user = usersMap.get(c.userId);
+          if (!user) return c;
+
+          const profilePath = user.profile_picture_url as string | undefined | null;
+          if (!profilePath) return c;
+
+          // If already a full URL, use it. Otherwise, resolve via storage bucket.
+          try {
+            if (profilePath.startsWith('http://') || profilePath.startsWith('https://')) {
+              return { ...c, avatarUrl: profilePath } as Contact;
+            }
+
+            // Remove any leading bucket prefix if present
+            const relativePath = profilePath.replace(/^profile_picture\//, '');
+            const { data } = await supabase.storage.from('profile_picture').getPublicUrl(relativePath);
+            const publicUrl = data?.publicUrl || null;
+            return { ...c, avatarUrl: publicUrl } as Contact;
+          } catch (e) {
+            console.warn('Failed to resolve avatar for user', c.userId, e);
+            return c;
+          }
+        })
+      );
+
+      setContacts(enriched);
       // Fetch last messages for direct contacts
       fetchLastMessagesForContacts(dbContacts);
     } catch (e) {
@@ -532,12 +565,14 @@ export default function ContactManagement({ onNavigate }: ContactManagementProps
     try {
       const { data, error } = await supabase
         .from('users')
-        .select('id, email, full_name, role, status');
+        .select('id, email, full_name, role, status, profile_picture_url');
       if (error) {
         console.error('Error fetching users from Supabase:', error);
         return;
       }
-      const transformed: User[] = (data || []).map((user: any) => ({
+
+      // Base transform
+      const base: User[] = (data || []).map((user: any) => ({
         id: user.id,
         email: user.email,
         full_name: user.full_name,
@@ -545,8 +580,29 @@ export default function ContactManagement({ onNavigate }: ContactManagementProps
         is_active: user.status !== 'inactive',
         initials: getInitials(user.full_name),
         color: getRandomColor(),
+        avatarUrl: null,
       }));
-      setUsers(transformed);
+
+      // Resolve profile_picture_url to public URLs when available
+      const enriched = await Promise.all(
+        base.map(async (u) => {
+          try {
+            const raw = (data || []).find((x: any) => x.id === u.id)?.profile_picture_url;
+            if (!raw) return u;
+            if (raw.startsWith('http://') || raw.startsWith('https://')) {
+              return { ...u, avatarUrl: raw } as User;
+            }
+            const relativePath = String(raw).replace(/^profile_picture\//, '');
+            const { data: d } = await supabase.storage.from('profile_picture').getPublicUrl(relativePath);
+            return { ...u, avatarUrl: d?.publicUrl || null } as User;
+          } catch (err) {
+            console.warn('Failed to resolve user avatar', u.id, err);
+            return u;
+          }
+        })
+      );
+
+      setUsers(enriched);
     } catch (e) {
       console.error('Error fetching users:', e);
     } finally {
@@ -1383,12 +1439,6 @@ export default function ContactManagement({ onNavigate }: ContactManagementProps
                   onPress={openContactsModal}>
                   <Ionicons name="person-add-outline" size={16} color="#10b981" />
                 </TouchableOpacity>
-                <TouchableOpacity
-                  className="relative h-8 w-8 items-center justify-center rounded-xl bg-gray-100"
-                  onPress={() => setIsNotificationOpen(true)}>
-                  <Ionicons name="notifications-outline" size={16} color="#6b7280" />
-                  <View className="absolute right-1 top-1 h-1.5 w-1.5 rounded-full bg-red-500" />
-                </TouchableOpacity>
               </View>
             </View>
             {/* Search bar */}
@@ -1502,13 +1552,20 @@ export default function ContactManagement({ onNavigate }: ContactManagementProps
                               });
                             }}>
                             <View className="relative mr-3 shrink-0">
-                              <View
-                                className="h-11 w-11 items-center justify-center rounded-full"
-                                style={{ backgroundColor: contact.color }}>
-                                <Text className="text-sm font-bold text-gray-800">
-                                  {contact.initials}
-                                </Text>
-                              </View>
+                              {contact.avatarUrl ? (
+                                <Image
+                                  source={{ uri: contact.avatarUrl }}
+                                  style={{ width: 44, height: 44, borderRadius: 999 }}
+                                />
+                              ) : (
+                                <View
+                                  className="h-11 w-11 items-center justify-center rounded-full"
+                                  style={{ backgroundColor: contact.color }}>
+                                  <Text className="text-sm font-bold text-gray-800">
+                                    {contact.initials}
+                                  </Text>
+                                </View>
+                              )}
                               {contact.online && (
                                 <View className="absolute bottom-0 right-0 h-3 w-3 rounded-full border-2 border-white bg-emerald-500" />
                               )}
@@ -1570,15 +1627,26 @@ export default function ContactManagement({ onNavigate }: ContactManagementProps
                   onPress={() => setShowContactList(true)}>
                   <Ionicons name="chevron-back" size={18} color="#374151" />
                 </TouchableOpacity>
-                <View
-                  className="mr-3 h-10 w-10 shrink-0 items-center justify-center rounded-full"
-                  style={{ backgroundColor: selectedContact.color }}>
+                <View className="mr-3 h-10 w-10 shrink-0">
                   {selectedContact.isGroup ? (
-                    <Ionicons name="people" size={18} color="#1f2937" />
+                    <View
+                      className="h-10 w-10 items-center justify-center rounded-full"
+                      style={{ backgroundColor: selectedContact.color }}>
+                      <Ionicons name="people" size={18} color="#1f2937" />
+                    </View>
+                  ) : selectedContact.avatarUrl ? (
+                    <Image
+                      source={{ uri: selectedContact.avatarUrl }}
+                      style={{ width: 40, height: 40, borderRadius: 999 }}
+                    />
                   ) : (
-                    <Text className="text-sm font-bold text-gray-800">
-                      {selectedContact.initials}
-                    </Text>
+                    <View
+                      className="h-10 w-10 items-center justify-center rounded-full"
+                      style={{ backgroundColor: selectedContact.color }}>
+                      <Text className="text-sm font-bold text-gray-800">
+                        {selectedContact.initials}
+                      </Text>
+                    </View>
                   )}
                 </View>
                 <View className="flex-1">
@@ -1652,15 +1720,24 @@ export default function ContactManagement({ onNavigate }: ContactManagementProps
                       )}
                       <View
                         className={`mb-3 flex-row ${isMe ? 'justify-end' : 'justify-start'} items-end`}>
-                        {!isMe && (
-                          <View
-                            className="mr-2 h-7 w-7 shrink-0 items-center justify-center rounded-full"
-                            style={{ backgroundColor: selectedContact.color }}>
-                            <Text className="text-[9px] font-bold text-gray-800">
-                              {selectedContact.initials}
-                            </Text>
-                          </View>
-                        )}
+                                {!isMe && (
+                                  <View className="mr-2 h-7 w-7 shrink-0">
+                                    {selectedContact.avatarUrl ? (
+                                      <Image
+                                        source={{ uri: selectedContact.avatarUrl }}
+                                        style={{ width: 28, height: 28, borderRadius: 999 }}
+                                      />
+                                    ) : (
+                                      <View
+                                        className="h-7 w-7 items-center justify-center rounded-full"
+                                        style={{ backgroundColor: selectedContact.color }}>
+                                        <Text className="text-[9px] font-bold text-gray-800">
+                                          {selectedContact.initials}
+                                        </Text>
+                                      </View>
+                                    )}
+                                  </View>
+                                )}
                         <View className="max-w-[72%]">
                           {message.isVoice ? (
                             <TouchableOpacity
@@ -1819,32 +1896,7 @@ export default function ContactManagement({ onNavigate }: ContactManagementProps
         </View>
       </View>
 
-      {/* ─── NOTIFICATIONS MODAL ─── */}
-      <Modal visible={isNotificationOpen} transparent animationType="fade">
-        <Pressable
-          className="flex-1 items-center justify-center bg-black/30"
-          onPress={() => setIsNotificationOpen(false)}>
-          <Pressable onPress={(e) => e.stopPropagation()}>
-            <View className="w-80 overflow-hidden rounded-2xl bg-white shadow-xl">
-              <View className="flex-row items-center gap-2 bg-emerald-500 px-5 py-4">
-                <Ionicons name="notifications-outline" size={18} color="white" />
-                <Text className="text-base font-bold text-white">Notifications</Text>
-              </View>
-              <View className="items-center px-6 py-8">
-                <Ionicons name="notifications-off-outline" size={40} color="#d1d5db" />
-                <Text className="mt-3 text-center text-sm text-gray-400">No new notifications</Text>
-              </View>
-              <View className="px-5 pb-5">
-                <TouchableOpacity
-                  className="items-center rounded-xl bg-gray-100 py-2.5"
-                  onPress={() => setIsNotificationOpen(false)}>
-                  <Text className="text-sm font-semibold text-gray-700">Dismiss</Text>
-                </TouchableOpacity>
-              </View>
-            </View>
-          </Pressable>
-        </Pressable>
-      </Modal>
+      {/* Notifications removed per user request */}
 
       {/* ─── ADD CONTACTS MODAL ─── */}
       <Modal visible={showContactsModal} transparent animationType="fade">
@@ -1896,10 +1948,19 @@ export default function ContactManagement({ onNavigate }: ContactManagementProps
                         <View
                           key={user.id}
                           className="mb-1.5 flex-row items-center rounded-xl border border-gray-200 bg-gray-50 p-3">
-                          <View
-                            className="mr-3 h-9 w-9 shrink-0 items-center justify-center rounded-full"
-                            style={{ backgroundColor: user.color }}>
-                            <Text className="text-xs font-bold text-gray-800">{user.initials}</Text>
+                          <View className="mr-3 h-9 w-9 shrink-0">
+                            {user.avatarUrl ? (
+                              <Image
+                                source={{ uri: user.avatarUrl }}
+                                style={{ width: 36, height: 36, borderRadius: 999 }}
+                              />
+                            ) : (
+                              <View
+                                className="h-9 w-9 shrink-0 items-center justify-center rounded-full"
+                                style={{ backgroundColor: user.color }}>
+                                <Text className="text-xs font-bold text-gray-800">{user.initials}</Text>
+                              </View>
+                            )}
                           </View>
                           <View className="min-w-0 flex-1">
                             <Text className="text-sm font-semibold text-gray-900" numberOfLines={1}>

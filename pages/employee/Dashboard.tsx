@@ -13,6 +13,8 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import supabase from '../../utils/supabase';
+import * as Location from 'expo-location';
+import SweetAlertModal from '../../components/SweetAlertModal';
 import {
   fetchMyNotifications,
   fetchMyUnreadNotificationCount,
@@ -141,6 +143,8 @@ export default function Dashboard({
   const [attendance, setAttendance] = useState<AttendanceRow | null>(null);
   const [attendanceLoading, setAttendanceLoading] = useState(false);
   const [attendanceActionLoading, setAttendanceActionLoading] = useState(false);
+  const [showSweetAlert, setShowSweetAlert] = useState(false);
+  const [sweetAlertMessage, setSweetAlertMessage] = useState('');
 
   const [siteStats, setSiteStats] = useState<SiteStats>({
     pendingSites: 0,
@@ -539,12 +543,55 @@ export default function Dashboard({
     }
   };
 
+  // Haversine formula - returns distance in meters between two lat/lon points
+  function haversineDistance(lat1: number, lon1: number, lat2: number, lon2: number) {
+    const toRad = (v: number) => (v * Math.PI) / 180;
+    const R = 6371000; // meters
+    const dLat = toRad(lat2 - lat1);
+    const dLon = toRad(lon2 - lon1);
+    const a =
+      Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+      Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) * Math.sin(dLon / 2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    return R * c;
+  }
+
   const isTimedIn = Boolean(attendance?.employee_start_time && !attendance?.employee_end_time);
 
   const handleTimeIn = useCallback(async () => {
     if (attendanceActionLoading) return;
     setAttendanceActionLoading(true);
     try {
+      // --- Location check start ---
+      // Target site coordinates (center)
+      const TARGET_LAT = 8.2246043;
+      const TARGET_LON = 124.2504357;
+      // Allowed radius in meters (adjust as needed)
+      const ALLOWED_RADIUS_METERS = 10;
+
+      const { status: permStatus } = await Location.requestForegroundPermissionsAsync();
+      if (permStatus !== 'granted') {
+        console.log('[TimeIn] location permission not granted', { permStatus });
+        setSweetAlertMessage('Location permission denied. Cannot time-in.');
+        setShowSweetAlert(true);
+        setAttendanceActionLoading(false);
+        return;
+      }
+
+      const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Highest });
+      const userLat = loc.coords.latitude;
+      const userLon = loc.coords.longitude;
+      const dist = haversineDistance(userLat, userLon, TARGET_LAT, TARGET_LON);
+      console.log('[TimeIn] location fetched', { userLat, userLon, target: { TARGET_LAT, TARGET_LON }, dist, ALLOWED_RADIUS_METERS });
+      if (dist > ALLOWED_RADIUS_METERS) {
+        console.log('[TimeIn] user outside allowed radius', { dist, ALLOWED_RADIUS_METERS });
+        setSweetAlertMessage('You cannot time-in early');
+        setShowSweetAlert(true);
+        setAttendanceActionLoading(false);
+        return;
+      }
+      // --- Location check end ---
+
       const {
         data: { user },
         error: authError,
@@ -559,6 +606,7 @@ export default function Dashboard({
       const now = new Date();
       const isOnTime = now.getHours() < 8 || (now.getHours() === 8 && now.getMinutes() === 0);
       const status = isOnTime ? 'On-Time' : 'Late';
+      console.log('[TimeIn] creating attendance record', { userId: user.id, time: toTimetzValue(now), status });
       const { data, error } = await supabase
         .from('user_attendances')
         .insert([
@@ -571,6 +619,7 @@ export default function Dashboard({
         .select('id, created_at, employee_start_time, employee_end_time, total_hours, status')
         .single();
       if (error) throw error;
+      console.log('[TimeIn] attendance created', data);
       setAttendance(data as any);
     } catch (e) {
       console.error('Time In error:', e);
@@ -595,6 +644,8 @@ export default function Dashboard({
         totalHours = formatTotalHoursFromSeconds(diff);
       }
 
+      console.log('[TimeOut] updating attendance', { attendanceId: attendance.id, startSeconds, endSeconds, totalHours });
+
       const { data, error } = await supabase
         .from('user_attendances')
         .update({ employee_end_time: toTimetzValue(now), total_hours: totalHours })
@@ -602,6 +653,7 @@ export default function Dashboard({
         .select('id, created_at, employee_start_time, employee_end_time, total_hours, status')
         .single();
       if (error) throw error;
+      console.log('[TimeOut] attendance updated', data);
       setAttendance(data as any);
     } catch (e) {
       console.error('Time Out error:', e);
@@ -853,6 +905,15 @@ export default function Dashboard({
           </View>
         </View>
       </ScrollView>
+      <SweetAlertModal
+        visible={showSweetAlert}
+        title={"Cannot Time-in"}
+        message={sweetAlertMessage}
+        type={'error'}
+        confirmText={'OK'}
+        onConfirm={() => setShowSweetAlert(false)}
+        onCancel={() => setShowSweetAlert(false)}
+      />
     </View>
   );
 }
