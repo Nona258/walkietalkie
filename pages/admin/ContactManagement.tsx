@@ -37,7 +37,7 @@ interface Contact {
   online: boolean;
   isGroup?: boolean;
   siteId?: string;
-  userId?: string; // linked user id
+  userId?: string;
   avatarUrl?: string | null;
 }
 
@@ -64,7 +64,6 @@ interface User {
   avatarUrl?: string | null;
 }
 
-// Helper function to generate initials
 const getInitials = (name: string | null): string => {
   if (!name) return '??';
   const parts = name.trim().split(' ');
@@ -74,15 +73,29 @@ const getInitials = (name: string | null): string => {
   return name.substring(0, 2).toUpperCase();
 };
 
-// Helper function to generate random color
 const getRandomColor = (): string => {
   const colors = ['#99f6e4', '#fde68a', '#bfdbfe', '#fda4af', '#c7d2fe', '#a7f3d0', '#fcd34d'];
   return colors[Math.floor(Math.random() * colors.length)];
 };
 
-// Helper function to pad a number with leading zeros
 const padZero = (num: number, length: number = 2): string => {
   return String(num).length >= length ? String(num) : '0'.repeat(length - String(num).length) + num;
+};
+
+// Helper to check if a contact already exists as friend
+const isAlreadyFriend = async (currentUserId: string, targetUserId: string): Promise<boolean> => {
+  const { data, error } = await supabase
+    .from('contacts')
+    .select('id')
+    .eq('user_id', currentUserId)
+    .eq('contact_id', targetUserId)
+    .eq('status', 'friends')
+    .maybeSingle();
+  if (error) {
+    console.warn('Error checking existing friend:', error);
+    return false;
+  }
+  return !!data;
 };
 
 export default function ContactManagement({ onNavigate }: ContactManagementProps) {
@@ -103,11 +116,8 @@ export default function ContactManagement({ onNavigate }: ContactManagementProps
   const [employeeSearch, setEmployeeSearch] = useState('');
   const [showContactsModal, setShowContactsModal] = useState(false);
 
-  // Database users state
   const [users, setUsers] = useState<User[]>([]);
   const [isLoadingUsers, setIsLoadingUsers] = useState(false);
-
-  // Authenticated user id
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
 
   const recordingInterval = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -118,29 +128,20 @@ export default function ContactManagement({ onNavigate }: ContactManagementProps
   const lastAutoPlayedIdRef = useRef<string | null>(null);
   const audioUnlockedRef = useRef<boolean>(false);
   const audioContextRef = useRef<AudioContext | null>(null);
-  // Stores the latest autoPlayVoiceMessage so subscription closures always call the current version
-  const autoPlayVoiceRef = useRef<
-    ((msgId: string | number, fileUrl?: string | null) => void) | null
-  >(null);
+  const autoPlayVoiceRef = useRef<((msgId: string | number, fileUrl?: string | null) => void) | null>(null);
   const chatScrollRef = useRef<ScrollView>(null);
   const selectedContactRef = useRef<Contact | null>(null);
-  // Mirrors contacts state so real-time callbacks can look up contacts synchronously
   const contactsRef = useRef<Contact[]>([]);
-  // Maps conversationId -> contact.id (string) so realtime callbacks find the right contact
   const convToContactIdRef = useRef<Map<string, string>>(new Map());
   const [currentlyPlayingId, setCurrentlyPlayingId] = useState<string | null>(null);
-  // Ticks every 30 s so delivery labels like "Delivered 2 minutes ago" stay up-to-date
   const [now, setNow] = useState(new Date());
   const messagesChannelRef = useRef<any>(null);
   const [expandedMessageId, setExpandedMessageId] = useState<string | null>(null);
 
-  // Sweet alert state
   const [sweetAlertVisible, setSweetAlertVisible] = useState(false);
   const [sweetAlertTitle, setSweetAlertTitle] = useState('');
   const [sweetAlertMessage, setSweetAlertMessage] = useState('');
-  const [sweetAlertType, setSweetAlertType] = useState<'success' | 'error' | 'warning' | 'info'>(
-    'success'
-  );
+  const [sweetAlertType, setSweetAlertType] = useState<'success' | 'error' | 'warning' | 'info'>('success');
 
   const showSweetAlert = (opts: {
     title: string;
@@ -163,14 +164,12 @@ export default function ContactManagement({ onNavigate }: ContactManagementProps
           setCurrentUserId(meId);
         }
       }
-
       if (meId) {
         const { data: meRow, error: meError } = await supabase
           .from('users')
           .select('full_name, email')
           .eq('id', meId)
           .single();
-
         if (!meError && meRow) {
           const name = (meRow as any).full_name || (meRow as any).email || 'Admin User';
           return { user_name: name, initials: getInitials(name) };
@@ -179,7 +178,6 @@ export default function ContactManagement({ onNavigate }: ContactManagementProps
     } catch (e) {
       console.error('Failed to resolve activity actor:', e);
     }
-
     return { user_name: 'Admin User', initials: 'AD' };
   };
 
@@ -203,7 +201,6 @@ export default function ContactManagement({ onNavigate }: ContactManagementProps
         color: opts.color || '#d1fae5',
         icon: opts.icon || 'notifications-outline',
       };
-
       const { error } = await supabase.from('activity_logs').insert([payload]);
       if (error) console.error('Failed to insert activity log:', error);
     } catch (e) {
@@ -211,7 +208,6 @@ export default function ContactManagement({ onNavigate }: ContactManagementProps
     }
   };
 
-  // Map DB row to UI Message
   const mapRowToMessage = (row: any): Message => {
     const created = row.created_at ? new Date(row.created_at) : new Date();
     const durationMs = typeof row.duration_ms === 'number' ? row.duration_ms : null;
@@ -219,11 +215,9 @@ export default function ContactManagement({ onNavigate }: ContactManagementProps
     const mins = totalSeconds !== null ? Math.floor(totalSeconds / 60) : 0;
     const secs = totalSeconds !== null ? totalSeconds % 60 : 0;
     const durationStr = totalSeconds !== null ? `${mins}:${padZero(secs)}` : undefined;
-
     const hasAudio = typeof row.file_url === 'string' && row.file_url.length > 0;
     const isVoice = !!hasAudio;
     const isFromMe = currentUserId && row.sender_id && row.sender_id === currentUserId;
-
     return {
       id: String(row.id),
       sender: isFromMe ? 'Me' : selectedContact?.initials || 'CT',
@@ -237,7 +231,6 @@ export default function ContactManagement({ onNavigate }: ContactManagementProps
     };
   };
 
-  // Map a DB row from site messages (stored in messages table with site_id) into a UI Message
   const mapSiteRowToMessage = (row: any): Message => {
     const created = row.created_at ? new Date(row.created_at) : new Date();
     const durationMs = typeof row.duration_ms === 'number' ? row.duration_ms : null;
@@ -245,11 +238,9 @@ export default function ContactManagement({ onNavigate }: ContactManagementProps
     const mins = totalSeconds !== null ? Math.floor(totalSeconds / 60) : 0;
     const secs = totalSeconds !== null ? totalSeconds % 60 : 0;
     const durationStr = totalSeconds !== null ? `${mins}:${padZero(secs)}` : undefined;
-
     const hasAudio = typeof row.file_url === 'string' && row.file_url.length > 0;
     const isVoice = !!hasAudio;
     const isFromMe = currentUserId && row.sender_id && row.sender_id === currentUserId;
-
     return {
       id: String(row.id),
       sender: isFromMe ? 'Me' : 'Member',
@@ -263,27 +254,19 @@ export default function ContactManagement({ onNavigate }: ContactManagementProps
     };
   };
 
-  const fetchMessagesForConversation = async (
-    conversationId: string | null
-  ): Promise<Message[]> => {
+  const fetchMessagesForConversation = async (conversationId: string | null): Promise<Message[]> => {
     try {
       if (!conversationId) return [];
-
       const { data, error } = await supabase
         .from('messages')
         .select('*')
         .eq('conversation_id', conversationId)
         .order('created_at', { ascending: true });
-
       if (error) {
         console.error('Failed to fetch messages:', error);
         return [];
       }
-
       const mapped = (data || []).map(mapRowToMessage) as Message[];
-
-      // Mark all unread messages in this conversation that were NOT sent by admin as read
-      // Use auth.getUser() directly to avoid stale closure on currentUserId state
       try {
         const { data: authData } = await supabase.auth.getUser();
         const meId = authData?.user?.id;
@@ -298,7 +281,6 @@ export default function ContactManagement({ onNavigate }: ContactManagementProps
       } catch (markErr) {
         console.warn('Failed to mark messages as read:', markErr);
       }
-
       return mapped;
     } catch (e) {
       console.error('Error fetching messages:', e);
@@ -309,18 +291,15 @@ export default function ContactManagement({ onNavigate }: ContactManagementProps
   const fetchSiteMessages = async (siteId: string | null): Promise<Message[]> => {
     try {
       if (!siteId) return [];
-
       const { data, error } = await supabase
         .from('messages')
         .select('*')
         .eq('site_id', siteId)
         .order('created_at', { ascending: true });
-
       if (error) {
         console.error('Failed to fetch group messages:', error);
         return [];
       }
-
       return (data || []).map(mapSiteRowToMessage) as Message[];
     } catch (e) {
       console.error('Error fetching site messages:', e);
@@ -328,7 +307,7 @@ export default function ContactManagement({ onNavigate }: ContactManagementProps
     }
   };
 
-  // Load direct contacts and group chats from DB
+  // Modified: load only contacts with status 'friends'
   const loadContactsFromDb = async () => {
     try {
       const { data: userData, error: userError } = await supabase.auth.getUser();
@@ -337,11 +316,13 @@ export default function ContactManagement({ onNavigate }: ContactManagementProps
         return;
       }
       const meId = userData.user.id;
+      setCurrentUserId(meId);
 
       const { data: contactRows, error: contactsError } = await supabase
         .from('contacts')
         .select('id, contact_id, created_at')
-        .eq('user_id', meId);
+        .eq('user_id', meId)
+        .eq('status', 'friends');   // <-- Only friends
 
       if (contactsError) {
         console.error('Error fetching contacts from Supabase:', contactsError);
@@ -387,21 +368,19 @@ export default function ContactManagement({ onNavigate }: ContactManagementProps
         })
         .filter((c: Contact | null): c is Contact => c !== null);
 
-      // Fetch all sites so they appear as Team chats in Contacts
       let siteContacts: Contact[] = [];
       try {
         const { data: siteRows, error: sitesError } = await supabase
           .from('sites')
           .select('id, name')
           .order('created_at', { ascending: false });
-
         if (sitesError) {
           console.error('Error fetching sites for team chats:', sitesError);
         } else if (siteRows) {
           siteContacts = (siteRows as any[]).map(
             (row: any, index: number) =>
               ({
-                id: Number.MAX_SAFE_INTEGER - index, // ensure unique numeric key
+                id: Number.MAX_SAFE_INTEGER - index,
                 name: row.name || 'Team',
                 members: null,
                 location: 'Team',
@@ -418,25 +397,17 @@ export default function ContactManagement({ onNavigate }: ContactManagementProps
       }
 
       const allContacts = [...dbContacts, ...siteContacts];
-
-      // Enrich contacts with avatar public URLs from profile_picture bucket
       const enriched = await Promise.all(
         allContacts.map(async (c) => {
-          // only resolve for direct users (not group/team contacts)
           if (!c.userId) return c;
           const user = usersMap.get(c.userId);
           if (!user) return c;
-
           const profilePath = user.profile_picture_url as string | undefined | null;
           if (!profilePath) return c;
-
-          // If already a full URL, use it. Otherwise, resolve via storage bucket.
           try {
             if (profilePath.startsWith('http://') || profilePath.startsWith('https://')) {
               return { ...c, avatarUrl: profilePath } as Contact;
             }
-
-            // Remove any leading bucket prefix if present
             const relativePath = profilePath.replace(/^profile_picture\//, '');
             const { data } = await supabase.storage.from('profile_picture').getPublicUrl(relativePath);
             const publicUrl = data?.publicUrl || null;
@@ -447,48 +418,34 @@ export default function ContactManagement({ onNavigate }: ContactManagementProps
           }
         })
       );
-
       setContacts(enriched);
-      // Fetch last messages for direct contacts
       fetchLastMessagesForContacts(dbContacts);
     } catch (e) {
       console.error('Unexpected error loading contacts from Supabase:', e);
     }
   };
 
-  // Fetch last messages for each direct contact (for contact list preview)
   const fetchLastMessagesForContacts = async (directContacts: Contact[]) => {
     try {
       const { data: authData } = await supabase.auth.getUser();
       const meId = authData?.user?.id;
       if (!meId) return;
-
       const contactUserIds = directContacts.map((c) => c.userId).filter((id): id is string => !!id);
-
       if (contactUserIds.length === 0) return;
-
-      // Fetch all conversations involving the admin
       const { data: conversations } = await supabase
         .from('conversations')
         .select('id, user_one, user_two');
-
       const myConversations = (conversations || []).filter(
         (conv: any) => conv.user_one === meId || conv.user_two === meId
       );
-
-      // Build a map: contactUserId -> [conversationId, ...]
       const convMap = new Map<string, string[]>();
       myConversations.forEach((conv: any) => {
         const otherId = conv.user_one === meId ? conv.user_two : conv.user_one;
         if (!convMap.has(otherId)) convMap.set(otherId, []);
         convMap.get(otherId)!.push(conv.id);
       });
-
-      // Build reverse map: conversationId -> contact.id for realtime lookups
       const reverseMap = new Map<string, string>();
-
       const map: Record<string, { text: string; time: string; unreadCount: number } | null> = {};
-
       await Promise.all(
         directContacts.map(async (contact) => {
           if (!contact.userId) {
@@ -500,11 +457,7 @@ export default function ContactManagement({ onNavigate }: ContactManagementProps
             map[String(contact.id)] = null;
             return;
           }
-
-          // Register all conversation IDs for this contact in the reverse map
           convIds.forEach((cid) => reverseMap.set(cid, String(contact.id)));
-
-          // Fetch latest message across all conversations for this contact
           const results = await Promise.all(
             convIds.map((cid) =>
               supabase
@@ -515,11 +468,9 @@ export default function ContactManagement({ onNavigate }: ContactManagementProps
                 .limit(1)
             )
           );
-
           const latest = results
             .flatMap((r) => r.data || [])
             .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
-
           if (latest.length > 0) {
             const last = latest[0];
             const isVoice = typeof last.file_url === 'string' && last.file_url.length > 0;
@@ -528,8 +479,6 @@ export default function ContactManagement({ onNavigate }: ContactManagementProps
               hour: '2-digit',
               minute: '2-digit',
             });
-
-            // Count unread messages from the other user across all their conversations
             let unreadCount = 0;
             try {
               const unreadResults = await Promise.all(
@@ -539,19 +488,17 @@ export default function ContactManagement({ onNavigate }: ContactManagementProps
                     .select('id')
                     .eq('conversation_id', cid)
                     .not('is_read', 'is', true)
-                    .neq('sender_id', meId!)
+                    .neq('sender_id', meId)
                 )
               );
               unreadCount = unreadResults.reduce((sum, r) => sum + (r.data ? r.data.length : 0), 0);
             } catch (_) {}
-
             map[String(contact.id)] = { text, time, unreadCount };
           } else {
             map[String(contact.id)] = null;
           }
         })
       );
-
       setLastMessagesMap(map);
       convToContactIdRef.current = reverseMap;
     } catch (e) {
@@ -559,7 +506,6 @@ export default function ContactManagement({ onNavigate }: ContactManagementProps
     }
   };
 
-  // Fetch users (for adding contacts)
   const fetchUsers = async () => {
     setIsLoadingUsers(true);
     try {
@@ -570,8 +516,6 @@ export default function ContactManagement({ onNavigate }: ContactManagementProps
         console.error('Error fetching users from Supabase:', error);
         return;
       }
-
-      // Base transform
       const base: User[] = (data || []).map((user: any) => ({
         id: user.id,
         email: user.email,
@@ -582,8 +526,6 @@ export default function ContactManagement({ onNavigate }: ContactManagementProps
         color: getRandomColor(),
         avatarUrl: null,
       }));
-
-      // Resolve profile_picture_url to public URLs when available
       const enriched = await Promise.all(
         base.map(async (u) => {
           try {
@@ -601,7 +543,6 @@ export default function ContactManagement({ onNavigate }: ContactManagementProps
           }
         })
       );
-
       setUsers(enriched);
     } catch (e) {
       console.error('Error fetching users:', e);
@@ -610,27 +551,20 @@ export default function ContactManagement({ onNavigate }: ContactManagementProps
     }
   };
 
-  // Initial load
   useEffect(() => {
     loadContactsFromDb();
   }, []);
 
-  // Unlock browser audio autoplay on first user interaction.
-  // We create an AudioContext here because once it is in 'running' state it
-  // stays unlocked across async/await boundaries — unlike HTMLAudioElement
-  // which requires the play() call to be synchronously inside a user gesture.
   useEffect(() => {
     const unlock = async () => {
       if (audioUnlockedRef.current) return;
       audioUnlockedRef.current = true;
       try {
-        const AudioCtx = (window.AudioContext ||
-          (window as any).webkitAudioContext) as typeof AudioContext;
+        const AudioCtx = (window.AudioContext || (window as any).webkitAudioContext) as typeof AudioContext;
         const ctx = new AudioCtx();
         await ctx.resume();
         audioContextRef.current = ctx;
       } catch (e) {
-        // Fallback: at least unblock HTMLAudioElement by playing silent audio
         try {
           const silent = new Audio(
             'data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQAAAAA='
@@ -648,17 +582,14 @@ export default function ContactManagement({ onNavigate }: ContactManagementProps
     };
   }, []);
 
-  // Keep selectedContactRef in sync for use inside real-time callbacks
   useEffect(() => {
     selectedContactRef.current = selectedContact;
   }, [selectedContact]);
 
-  // Keep contactsRef in sync so real-time callbacks always have the latest list
   useEffect(() => {
     contactsRef.current = contacts;
   }, [contacts]);
 
-  // Real-time online status updates
   useEffect(() => {
     const channel = supabase
       .channel('admin-contact-user-status')
@@ -676,9 +607,7 @@ export default function ContactManagement({ onNavigate }: ContactManagementProps
         }
       )
       .subscribe();
-
     statusChannelRef.current = channel;
-
     return () => {
       if (statusChannelRef.current) {
         try {
@@ -689,7 +618,6 @@ export default function ContactManagement({ onNavigate }: ContactManagementProps
     };
   }, []);
 
-  // Real-time last-message preview updates
   const lastMessagesChannelRef = useRef<any>(null);
   useEffect(() => {
     const channel = supabase
@@ -700,56 +628,41 @@ export default function ContactManagement({ onNavigate }: ContactManagementProps
         (payload: any) => {
           const newMsg = payload.new;
           if (!newMsg?.sender_id) return;
-
           (async () => {
             try {
               const { data: authData } = await supabase.auth.getUser();
               const meId = authData?.user?.id;
               if (!meId) return;
-
-              // Skip messages that don't involve the admin at all
               const senderIsMe = newMsg.sender_id === meId;
               const receiverIsMe = newMsg.receiver_id === meId;
               const knownConv =
                 newMsg.conversation_id && convToContactIdRef.current.has(newMsg.conversation_id);
               if (!senderIsMe && !receiverIsMe && !knownConv) return;
-
-              // Resolve which contact this message belongs to
-              // 1. Try the conversation reverse-map (most reliable)
               let contactId: string | undefined = newMsg.conversation_id
                 ? convToContactIdRef.current.get(newMsg.conversation_id)
                 : undefined;
-
-              // 2. Fall back to matching by the OTHER user's ID via contactsRef
               if (!contactId) {
                 const otherUserId = senderIsMe ? newMsg.receiver_id : newMsg.sender_id;
                 const found = contactsRef.current.find((c) => c.userId === otherUserId);
                 if (found) {
                   contactId = String(found.id);
-                  // Register for future messages from this conversation
                   if (newMsg.conversation_id) {
                     convToContactIdRef.current.set(newMsg.conversation_id, contactId);
                   }
                 }
               }
-
               if (!contactId) return;
-
               const isVoice = typeof newMsg.file_url === 'string' && newMsg.file_url.length > 0;
-              const text = isVoice
-                ? '🎤 Voice message'
-                : newMsg.transcription || newMsg.content || 'Message';
+              const text = isVoice ? '🎤 Voice message' : newMsg.transcription || newMsg.content || 'Message';
               const time = new Date(newMsg.created_at).toLocaleTimeString([], {
                 hour: '2-digit',
                 minute: '2-digit',
               });
               const finalContactId = contactId;
-
               setLastMessagesMap((prev) => {
                 const existing = prev[finalContactId];
                 const isContactOpen =
-                  selectedContactRef.current &&
-                  String(selectedContactRef.current.id) === finalContactId;
+                  selectedContactRef.current && String(selectedContactRef.current.id) === finalContactId;
                 const prevUnread = existing?.unreadCount ?? 0;
                 const newUnread = isContactOpen ? 0 : !senderIsMe ? prevUnread + 1 : prevUnread;
                 return {
@@ -757,14 +670,9 @@ export default function ContactManagement({ onNavigate }: ContactManagementProps
                   [finalContactId]: { text, time, unreadCount: newUnread },
                 };
               });
-
-              // Autoplay incoming voice messages that arrive while the contact
-              // is NOT currently open (the per-contact subscription handles it
-              // when the conversation panel is already visible).
               if (isVoice && !senderIsMe) {
                 const isContactOpen =
-                  selectedContactRef.current &&
-                  String(selectedContactRef.current.id) === finalContactId;
+                  selectedContactRef.current && String(selectedContactRef.current.id) === finalContactId;
                 if (!isContactOpen && autoPlayVoiceRef.current) {
                   autoPlayVoiceRef.current(newMsg.id, newMsg.file_url);
                 }
@@ -776,7 +684,6 @@ export default function ContactManagement({ onNavigate }: ContactManagementProps
         }
       )
       .subscribe();
-
     lastMessagesChannelRef.current = channel;
     return () => {
       if (lastMessagesChannelRef.current) {
@@ -788,7 +695,6 @@ export default function ContactManagement({ onNavigate }: ContactManagementProps
     };
   }, []);
 
-  // Load current user id once
   useEffect(() => {
     (async () => {
       try {
@@ -802,7 +708,6 @@ export default function ContactManagement({ onNavigate }: ContactManagementProps
     })();
   }, []);
 
-  // Cleanup audio player
   useEffect(() => {
     const ticker = setInterval(() => setNow(new Date()), 30000);
     return () => {
@@ -816,11 +721,9 @@ export default function ContactManagement({ onNavigate }: ContactManagementProps
     };
   }, []);
 
-  // Setup realtime + messages whenever selectedContact changes
   useEffect(() => {
     const contactUserId = selectedContact?.isGroup ? null : selectedContact?.userId || null;
     const siteId = selectedContact?.isGroup ? selectedContact.siteId || null : null;
-
     if (messagesChannelRef.current) {
       try {
         supabase.removeChannel(messagesChannelRef.current);
@@ -831,31 +734,18 @@ export default function ContactManagement({ onNavigate }: ContactManagementProps
       }
       messagesChannelRef.current = null;
     }
-
-    // Clear messages immediately so the previous contact's messages never bleed
-    // into the newly selected contact's chat while the fetch is in-flight.
     setMessagesList([]);
-
-    if (!contactUserId && !siteId) {
-      return;
-    }
-
-    // Guard against race conditions: if the contact changes before the async
-    // work finishes, this flag is set to true and all state updates are skipped.
+    if (!contactUserId && !siteId) return;
     let cancelled = false;
-
     (async () => {
       try {
-        // Capture stable admin ID once for all realtime callbacks (avoids stale closure)
         const { data: authSnap0 } = await supabase.auth.getUser();
         if (cancelled) return;
         const stableAdminId = authSnap0?.user?.id ?? currentUserId;
-
         if (siteId) {
           const siteMsgs = await fetchSiteMessages(siteId);
           if (cancelled) return;
           setMessagesList(siteMsgs);
-
           const channelName = `site_messages_${siteId}`;
           const channel = supabase
             .channel(channelName)
@@ -869,7 +759,6 @@ export default function ContactManagement({ onNavigate }: ContactManagementProps
               },
               (payload: any) => {
                 const newRow = payload.new;
-                // Skip own messages — they're already added optimistically in sendMessage
                 if (stableAdminId && newRow.sender_id === stableAdminId) return;
                 setMessagesList((prev) => {
                   if (prev.some((m) => m.id === String(newRow.id))) return prev;
@@ -878,7 +767,6 @@ export default function ContactManagement({ onNavigate }: ContactManagementProps
               }
             )
             .subscribe();
-
           messagesChannelRef.current = channel;
         } else if (contactUserId) {
           const conversationId = await getOrCreateConversation(contactUserId);
@@ -887,18 +775,13 @@ export default function ContactManagement({ onNavigate }: ContactManagementProps
             setMessagesList([]);
             return;
           }
-
-          // Also register the new conversation in the reverse-lookup map so the
-          // last-message preview subscription can route messages correctly.
           const contactIdStr = selectedContact ? String(selectedContact.id) : null;
           if (contactIdStr) {
             convToContactIdRef.current.set(conversationId, contactIdStr);
           }
-
           const msgs = await fetchMessagesForConversation(conversationId);
           if (cancelled) return;
           setMessagesList(msgs);
-
           const channelName = `messages_conversation_${conversationId}`;
           const channel = supabase
             .channel(channelName)
@@ -912,13 +795,11 @@ export default function ContactManagement({ onNavigate }: ContactManagementProps
               },
               (payload: any) => {
                 const newRow = payload.new;
-                // Skip own messages — they're already added optimistically in sendMessage
                 if (stableAdminId && newRow.sender_id === stableAdminId) return;
                 setMessagesList((prev) => {
                   if (prev.some((m) => m.id === String(newRow.id))) return prev;
                   return [...prev, mapRowToMessage(newRow)];
                 });
-                // Admin is actively viewing — mark as read immediately
                 if (stableAdminId) {
                   supabase
                     .from('messages')
@@ -926,14 +807,12 @@ export default function ContactManagement({ onNavigate }: ContactManagementProps
                     .eq('id', newRow.id)
                     .then(() => {});
                 }
-                // Autoplay incoming voice messages (employee → admin direction only)
                 if (newRow.file_url && autoPlayVoiceRef.current) {
                   autoPlayVoiceRef.current(newRow.id, newRow.file_url);
                 }
               }
             )
             .subscribe();
-
           messagesChannelRef.current = channel;
         }
       } catch (e) {
@@ -943,7 +822,6 @@ export default function ContactManagement({ onNavigate }: ContactManagementProps
         }
       }
     })();
-
     return () => {
       cancelled = true;
       if (messagesChannelRef.current) {
@@ -957,11 +835,8 @@ export default function ContactManagement({ onNavigate }: ContactManagementProps
         messagesChannelRef.current = null;
       }
     };
-    // Re-run whenever the selected contact OR the current user id changes so that
-    // mapRowToMessage always has the correct sender info in its closure.
   }, [selectedContact, currentUserId]);
 
-  // Audio recording
   const startRecording = () => {
     if (!selectedContact) {
       alert('Please select a contact or group before recording a message.');
@@ -970,20 +845,17 @@ export default function ContactManagement({ onNavigate }: ContactManagementProps
     setIsRecording(true);
     setRecordingTime(0);
     recordingInterval.current = setInterval(() => setRecordingTime((prev) => prev + 1), 1000);
-
     (async () => {
       try {
         const stream = await (navigator as any).mediaDevices.getUserMedia({ audio: true });
         audioChunksRef.current = [];
         const options = { mimeType: 'audio/webm' } as any;
         const mediaRecorder = new (window as any).MediaRecorder(stream, options);
-
         mediaRecorder.ondataavailable = (e: any) => {
           if (e.data && e.data.size > 0) {
             audioChunksRef.current.push(e.data);
           }
         };
-
         mediaRecorder.start();
         mediaRecorderRef.current = { mediaRecorder, stream };
       } catch (e) {
@@ -998,7 +870,6 @@ export default function ContactManagement({ onNavigate }: ContactManagementProps
   const stopRecording = () => {
     setIsRecording(false);
     if (recordingInterval.current) clearInterval(recordingInterval.current);
-
     const ref = mediaRecorderRef.current;
     if (ref && ref.mediaRecorder) {
       try {
@@ -1012,7 +883,6 @@ export default function ContactManagement({ onNavigate }: ContactManagementProps
               reader.onerror = reject;
               reader.readAsDataURL(blob);
             });
-
             const now = new Date();
             const baseMessage: Message = {
               id: '',
@@ -1025,11 +895,9 @@ export default function ContactManagement({ onNavigate }: ContactManagementProps
               duration: formatRecordingTime(recordingTime),
               audioUrl: dataUrl,
             };
-
             const dbRow = selectedContact?.isGroup
               ? await saveSiteMessageToDb(baseMessage)
               : await saveMessageToDb(baseMessage);
-
             if (dbRow) {
               const mapped = selectedContact?.isGroup
                 ? mapSiteRowToMessage(dbRow)
@@ -1043,7 +911,6 @@ export default function ContactManagement({ onNavigate }: ContactManagementProps
             console.error('Failed to finalize recording:', e);
           }
         };
-
         mr.stop();
         try {
           ref.stream.getTracks().forEach((t: any) => t.stop());
@@ -1065,12 +932,6 @@ export default function ContactManagement({ onNavigate }: ContactManagementProps
       alert('Please select a contact or group before sending a message.');
       return;
     }
-    console.log(
-      'Sending message to contact:',
-      selectedContact.name,
-      'userId:',
-      selectedContact.userId
-    );
     (async () => {
       const now = new Date();
       const localMessage: Message = {
@@ -1088,14 +949,12 @@ export default function ContactManagement({ onNavigate }: ContactManagementProps
         const dbRow = selectedContact?.isGroup
           ? await saveSiteMessageToDb(localMessage)
           : await saveMessageToDb(localMessage);
-
         if (dbRow) {
           const mapped = selectedContact?.isGroup
             ? mapSiteRowToMessage(dbRow)
             : mapRowToMessage(dbRow);
           setMessagesList((prev) => {
             const replaced = prev.map((m) => (m.id === localMessage.id ? mapped : m));
-
             const seen = new Set<string>();
             return replaced.filter((m) => {
               if (seen.has(m.id)) return false;
@@ -1141,15 +1000,10 @@ export default function ContactManagement({ onNavigate }: ContactManagementProps
     });
   };
 
-  // Auto-play an incoming voice message. Re-fetches the full DB row first because
-  // realtime payloads truncate large base64 file_url values.
-  // Uses AudioContext (stays unlocked across async/await) with HTMLAudioElement fallback.
   const autoPlayVoiceMessage = async (msgId: string | number, fileUrl?: string | null) => {
     const id = String(msgId);
     if (lastAutoPlayedIdRef.current === id) return;
     lastAutoPlayedIdRef.current = id;
-
-    // Re-fetch to guarantee the full (non-truncated) base64 URL
     let url = typeof fileUrl === 'string' && fileUrl.length > 10 ? fileUrl : null;
     try {
       const { data: fullRow } = await supabase
@@ -1161,13 +1015,10 @@ export default function ContactManagement({ onNavigate }: ContactManagementProps
     } catch (e) {
       console.warn('Could not re-fetch voice message for autoplay:', e);
     }
-
     if (!url) {
       lastAutoPlayedIdRef.current = null;
       return;
     }
-
-    // Stop anything currently playing
     if (audioPlayerRef.current) {
       try {
         audioPlayerRef.current.pause();
@@ -1175,10 +1026,8 @@ export default function ContactManagement({ onNavigate }: ContactManagementProps
       } catch (e) {}
       audioPlayerRef.current = null;
     }
-
     const ctx = audioContextRef.current;
     if (ctx && ctx.state === 'running') {
-      // Path A: Web Audio API — fully async-safe, not blocked by autoplay policy
       try {
         const base64 = url.includes(',') ? url.split(',')[1] : url;
         const binary = atob(base64);
@@ -1196,8 +1045,6 @@ export default function ContactManagement({ onNavigate }: ContactManagementProps
         console.warn('AudioContext decode/play failed, falling back to HTMLAudioElement:', e);
       }
     }
-
-    // Path B: HTMLAudioElement fallback
     const audio = new Audio(url);
     audioPlayerRef.current = audio;
     setCurrentlyPlayingId(id);
@@ -1241,22 +1088,13 @@ export default function ContactManagement({ onNavigate }: ContactManagementProps
         console.warn('Skipping conversation creation for self-chat.');
         return null;
       }
-
-      console.log('Looking for conversation between:', meId, 'and', contactUserId);
-
-      // Find existing conversation - fetch all and filter client-side to avoid 406 errors
       const { data: allConversations, error: findError } = await supabase
         .from('conversations')
         .select('id, user_one, user_two');
-
       if (findError) {
         console.error('Error looking up conversation:', findError);
         return null;
       }
-
-      console.log('All conversations:', allConversations);
-
-      // Find the matching conversation
       if (allConversations && allConversations.length > 0) {
         const matching = allConversations.find(
           (conv: any) =>
@@ -1264,27 +1102,20 @@ export default function ContactManagement({ onNavigate }: ContactManagementProps
             (conv.user_one === contactUserId && conv.user_two === meId)
         );
         if (matching) {
-          console.log('Found existing conversation:', matching.id);
           return matching.id as string;
         }
       }
-
-      // Create new conversation if not found
-      console.log('Creating new conversation');
       const userOne = meId < contactUserId ? meId : contactUserId;
       const userTwo = meId < contactUserId ? contactUserId : meId;
-
       const { data: created, error: createError } = await supabase
         .from('conversations')
         .insert([{ user_one: userOne, user_two: userTwo }])
         .select('id')
         .single();
-
       if (createError || !created) {
         console.error('Error creating conversation:', createError);
         return null;
       }
-      console.log('Created new conversation:', created.id);
       return created.id as string;
     } catch (e) {
       console.error('Unexpected error in getOrCreateConversation:', e);
@@ -1300,7 +1131,6 @@ export default function ContactManagement({ onNavigate }: ContactManagementProps
         return null;
       }
       const conversationId = await getOrCreateConversation(targetUserId);
-      console.log('Saving message to conversation:', conversationId, 'for user:', targetUserId);
       if (!conversationId) {
         console.warn('No conversation id resolved; skipping save to messages');
         return null;
@@ -1344,7 +1174,6 @@ export default function ContactManagement({ onNavigate }: ContactManagementProps
         console.warn('No selected site/team; skipping save to site messages');
         return null;
       }
-
       let meId = currentUserId;
       if (!meId) {
         const { data, error } = await supabase.auth.getUser();
@@ -1355,7 +1184,6 @@ export default function ContactManagement({ onNavigate }: ContactManagementProps
         meId = data.user.id;
         setCurrentUserId(meId);
       }
-
       const durationMs = message.isVoice ? parseDurationToMs(message.duration) : null;
       const payload: any = {
         conversation_id: null,
@@ -1366,7 +1194,6 @@ export default function ContactManagement({ onNavigate }: ContactManagementProps
         transcription: !message.isVoice ? message.text : null,
         duration_ms: durationMs,
       };
-
       const { data, error } = await supabase.from('messages').insert([payload]).select();
       if (error) {
         console.error('Supabase messages insert error (site):', error);
@@ -1416,10 +1243,9 @@ export default function ContactManagement({ onNavigate }: ContactManagementProps
   return (
     <View className="flex-1 bg-gray-50">
       <View className="flex-1 flex-row">
-        {/* ─── LEFT: Contacts Panel ─── */}
+        {/* LEFT: Contacts Panel */}
         <View
           className={`${!showContactList ? 'hidden lg:flex' : 'flex'} flex-1 flex-col border-r border-gray-100 bg-white lg:w-80 lg:flex-none`}>
-          {/* Panel header */}
           <View className="border-b border-gray-100 bg-white px-4 pb-3 pt-5">
             <View className="mb-3 flex-row items-center justify-between">
               <View className="flex-row items-center gap-2">
@@ -1441,7 +1267,6 @@ export default function ContactManagement({ onNavigate }: ContactManagementProps
                 </TouchableOpacity>
               </View>
             </View>
-            {/* Search bar */}
             <View className="flex-row items-center rounded-xl bg-gray-100 px-3 py-2.5">
               <Ionicons name="search" size={15} color="#9ca3af" />
               <TextInput
@@ -1459,7 +1284,6 @@ export default function ContactManagement({ onNavigate }: ContactManagementProps
             </View>
           </View>
 
-          {/* Contact list */}
           <ScrollView className="flex-1" showsVerticalScrollIndicator={false}>
             {filteredContacts.length === 0 ? (
               <View className="items-center px-6 py-14">
@@ -1475,7 +1299,6 @@ export default function ContactManagement({ onNavigate }: ContactManagementProps
               </View>
             ) : (
               <>
-                {/* Teams section */}
                 {filteredContacts.some((c) => c.isGroup) && (
                   <View>
                     <View className="px-4 pb-1.5 pt-4">
@@ -1521,7 +1344,6 @@ export default function ContactManagement({ onNavigate }: ContactManagementProps
                   </View>
                 )}
 
-                {/* Direct messages section */}
                 {filteredContacts.some((c) => !c.isGroup) && (
                   <View>
                     <View className="px-4 pb-1.5 pt-4">
@@ -1615,12 +1437,11 @@ export default function ContactManagement({ onNavigate }: ContactManagementProps
           </ScrollView>
         </View>
 
-        {/* ─── RIGHT: Chat Panel ─── */}
+        {/* RIGHT: Chat Panel */}
         <View
           className={`${showContactList ? 'hidden lg:flex' : 'flex'} flex-1 flex-col bg-slate-50`}>
           {selectedContact ? (
             <>
-              {/* Chat Header */}
               <View className="flex-row items-center border-b border-gray-100 bg-white px-5 py-3.5 shadow-sm">
                 <TouchableOpacity
                   className="mr-3 h-8 w-8 items-center justify-center rounded-xl bg-gray-100 lg:hidden"
@@ -1674,7 +1495,6 @@ export default function ContactManagement({ onNavigate }: ContactManagementProps
                 </View>
               </View>
 
-              {/* Messages Area */}
               <ScrollView
                 ref={chatScrollRef}
                 className="flex-1 px-4 py-3"
@@ -1684,7 +1504,6 @@ export default function ContactManagement({ onNavigate }: ContactManagementProps
                   const isMe = message.sender === 'Me';
                   const rawTs = message._rawTs || new Date().toISOString();
                   const showTimestamp = expandedMessageId === message.id;
-
                   const prevMsg = index === 0 ? null : messagesList[index - 1];
                   const prevRawTs = prevMsg ? prevMsg._rawTs || prevMsg.time : null;
                   const toDay = (ts: string) => ts.slice(0, 10);
@@ -1706,7 +1525,6 @@ export default function ContactManagement({ onNavigate }: ContactManagementProps
                       day: 'numeric',
                     });
                   })();
-
                   return (
                     <View key={message.id}>
                       {showDateSep && (
@@ -1720,24 +1538,24 @@ export default function ContactManagement({ onNavigate }: ContactManagementProps
                       )}
                       <View
                         className={`mb-3 flex-row ${isMe ? 'justify-end' : 'justify-start'} items-end`}>
-                                {!isMe && (
-                                  <View className="mr-2 h-7 w-7 shrink-0">
-                                    {selectedContact.avatarUrl ? (
-                                      <Image
-                                        source={{ uri: selectedContact.avatarUrl }}
-                                        style={{ width: 28, height: 28, borderRadius: 999 }}
-                                      />
-                                    ) : (
-                                      <View
-                                        className="h-7 w-7 items-center justify-center rounded-full"
-                                        style={{ backgroundColor: selectedContact.color }}>
-                                        <Text className="text-[9px] font-bold text-gray-800">
-                                          {selectedContact.initials}
-                                        </Text>
-                                      </View>
-                                    )}
-                                  </View>
-                                )}
+                        {!isMe && (
+                          <View className="mr-2 h-7 w-7 shrink-0">
+                            {selectedContact.avatarUrl ? (
+                              <Image
+                                source={{ uri: selectedContact.avatarUrl }}
+                                style={{ width: 28, height: 28, borderRadius: 999 }}
+                              />
+                            ) : (
+                              <View
+                                className="h-7 w-7 items-center justify-center rounded-full"
+                                style={{ backgroundColor: selectedContact.color }}>
+                                <Text className="text-[9px] font-bold text-gray-800">
+                                  {selectedContact.initials}
+                                </Text>
+                              </View>
+                            )}
+                          </View>
+                        )}
                         <View className="max-w-[72%]">
                           {message.isVoice ? (
                             <TouchableOpacity
@@ -1819,7 +1637,6 @@ export default function ContactManagement({ onNavigate }: ContactManagementProps
                     </View>
                   );
                 })}
-
                 {messagesList.length === 0 && (
                   <View className="flex-1 items-center justify-center py-16">
                     <View className="mb-3 h-16 w-16 items-center justify-center rounded-3xl border border-emerald-100 bg-emerald-50">
@@ -1831,7 +1648,6 @@ export default function ContactManagement({ onNavigate }: ContactManagementProps
                 )}
               </ScrollView>
 
-              {/* Message Input */}
               <View className="border-t border-gray-100 bg-white px-4 pb-4 pt-3">
                 {isRecording && (
                   <View className="mb-2 flex-row items-center justify-center gap-2 rounded-xl border border-red-100 bg-red-50 py-1.5">
@@ -1877,7 +1693,6 @@ export default function ContactManagement({ onNavigate }: ContactManagementProps
               </View>
             </>
           ) : (
-            /* Welcome / empty state */
             <View className="flex-1 items-center justify-center bg-gray-50">
               <View className="items-center px-10">
                 <View className="mb-4 h-20 w-20 items-center justify-center rounded-3xl border border-emerald-100 bg-emerald-50">
@@ -1896,16 +1711,13 @@ export default function ContactManagement({ onNavigate }: ContactManagementProps
         </View>
       </View>
 
-      {/* Notifications removed per user request */}
-
-      {/* ─── ADD CONTACTS MODAL ─── */}
+      {/* ADD CONTACTS MODAL */}
       <Modal visible={showContactsModal} transparent animationType="fade">
         <Pressable
           className="flex-1 items-center justify-center bg-black/30 p-4"
           onPress={() => setShowContactsModal(false)}>
           <Pressable onPress={(e) => e.stopPropagation()}>
             <View className="w-96 overflow-hidden rounded-2xl bg-white shadow-xl">
-              {/* Modal Header */}
               <View className="flex-row items-center justify-between bg-emerald-500 px-5 py-4">
                 <View className="flex-row items-center gap-2">
                   <Ionicons name="person-add-outline" size={18} color="white" />
@@ -1975,8 +1787,34 @@ export default function ContactManagement({ onNavigate }: ContactManagementProps
                             disabled={exists}
                             onPress={async () => {
                               try {
-                                await addContact(user.id);
-                                await loadContactsFromDb();
+                                // Get current admin user ID
+                                const { data: { user: currentAdmin } } = await supabase.auth.getUser();
+                                if (!currentAdmin) throw new Error('Not authenticated');
+
+                                // Double-check to avoid race condition
+                                const already = await isAlreadyFriend(currentAdmin.id, user.id);
+                                if (already) {
+                                  showSweetAlert({
+                                    title: 'Already a contact',
+                                    message: `${user.full_name || user.email} is already in your contacts.`,
+                                    type: 'info',
+                                  });
+                                  return;
+                                }
+
+                                // Insert directly as friends (no request)
+                                const { error: insertError } = await supabase
+                                  .from('contacts')
+                                  .insert({
+                                    user_id: currentAdmin.id,
+                                    contact_id: user.id,
+                                    status: 'friends',
+                                    created_at: new Date().toISOString(),
+                                  });
+
+                                if (insertError) throw insertError;
+
+                                await loadContactsFromDb(); // refresh contact list
 
                                 await insertActivityLog({
                                   action: `Added Contact: ${user.full_name || user.email}`,
@@ -1994,6 +1832,11 @@ export default function ContactManagement({ onNavigate }: ContactManagementProps
                                 });
                               } catch (error) {
                                 console.error('Failed to add contact:', error);
+                                showSweetAlert({
+                                  title: 'Error',
+                                  message: 'Could not add contact. Please try again.',
+                                  type: 'error',
+                                });
                               }
                             }}>
                             <Text
