@@ -317,11 +317,11 @@ export default function EditProfile({ onBackToSettings }: { onBackToSettings?: (
 
       <View className="flex-col flex-1 w-full">
         {/* HEADER WITH BACK BUTTON */}
-        <View className="flex-row items-center gap-4 px-6 pt-6 pb-6 bg-white">
+        <View className="flex-row items-center gap-4 px-6 pt-6 pb-6 bg-[f8f4fb] shadow-sm">
           <TouchableOpacity
             onPress={onBackToSettings}
-            className="items-center justify-center w-10 h-10 bg-green-100 rounded-full active:scale-95">
-            <Ionicons name="chevron-back" size={24} color="#10b981" />
+            className="items-center justify-center w-10 h-10 bg-[#237227] rounded-full  active:scale-95">
+            <Ionicons name="chevron-back" size={24} color="#f8f4fb" />
           </TouchableOpacity>
           <Text className="text-2xl font-extrabold text-gray-900">Edit Profile</Text>
         </View>
@@ -334,7 +334,7 @@ export default function EditProfile({ onBackToSettings }: { onBackToSettings?: (
           {/* Profile Picture Section */}
           <View className="items-center mb-8">
             <TouchableOpacity onPress={pickImage} activeOpacity={0.7} className="relative">
-              <View className="items-center justify-center w-32 h-32 overflow-hidden bg-green-100 border-4 border-green-200 rounded-full">
+              <View className="items-center justify-center w-32 h-32 overflow-hidden bg-[#237227] border-4 border-[#237227] rounded-full">
                 {profilePicture ? (
                   <>
                     <Image
@@ -351,10 +351,10 @@ export default function EditProfile({ onBackToSettings }: { onBackToSettings?: (
                     />
                   </>
                 ) : (
-                  <Ionicons name="person" size={64} color="#10b981" />
+                  <Ionicons name="person" size={64} color="#f8f4fb" />
                 )}
               </View>
-              <View className="absolute bottom-0 right-0 p-3 bg-green-500 border-4 border-white rounded-full active:scale-90">
+              <View className="absolute bottom-0 right-0 p-3 bg-[#237227] border-4 border-white rounded-full active:scale-90">
                 <Ionicons name="camera" size={20} color="white" />
               </View>
             </TouchableOpacity>
@@ -370,8 +370,8 @@ export default function EditProfile({ onBackToSettings }: { onBackToSettings?: (
             {/* Full Name Input */}
             <View className="mb-5">
               <Text className="mb-2 font-semibold text-gray-700">Full Name</Text>
-              <View className="flex-row items-center px-4 py-3 border border-gray-200 rounded-2xl bg-gray-50">
-                <Ionicons name="person-outline" size={20} color="#10b981" />
+              <View className="flex-row items-center px-4 py-3 border border-[#237227] rounded-2xl bg-gray-50">
+                <Ionicons name="person-outline" size={20} color="#237227" />
                 <TextInput
                   className="flex-1 ml-3 font-medium text-gray-900"
                   placeholder="Enter your full name"
@@ -386,8 +386,8 @@ export default function EditProfile({ onBackToSettings }: { onBackToSettings?: (
             {/* Email Input (Read-only) */}
             <View className="mb-5">
               <Text className="mb-2 font-semibold text-gray-700">Email</Text>
-              <View className="flex-row items-center px-4 py-3 bg-gray-100 border border-gray-200 rounded-2xl">
-                <Ionicons name="mail-outline" size={20} color="#10b981" />
+              <View className="flex-row items-center px-4 py-3 bg-gray-100 border border-[#237227] rounded-2xl">
+                <Ionicons name="mail-outline" size={20} color="#237227" />
                 <TextInput
                   className="flex-1 ml-3 font-medium text-gray-600"
                   placeholder="Email"
@@ -402,8 +402,8 @@ export default function EditProfile({ onBackToSettings }: { onBackToSettings?: (
             {/* Phone Number Input */}
             <View className="mb-5">
               <Text className="mb-2 font-semibold text-gray-700">Phone Number</Text>
-              <View className="flex-row items-center px-4 py-3 border border-gray-200 rounded-2xl bg-gray-50">
-                <Ionicons name="call-outline" size={20} color="#10b981" />
+              <View className="flex-row items-center px-4 py-3 border border-[#237227] rounded-2xl bg-gray-50">
+                <Ionicons name="call-outline" size={20} color="#237227" />
                 <TextInput
                   className="flex-1 ml-3 font-medium text-gray-900"
                   placeholder="Enter your phone number"
@@ -422,9 +422,9 @@ export default function EditProfile({ onBackToSettings }: { onBackToSettings?: (
             onPress={handleSave}
             disabled={saving}
             activeOpacity={0.8}
-            className="flex-row items-center justify-center p-4 bg-green-500 shadow-md rounded-2xl shadow-green-300 active:scale-95 disabled:opacity-60">
+            className="flex-row items-center justify-center p-3 bg-[#237227] shadow-md rounded-2xl active:scale-95 disabled:opacity-60">
             {saving ? (
-              <ActivityIndicator size="small" color="white" />
+              <ActivityIndicator size="small" color="#f8fafb" />
             ) : (
               <>
                 <Ionicons name="checkmark-done" size={24} color="white" />
@@ -438,9 +438,9 @@ export default function EditProfile({ onBackToSettings }: { onBackToSettings?: (
             onPress={onBackToSettings}
             disabled={saving}
             activeOpacity={0.8}
-            className="flex-row items-center justify-center p-4 mt-3 bg-red-500 shadow-md rounded-2xl shadow-red-300 active:scale-95 disabled:opacity-60">
+            className="flex-row items-center justify-center p-3 mt-3 bg-[#ef4444] shadow-md rounded-2xl active:scale-95 disabled:opacity-60">
             <Ionicons name="close" size={24} color="white" />
-            <Text className="ml-3 text-lg font-bold text-white">Cancel</Text>
+            <Text className="ml-3 text-lg font-bold text-[#f8f4fb]">Cancel</Text>
           </TouchableOpacity>
         </ScrollView>
       </View>

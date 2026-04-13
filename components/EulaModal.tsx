@@ -30,31 +30,31 @@ export default function EulaModal({
   return (
     <Modal visible={visible} transparent={true} animationType="slide" onRequestClose={onDecline}>
       <View className="flex-1 bg-black/40">
-        <View className="flex-1 justify-end">
-          <View className="rounded-t-4xl max-h-full min-h-96 bg-white shadow-2xl">
+        <View className="justify-end flex-1">
+          <View className="max-h-full bg-white rounded-t-4xl min-h-96">
             {/* Header with Icon */}
-            <View className="rounded-t-4xl border-b border-green-100 bg-gradient-to-b from-green-50 to-white px-6 py-8">
-              <View className="mb-4 flex-row items-center">
-                <View className="mr-4 h-14 w-14 items-center justify-center rounded-full bg-green-100">
-                  <Ionicons name="document-text-outline" size={28} color="#10b981" />
+            <View className="px-6 py-8 border-b border-green-100 rounded-t-4xl bg-gradient-to-b from-green-50 to-white">
+              <View className="flex-row items-center mb-4">
+                <View className="mr-4 h-14 w-14 items-center justify-center rounded-full bg-[#237227]">
+                  <Ionicons name="document-text-outline" size={28} color="#f8fafb" />
                 </View>
                 <View className="flex-1">
                   <Text className="text-2xl font-bold text-gray-900">License Agreement</Text>
-                  <Text className="mt-1 text-xs font-semibold text-green-600">
+                  <Text className="mt-1 text-xs font-semibold text-[#237227]">
                     Please review & accept
                   </Text>
                 </View>
               </View>
-              <View className="h-1 rounded-full bg-gradient-to-r from-green-400 to-green-600" />
+              <View className="h-1 rounded-full bg-gradient-to-r from-[#e8f5e9] to-[#237227]" />
             </View>
 
             {/* Content */}
-            <ScrollView className="flex-1 bg-gray-50 px-6 py-6">
+            <ScrollView className="flex-1 px-6 py-6 bg-gray-50">
               {/* Intro Section */}
-              <View className="mb-5 rounded-2xl border border-green-100 bg-white p-5 shadow-sm">
-                <View className="mb-3 flex-row items-start">
-                  <View className="mr-3 mt-0.5 h-8 w-8 items-center justify-center rounded-full bg-green-100">
-                    <Ionicons name="checkmark" size={16} color="#10b981" />
+              <View className="p-5 mb-5 bg-white border border-green-100 shadow-sm rounded-2xl">
+                <View className="flex-row items-start mb-3">
+                  <View className="mr-3 mt-0.5 h-8 w-8 items-center justify-center rounded-full bg-[#237227]">
+                    <Ionicons name="checkmark" size={16} color="#f8fafb" />
                   </View>
                   <Text className="flex-1 text-base font-bold text-gray-900">
                     TERMS & CONDITIONS
@@ -67,9 +67,9 @@ export default function EulaModal({
               </View>
 
               {/* Section 1 */}
-              <View className="mb-4 rounded-2xl border border-gray-100 bg-white p-5 shadow-sm">
-                <View className="mb-3 flex-row items-center">
-                  <Text className="mr-2 text-lg font-bold text-green-600">①</Text>
+              <View className="p-5 mb-4 bg-white border border-gray-100 shadow-sm rounded-2xl">
+                <View className="flex-row items-center mb-3">
+                  <Text className="mr-2 text-lg font-bold text-[#237227]">①</Text>
                   <Text className="flex-1 text-base font-bold text-gray-900">License Grant</Text>
                 </View>
                 <Text className="text-sm leading-6 text-gray-700">
@@ -79,9 +79,9 @@ export default function EulaModal({
               </View>
 
               {/* Section 2 */}
-              <View className="mb-4 rounded-2xl border border-gray-100 bg-white p-5 shadow-sm">
-                <View className="mb-3 flex-row items-center">
-                  <Text className="mr-2 text-lg font-bold text-green-600">②</Text>
+              <View className="p-5 mb-4 bg-white border border-gray-100 shadow-sm rounded-2xl">
+                <View className="flex-row items-center mb-3">
+                  <Text className="mr-2 text-lg font-bold text-[#237227]">②</Text>
                   <Text className="flex-1 text-base font-bold text-gray-900">
                     Intellectual Property
                   </Text>
@@ -93,9 +93,9 @@ export default function EulaModal({
               </View>
 
               {/* Section 3 */}
-              <View className="mb-4 rounded-2xl border border-gray-100 bg-white p-5 shadow-sm">
-                <View className="mb-3 flex-row items-center">
-                  <Text className="mr-2 text-lg font-bold text-green-600">③</Text>
+              <View className="p-5 mb-4 bg-white border border-gray-100 shadow-sm rounded-2xl">
+                <View className="flex-row items-center mb-3">
+                  <Text className="mr-2 text-lg font-bold text-[#237227]">③</Text>
                   <Text className="flex-1 text-base font-bold text-gray-900">Restrictions</Text>
                 </View>
                 <Text className="text-sm leading-6 text-gray-700">
@@ -105,9 +105,9 @@ export default function EulaModal({
               </View>
 
               {/* Section 4 */}
-              <View className="mb-4 rounded-2xl border border-gray-100 bg-white p-5 shadow-sm">
-                <View className="mb-3 flex-row items-center">
-                  <Text className="mr-2 text-lg font-bold text-green-600">④</Text>
+              <View className="p-5 mb-4 bg-white border border-gray-100 shadow-sm rounded-2xl">
+                <View className="flex-row items-center mb-3">
+                  <Text className="mr-2 text-lg font-bold text-[#237227]">④</Text>
                   <Text className="flex-1 text-base font-bold text-gray-900">User Conduct</Text>
                 </View>
                 <Text className="text-sm leading-6 text-gray-700">
@@ -117,9 +117,9 @@ export default function EulaModal({
               </View>
 
               {/* Section 5 */}
-              <View className="mb-4 rounded-2xl border border-gray-100 bg-white p-5 shadow-sm">
-                <View className="mb-3 flex-row items-center">
-                  <Text className="mr-2 text-lg font-bold text-orange-500">⚠</Text>
+              <View className="p-5 mb-4 bg-white border border-gray-100 shadow-sm rounded-2xl">
+                <View className="flex-row items-center mb-3">
+                  <Text className="mr-2 text-lg font-bold text-[#237227]">⑤</Text>
                   <Text className="flex-1 text-base font-bold text-gray-900">Disclaimer</Text>
                 </View>
                 <Text className="text-sm leading-6 text-gray-700">
@@ -129,8 +129,8 @@ export default function EulaModal({
               </View>
 
               {/* Section 6 */}
-              <View className="mb-4 rounded-2xl border border-gray-100 bg-white p-5 shadow-sm">
-                <View className="mb-3 flex-row items-center">
+              <View className="p-5 mb-4 bg-white border border-gray-100 shadow-sm rounded-2xl">
+                <View className="flex-row items-center mb-3">
                   <Text className="mr-2 text-lg font-bold text-orange-500">⚖</Text>
                   <Text className="flex-1 text-base font-bold text-gray-900">
                     Limitation of Liability
@@ -143,9 +143,9 @@ export default function EulaModal({
               </View>
 
               {/* Section 7 - Termination - Warning Style */}
-              <View className="mb-4 rounded-2xl border border-red-100 bg-gradient-to-br from-red-50 to-orange-50 p-5 shadow-sm">
-                <View className="mb-3 flex-row items-start">
-                  <View className="mr-3 h-10 w-10 items-center justify-center rounded-full bg-red-100">
+              <View className="p-5 mb-4 border border-red-100 shadow-sm rounded-2xl bg-gradient-to-br from-red-50 to-orange-50">
+                <View className="flex-row items-start mb-3">
+                  <View className="items-center justify-center w-10 h-10 mr-3 bg-red-100 rounded-full">
                     <Ionicons name="close-circle-outline" size={20} color="#ef4444" />
                   </View>
                   <View className="flex-1">
@@ -162,9 +162,9 @@ export default function EulaModal({
               </View>
 
               {/* Section 8 - Modifications */}
-              <View className="mb-4 rounded-2xl border border-amber-100 bg-gradient-to-br from-amber-50 to-yellow-50 p-5 shadow-sm">
-                <View className="mb-3 flex-row items-start">
-                  <View className="mr-3 h-10 w-10 items-center justify-center rounded-full bg-amber-100">
+              <View className="p-5 mb-4 border shadow-sm rounded-2xl border-amber-100 bg-gradient-to-br from-amber-50 to-yellow-50">
+                <View className="flex-row items-start mb-3">
+                  <View className="items-center justify-center w-10 h-10 mr-3 rounded-full bg-amber-100">
                     <Ionicons name="pencil-outline" size={20} color="#d97706" />
                   </View>
                   <View className="flex-1">
@@ -181,9 +181,9 @@ export default function EulaModal({
               </View>
 
               {/* Section 9 - Governing Law */}
-              <View className="mb-4 rounded-2xl border border-slate-200 bg-gradient-to-br from-slate-50 to-gray-50 p-5 shadow-sm">
-                <View className="mb-3 flex-row items-start">
-                  <View className="mr-3 h-10 w-10 items-center justify-center rounded-full bg-slate-200">
+              <View className="p-5 mb-4 border shadow-sm rounded-2xl border-slate-200 bg-gradient-to-br from-slate-50 to-gray-50">
+                <View className="flex-row items-start mb-3">
+                  <View className="items-center justify-center w-10 h-10 mr-3 rounded-full bg-slate-200">
                     <Ionicons name="document-lock-outline" size={20} color="#475569" />
                   </View>
                   <View className="flex-1">
@@ -200,23 +200,23 @@ export default function EulaModal({
               </View>
 
               {/* Section 10 - Contact Support */}
-              <View className="mb-6 rounded-2xl border border-blue-400 bg-gradient-to-br from-blue-500 to-blue-600 p-5 shadow-lg">
-                <View className="mb-3 flex-row items-start">
-                  <View className="mr-3 h-10 w-10 items-center justify-center rounded-full bg-white/20">
-                    <Ionicons name="mail-outline" size={20} color="#ffffff" />
+              <View className="p-5 mb-6 border-transparent rounded-2xl bg-gradient-to-br from-[#e8f5e9] to-[#237227]">
+                <View className="flex-row items-start mb-3">
+                  <View className="items-center justify-center w-10 h-10 mr-3 rounded-full bg-[#237227]">
+                    <Ionicons name="mail-outline" size={20} color="#f8fafb" />
                   </View>
                   <View className="flex-1">
-                    <Text className="text-base font-bold text-white">Get Help</Text>
-                    <Text className="mt-1 text-xs font-semibold text-blue-100">
+                    <Text className="text-base font-bold text-stone-800">Get Help</Text>
+                    <Text className="mt-1 text-xs font-semibold text-stone-800">
                       Questions or concerns?
                     </Text>
                   </View>
                 </View>
-                <Text className="pl-1 text-sm leading-6 text-white">
+                <Text className="pl-1 text-sm leading-6 text-stone-800">
                   Have questions about this EULA? {"We're"} here to help.
                 </Text>
-                <View className="mt-4 rounded-xl border border-white/20 bg-white/10 px-4 py-3">
-                  <Text className="text-center font-semibold text-white">
+                <View className="px-4 py-3 mt-4 border rounded-xl">
+                  <Text className="font-semibold text-center text-stone-900">
                     sales.multifactors-sales@gmail.com
                   </Text>
                 </View>
@@ -224,16 +224,16 @@ export default function EulaModal({
             </ScrollView>
 
             {/* Action Buttons */}
-            <View className="border-t border-gray-100 bg-gradient-to-t from-gray-50 to-white px-5 py-6">
+            <View className="px-5 py-6 border-t border-gray-100 bg-gradient-to-t from-gray-50 to-white">
               {/* Buttons Container */}
               <View className="flex-row gap-3">
                 {/* Decline Button */}
                 <TouchableOpacity
-                  className="h-16 flex-1 items-center justify-center rounded-2xl border-2 border-red-300 bg-red-50 active:border-red-400 active:bg-red-100"
+                  className="items-center justify-center flex-1 h-16 border-2 border-red-300 rounded-2xl bg-red-50 active:border-red-400 active:bg-red-100"
                   onPress={onDecline}
                   disabled={isAccepting}>
                   <View className="flex-row items-center gap-2">
-                    <View className="h-7 w-7 items-center justify-center rounded-full bg-red-200">
+                    <View className="items-center justify-center bg-red-200 rounded-full h-7 w-7">
                       <Ionicons name="close" size={18} color="#dc2626" />
                     </View>
                     <Text className="text-base font-bold text-red-700">Decline</Text>
@@ -242,15 +242,15 @@ export default function EulaModal({
 
                 {/* Accept Button */}
                 <TouchableOpacity
-                  className="h-16 flex-1 items-center justify-center rounded-2xl bg-gradient-to-br from-green-500 via-green-500 to-emerald-600 shadow-lg active:shadow-lg disabled:opacity-50"
+                  className="items-center justify-center flex-1 h-16 shadow-lg rounded-2xl bg-[#237227] active:shadow-lg disabled:opacity-50"
                   onPress={handleAccept}
                   disabled={isAccepting || loading}>
                   {isAccepting || loading ? (
-                    <ActivityIndicator color="#ffffff" size="large" />
+                    <ActivityIndicator color="#f8fafb" size="large" />
                   ) : (
                     <View className="flex-row items-center gap-3">
-                      <View className="h-7 w-7 items-center justify-center rounded-full bg-white/30">
-                        <Ionicons name="checkmark" size={18} color="#ffffff" />
+                      <View className="items-center justify-center rounded-full h-7 w-7 bg-white/30">
+                        <Ionicons name="checkmark" size={18} color="#f8fafb" />
                       </View>
                       <Text className="text-base font-bold text-white">Accept</Text>
                     </View>
@@ -259,7 +259,7 @@ export default function EulaModal({
               </View>
 
               {/* Agreement Confirmation Text */}
-              <Text className="mt-4 text-center text-xs leading-5 text-gray-500">
+              <Text className="mt-4 text-xs leading-5 text-center text-gray-500">
                 By accepting, you agree to our Terms & Conditions
               </Text>
             </View>

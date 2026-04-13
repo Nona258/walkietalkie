@@ -183,7 +183,7 @@ export default function SignIn({
   };
 
   return (
-    <View className="flex-1 bg-[#f8fafb]">
+    <View className="flex-1 bg-white md:bg-[#f8fafb]">
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         className="flex-1">
@@ -198,11 +198,10 @@ export default function SignIn({
             </View>
           </View>
 
-          {/* Centered Card - Full screen on mobile, card on desktop */}
+          {/* Centered content: mobile is minimal and borderless; desktop keeps card/border/shadow */}
           <View className="items-center justify-center flex-1 px-0 md:px-6">
-            <View className="w-full h-full md:h-auto max-w-md md:rounded-2xl md:border border-[#e5e7eb] bg-white p-6 md:p-8 md:shadow-sm"
-                  style={{ shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 8 }}>
-               <View className="items-center mt-12 mb-6 md:mt-0">
+            <View className="w-full md:h-auto max-w-md bg-white p-6 md:p-8 md:rounded-2xl md:border md:border-[#f8f4fb] md:shadow-sm">
+               <View className="items-center mb-6 md:mt-0">
               <View className="h-16 w-16 items-center justify-center rounded-full bg-[#237227]">
                 <Ionicons name="radio" size={32} color="#f8fafb" />
               </View>
@@ -214,8 +213,8 @@ export default function SignIn({
 
               {/* Error Message */}
               {error ? (
-                <View className="px-4 py-3 mb-4 rounded-lg md:mb-6 bg-red-50">
-                  <Text className="text-sm text-red-600">{error}</Text>
+                <View className="mb-4 md:mb-6">
+                  <Text className="text-sm text-center text-red-600">{error}</Text>
                 </View>
               ) : null}
 
@@ -223,7 +222,7 @@ export default function SignIn({
               <View className="mb-4 md:mb-6">
                 <Text className="mb-2 text-sm font-medium md:text-md text-stone-900">Email address</Text>
                 <TextInput
-                  className="rounded-lg border border-[#d1d5db] bg-white px-4 py-3 text-base text-[#111827]"
+                  className="w-full rounded-lg bg-[#f8f4fb] px-4 py-3 text-base text-[#111827] md:bg-white md:border md:border-[#f8f4fb]"
                   placeholder="you@example.com"
                   placeholderTextColor="#9ca3af"
                   keyboardType="email-address"
@@ -238,7 +237,7 @@ export default function SignIn({
                 <Text className="mb-2 text-sm font-medium md:text-md text-stone-900">Password</Text>
                 <View className="relative">
                   <TextInput
-                    className="rounded-lg border border-[#d1d5db] bg-white px-4 py-3 pr-12 text-base text-[#111827]"
+                    className="w-full rounded-lg bg-[#f8f4fb] px-4 py-3 pr-12 text-base text-[#111827] md:bg-white md:border md:border-[#d1d5db]"
                     placeholder="Enter your password"
                     placeholderTextColor="#9ca3af"
                     secureTextEntry={!showPassword}
@@ -267,7 +266,7 @@ export default function SignIn({
 
               {/* Sign In Button */}
               <TouchableOpacity
-                className="mb-4 md:mb-6 h-12 items-center justify-center rounded-lg bg-[#237227] active:opacity-90 disabled:opacity-50"
+                className="w-full mb-4 md:mb-6 h-12 items-center justify-center rounded-lg bg-[#237227] active:opacity-90 disabled:opacity-50"
                 onPress={handleSignIn}
                 disabled={loading}>
                 {loading ? (
@@ -309,8 +308,8 @@ export default function SignIn({
       <Modal visible={showApprovalPendingModal} transparent animationType="fade">
         <View className="items-center justify-center flex-1 px-6 bg-black/50">
           <View className="items-center w-full max-w-sm p-8 bg-white rounded-2xl">
-            <View className="mb-4">
-              <Ionicons name="time-outline" size={56} color="#f59e0b" />
+            <View className="mb-4 bg[#237227]">
+              <Ionicons name="time-outline" size={56} color="#237227" />
             </View>
             <Text className="mb-3 text-2xl font-bold text-center text-stone-900">
               Approval Pending
@@ -319,13 +318,13 @@ export default function SignIn({
               Your account is still pending approval from the administrator. Please check back
               later.
             </Text>
-            <View className="w-full px-4 py-3 mb-6 border border-yellow-200 rounded-xl bg-yellow-50">
-              <Text className="text-xs font-semibold text-center text-yellow-800">
-                ⏱️ You will be able to access the app once your account is approved
+            <View className="w-full px-4 py-3 mb-6 border border-[#237227] rounded-xl ">
+              <Text className="text-xs font-semibold text-center text-stone-800">
+                 You will be able to access the app once your account is approved
               </Text>
             </View>
             <TouchableOpacity
-              className="w-full items-center rounded-xl bg-[#10b981] py-3"
+              className="w-full items-center rounded-xl bg-[#237227] py-3"
               onPress={() => setShowApprovalPendingModal(false)}>
               <Text className="font-bold text-white">OK</Text>
             </TouchableOpacity>

@@ -245,11 +245,11 @@ export default function ChangePassword({ onBackToSettings }: { onBackToSettings?
       />
 
       {/* HEADER WITH BACK BUTTON */}
-      <View className="flex-row items-center gap-4 px-6 pt-6 pb-6 bg-white">
+      <View className="flex-row items-center gap-4 px-6 pt-6 pb-6 bg-[f8f4fb] shadow-sm">
         <TouchableOpacity
           onPress={onBackToSettings}
-          className="items-center justify-center w-10 h-10 bg-green-100 rounded-full active:scale-95">
-          <Ionicons name="chevron-back" size={24} color="#10b981" />
+          className="items-center justify-center w-10 h-10 bg-[#237227] rounded-full active:scale-95">
+          <Ionicons name="chevron-back" size={24} color="#f8f4fb" />
         </TouchableOpacity>
         <Text className="text-2xl font-extrabold text-gray-900">Change Password</Text>
       </View>
@@ -259,15 +259,15 @@ export default function ChangePassword({ onBackToSettings }: { onBackToSettings?
         contentContainerStyle={{ paddingHorizontal: 24, paddingTop: 16, paddingBottom: 30 }}
         showsVerticalScrollIndicator={true}>
         <View className="mb-6">
-          <Text className="mb-4 text-lg font-bold text-gray-800">Update Password</Text>
+          <Text className="mb-5 text-lg font-bold text-gray-800">Update Password</Text>
 
           <View className="mb-5">
-            <Text className="mb-2 font-semibold text-gray-700">Current Password</Text>
+            <Text className="mb-4 font-semibold text-gray-700">Current Password</Text>
             <View
               className={`flex-row items-center rounded-2xl border bg-gray-50 px-4 py-3 ${
-                fieldErrors.currentPassword ? 'border-red-300' : 'border-gray-200'
+                fieldErrors.currentPassword ? 'border-red-300' : 'border-[#237227]'
               }`}>
-              <Ionicons name="key-outline" size={20} color="#10b981" />
+              <Ionicons name="key-outline" size={20} color="#237227" />
               <TextInput
                 className="flex-1 ml-3 font-medium text-gray-900"
                 placeholder="Enter current password"
@@ -291,9 +291,9 @@ export default function ChangePassword({ onBackToSettings }: { onBackToSettings?
             <Text className="mb-2 font-semibold text-gray-700">New Password</Text>
             <View
               className={`flex-row items-center rounded-2xl border bg-gray-50 px-4 py-3 ${
-                fieldErrors.newPassword ? 'border-red-300' : 'border-gray-200'
+                fieldErrors.newPassword ? 'border-red-300' : 'border-[#237227]'
               }`}>
-              <Ionicons name="lock-open-outline" size={20} color="#10b981" />
+              <Ionicons name="lock-open-outline" size={20} color="#237227" />
               <TextInput
                 className="flex-1 ml-3 font-medium text-gray-900"
                 placeholder="Enter new password"
@@ -330,9 +330,9 @@ export default function ChangePassword({ onBackToSettings }: { onBackToSettings?
             <Text className="mb-2 font-semibold text-gray-700">Re-type New Password</Text>
             <View
               className={`flex-row items-center rounded-2xl border bg-gray-50 px-4 py-3 ${
-                fieldErrors.retypeNewPassword ? 'border-red-300' : 'border-gray-200'
+                fieldErrors.retypeNewPassword ? 'border-red-300' : 'border-[#237227]'
               }`}>
-              <Ionicons name="lock-open-outline" size={20} color="#10b981" />
+              <Ionicons name="lock-open-outline" size={20} color="#237227" />
               <TextInput
                 className="flex-1 ml-3 font-medium text-gray-900"
                 placeholder="Re-type new password"
@@ -356,9 +356,9 @@ export default function ChangePassword({ onBackToSettings }: { onBackToSettings?
             onPress={handleChangePassword}
             activeOpacity={0.8}
             disabled={changingPassword}
-            className="flex-row items-center justify-center p-4 bg-green-500 rounded-2xl disabled:opacity-60">
+            className="flex-row items-center justify-center p-4 bg-[#237227] rounded-2xl disabled:opacity-60">
             {changingPassword ? (
-              <ActivityIndicator color="#ffffff" />
+              <ActivityIndicator color="#f8f4fb" />
             ) : (
               <>
                 <Ionicons name="checkmark-circle-outline" size={22} color="white" />

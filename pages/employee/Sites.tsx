@@ -345,19 +345,19 @@ export default function Sites({ onMapPress, onSiteMapPress }: SitesProps) {
         <View className="flex-row items-center justify-between mb-6">
           <View>
             <Text className="text-3xl font-extrabold text-gray-900">Sites</Text>
-            <Text className="mt-1 text-sm text-gray-500">Manage your locations</Text>
+            <Text className="mt-1 text-sm text-[#237227]">Manage your locations</Text>
           </View>
           <TouchableOpacity
             onPress={onMapPress}
-            className="p-3 bg-gray-100 rounded-full active:scale-95">
-            <Ionicons name="map-outline" size={24} color="#10b981" />
+            className="p-3 bg-[#237227] rounded-full active:scale-95">
+            <Ionicons name="map-outline" size={24} color="#f8fafb" />
           </TouchableOpacity>
         </View>
 
         {/* Search Bar */}
         <View
           className={`flex-row items-center rounded-xl border bg-gray-50 px-4 py-3 ${
-            searchText.length > 0 ? 'border-green-500' : 'border-gray-200'
+            searchText.length > 0 ? 'border-[#237227]' : 'border-[#237227]'
           }`}>
           <Ionicons name="search-outline" size={20} color="#6b7280" />
           <TextInput
@@ -379,11 +379,11 @@ export default function Sites({ onMapPress, onSiteMapPress }: SitesProps) {
           <TouchableOpacity
             onPress={() => setActiveList('All')}
             className={`flex-1 rounded-full py-2 ${
-              activeList === 'All' ? 'bg-green-500' : 'bg-transparent'
+              activeList === 'All' ? 'bg-[#237227]' : 'bg-transparent'
             }`}>
             <Text
               className={`text-center font-semibold ${
-                activeList === 'All' ? 'text-white' : 'text-gray-600'
+                activeList === 'All' ? 'text-[#f8f4fb]' : 'text-gray-600'
               }`}>
               All Sites
             </Text>
@@ -391,11 +391,11 @@ export default function Sites({ onMapPress, onSiteMapPress }: SitesProps) {
           <TouchableOpacity
             onPress={() => setActiveList('Pending')}
             className={`flex-1 rounded-full py-2 ${
-              activeList === 'Pending' ? 'bg-green-500' : 'bg-transparent'
+              activeList === 'Pending' ? 'bg-[#237227]' : 'bg-transparent'
             }`}>
             <Text
               className={`text-center font-semibold ${
-                activeList === 'Pending' ? 'text-white' : 'text-gray-600'
+                activeList === 'Pending' ? 'text-[#f8f4fb]' : 'text-stone-800'
               }`}>
               Pending
             </Text>
@@ -403,11 +403,11 @@ export default function Sites({ onMapPress, onSiteMapPress }: SitesProps) {
           <TouchableOpacity
             onPress={() => setActiveList('Finished')}
             className={`flex-1 rounded-full py-2 ${
-              activeList === 'Finished' ? 'bg-green-500' : 'bg-transparent'
+              activeList === 'Finished' ? 'bg-[#237227]' : 'bg-transparent'
             }`}>
             <Text
               className={`text-center font-semibold ${
-                activeList === 'Finished' ? 'text-white' : 'text-gray-600'
+                activeList === 'Finished' ? 'text-[#f8f4fb]' : 'text-stone-800'
               }`}>
               Finished
             </Text>
@@ -424,7 +424,7 @@ export default function Sites({ onMapPress, onSiteMapPress }: SitesProps) {
         <View className="px-6 py-6 pb-28">
           {loading ? (
             <View className="items-center justify-center py-16">
-              <ActivityIndicator size="large" color="#10b981" />
+              <ActivityIndicator size="large" color="#237227" />
               <Text className="mt-4 text-base text-gray-500">Loading sites...</Text>
             </View>
           ) : filteredSites.length > 0 ? (
@@ -439,7 +439,7 @@ export default function Sites({ onMapPress, onSiteMapPress }: SitesProps) {
                     <Text className="flex-1 text-lg font-bold text-gray-900">{site.name}</Text>
                     <View
                       className={`h-2.5 w-2.5 rounded-full ${
-                        site.status === 'Finished' ? 'bg-gray-400' : 'bg-green-500'
+                        site.status === 'Finished' ? 'bg-gray-400' : 'bg-[#237227]'
                       }`}
                     />
                   </View>
@@ -451,7 +451,7 @@ export default function Sites({ onMapPress, onSiteMapPress }: SitesProps) {
 
                   {/* Location / Branch info */}
                   <View className="flex-row items-center mb-3">
-                    <Ionicons name="location-outline" size={16} color="#9ca3af" />
+                    <Ionicons name="location-outline" size={16} color="#237227" />
                     <Text className="flex-1 ml-2 text-sm text-gray-600" numberOfLines={2}>
                       {site.branchName || 'Location not specified'}
                     </Text>
@@ -460,16 +460,16 @@ export default function Sites({ onMapPress, onSiteMapPress }: SitesProps) {
                   {/* Staff count row */}
                   <View className="flex-row items-center justify-between pt-3 mt-1 border-t border-gray-100">
                     <View className="flex-row items-center">
-                      <Ionicons name="people-outline" size={18} color="#6b7280" />
+                      <Ionicons name="people-outline" size={18} color="#237227" />
                       <Text className="ml-2 text-sm text-gray-600">
                         {site.staffCount} {site.staffCount === 1 ? 'member' : 'members'}
                       </Text>
                     </View>
                     <TouchableOpacity
                       onPress={() => onSiteMapPress?.(site)}
-                      className="flex-row items-center">
-                      <Text className="mr-1 text-sm text-green-600">View on map</Text>
-                      <Ionicons name="chevron-forward-outline" size={16} color="#10b981" />
+                      className="flex-row items-center bg-[#237227] px-3 py-1 rounded-full">
+                      <Text className="mr-1 text-sm text-[#f8fafb]">View on map</Text>
+                      <Ionicons name="chevron-forward-outline" size={16} color="#f8fafb" />
                     </TouchableOpacity>
                   </View>
                 </TouchableOpacity>
@@ -477,7 +477,7 @@ export default function Sites({ onMapPress, onSiteMapPress }: SitesProps) {
             </View>
           ) : (
             <View className="items-center justify-center py-16">
-              <Ionicons name="location-outline" size={48} color="#d1d5db" />
+              <Ionicons name="location-outline" size={48} color="#237227" />
               <Text className="mt-4 text-base text-center text-gray-500">
                 {activeList === 'All'
                   ? 'No pending sites to join'

@@ -16,10 +16,12 @@ import {
   Animated,
   Easing,
   PanResponder,
+  Image,
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Ionicons } from '@expo/vector-icons';
-import supabase, { searchUsers, addContact } from '../../utils/supabase'; // adjust path to your supabase client
+import supabase, { searchUsers } from '../../utils/supabase';
+import { sendContactRequest, respondToContactRequest, getPendingContactRequests } from '../../utils/FriendRequests';
 import Chat from './Chat';
 
 interface Contact {
@@ -33,6 +35,7 @@ interface Contact {
   lastMessageTime?: string;
   lastMessageTimestamp?: string;
   unreadCount?: number;
+  profile_picture_url?: string | null;
   // additional fields for search
   email: string;
   phone_number?: string;
@@ -48,10 +51,9 @@ interface ContactsProps {
 type FilterType = 'all' | 'online' | 'offline' | 'teams' | 'unread' | 'archived';
 
 // Helper to generate consistent avatar color from user id
-const getAvatarColor = (id: string): string => {
-  const colors = ['#10b981', '#059669', '#34d399', '#6ee7b7', '#3b82f6', '#8b5cf6'];
-  const index = id.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0) % colors.length;
-  return colors[index];
+// Use the brand green for initials avatars to match design
+const getAvatarColor = (_id: string): string => {
+  return '#237227';
 };
 
 // Helper to get initials from full name
@@ -211,11 +213,12 @@ export default function Contacts({ onContactSelected, currentUserId }: ContactsP
         console.warn('Failed to load my site/team chat:', (e as any)?.message || String(e));
       }
 
-      // 1. Fetch contacts from the `contacts` table (explicitly added contacts)
+      // 1. Fetch contacts from the `contacts` table (only friends)
       const { data: contactRows, error: contactsError } = await supabase
         .from('contacts')
-        .select('contact_id')
-        .eq('user_id', activeChatUserId);
+        .select('contact_id, status')
+        .eq('user_id', activeChatUserId)
+        .eq('status', 'friends');
 
       if (contactsError) console.warn('Error fetching contacts table:', contactsError);
 
@@ -290,6 +293,7 @@ export default function Contacts({ onContactSelected, currentUserId }: ContactsP
           initials: getInitials(user.full_name || 'Unknown'),
           status,
           avatar_color: getAvatarColor(user.id),
+          profile_picture_url: user.profile_picture_url || null,
           email: user.email,
           phone_number: user.phone_number,
           // Placeholder for message data (to be replaced with real messages later)
@@ -656,6 +660,7 @@ export default function Contacts({ onContactSelected, currentUserId }: ContactsP
                           ? 'busy'
                           : 'offline',
                     avatar_color: getAvatarColor(userData.id),
+                    profile_picture_url: userData.profile_picture_url || null,
                     email: userData.email,
                     phone_number: userData.phone_number,
                     lastMessage: msgText,
@@ -824,13 +829,15 @@ export default function Contacts({ onContactSelected, currentUserId }: ContactsP
     }
     try {
       setAddingId(userId);
-      await addContact(userId);
-      Alert.alert('Contact added', 'User added to contacts');
-      // refresh contacts list
+      // Get current user
+      const { data: { user }, error: authError } = await supabase.auth.getUser();
+      if (authError || !user) throw new Error('Unable to get current user');
+      await sendContactRequest(user.id, userId);
+      Alert.alert('Contact request sent', 'A request has been sent. The user must accept to become friends.');
       fetchContacts();
       closeAddModal();
     } catch (err: any) {
-      Alert.alert('Add failed', err?.message || String(err));
+      Alert.alert('Request failed', err?.message || String(err));
     } finally {
       setAddingId(null);
     }
@@ -863,11 +870,11 @@ export default function Contacts({ onContactSelected, currentUserId }: ContactsP
         <View className="flex-row items-center justify-between mb-6">
           <View>
             <Text className="text-3xl font-extrabold text-gray-900">Contacts</Text>
-            <Text className="mt-1 text-xs font-semibold text-green-600">Manage your team</Text>
+            <Text className="mt-1 text-xs font-semibold text-[#237227]">Manage your team</Text>
           </View>
           <TouchableOpacity className="relative active:scale-95" onPress={handleAddContact}>
-            <View className="p-3 bg-green-500 rounded-full shadow-lg shadow-green-300">
-              <Ionicons name="person-add" size={22} color="white" />
+              <View className="p-3 bg-[#237227] rounded-full">
+              <Ionicons name="person-add" size={22} color="#f8fafb" />
             </View>
           </TouchableOpacity>
         </View>
@@ -875,7 +882,7 @@ export default function Contacts({ onContactSelected, currentUserId }: ContactsP
         {/* Search Bar */}
         <View
           className={`flex-row items-center rounded-xl border bg-gray-50 px-4 py-3 ${
-            searchText.length > 0 ? 'border-green-500' : 'border-gray-200'
+            searchText.length > 0 ? 'border-[#237227]' : 'border-[#237227]'
           }`}>
           <Ionicons name="search-outline" size={20} color="#6b7280" />
           <TextInput
@@ -905,7 +912,7 @@ export default function Contacts({ onContactSelected, currentUserId }: ContactsP
               key={filter.value}
               onPress={() => setFilterType(filter.value as FilterType)}
               className={`flex-1 rounded-full py-2 ${
-                filterType === filter.value ? 'bg-green-500' : 'bg-transparent'
+                filterType === filter.value ? 'bg-[#237227]' : 'bg-transparent'
               }`}>
               <Text
                 className={`text-center text-xs font-semibold ${
@@ -986,14 +993,14 @@ export default function Contacts({ onContactSelected, currentUserId }: ContactsP
                     backgroundColor: '#f9fafb',
                     borderRadius: 14,
                     borderWidth: 1.5,
-                    borderColor: modalQuery.trim() ? '#10b981' : '#e5e7eb',
+                    borderColor: modalQuery.trim() ? '#237227' : '#e5e7eb',
                     paddingHorizontal: 14,
                     paddingVertical: 10,
                   }}>
                   <Ionicons
                     name="search"
                     size={16}
-                    color={modalQuery.trim() ? '#10b981' : '#9ca3af'}
+                    color={modalQuery.trim() ? '#237227' : '#9ca3af'}
                   />
                   <TextInput
                     placeholder="Filter by name, email or phone…"
@@ -1017,8 +1024,8 @@ export default function Contacts({ onContactSelected, currentUserId }: ContactsP
               <View style={{ minHeight: 220 }}>
                 {searching ? (
                   <View style={{ alignItems: 'center', paddingVertical: 48 }}>
-                    <ActivityIndicator size="large" color="#10b981" />
-                    <Text style={{ color: '#9ca3af', marginTop: 12, fontSize: 13 }}>
+                    <ActivityIndicator size="large" color="#237227" />
+                    <Text style={{ color: '#f8f4fb', marginTop: 12, fontSize: 13 }}>
                       Searching…
                     </Text>
                   </View>
@@ -1066,19 +1073,26 @@ export default function Contacts({ onContactSelected, currentUserId }: ContactsP
                             }}>
                             {/* Avatar */}
                             <View style={{ position: 'relative', marginRight: 12 }}>
-                              <View
-                                style={{
-                                  width: 44,
-                                  height: 44,
-                                  borderRadius: 22,
-                                  backgroundColor: avatarColor,
-                                  alignItems: 'center',
-                                  justifyContent: 'center',
-                                }}>
-                                <Text style={{ color: 'white', fontWeight: '700', fontSize: 15 }}>
-                                  {initials}
-                                </Text>
-                              </View>
+                              {item.profile_picture_url ? (
+                                <Image
+                                  source={{ uri: item.profile_picture_url }}
+                                  style={{ width: 44, height: 44, borderRadius: 22 }}
+                                />
+                              ) : (
+                                <View
+                                  style={{
+                                    width: 44,
+                                    height: 44,
+                                    borderRadius: 22,
+                                    backgroundColor: avatarColor,
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                  }}>
+                                  <Text style={{ color: 'white', fontWeight: '700', fontSize: 15 }}>
+                                    {initials}
+                                  </Text>
+                                </View>
+                              )}
                               <View
                                 style={{
                                   position: 'absolute',
@@ -1091,7 +1105,7 @@ export default function Contacts({ onContactSelected, currentUserId }: ContactsP
                                   borderColor: 'white',
                                   backgroundColor:
                                     status === 'online'
-                                      ? '#10b981'
+                                      ? '#237227'
                                       : status === 'busy'
                                         ? '#f59e0b'
                                         : '#d1d5db',
@@ -1115,14 +1129,16 @@ export default function Contacts({ onContactSelected, currentUserId }: ContactsP
                                 </Text>
                                 <View
                                   style={{
-                                    backgroundColor: isAdmin ? '#ede9fe' : '#dcfce7',
+                                    backgroundColor: isAdmin ? '#237227' : '#f8f4fb',
                                     borderRadius: 6,
                                     paddingHorizontal: 6,
                                     paddingVertical: 1,
+                                    borderWidth: isAdmin ? 0 : 1,
+                                    borderColor: isAdmin ? undefined : '#237227',
                                   }}>
                                   <Text
                                     style={{
-                                      color: isAdmin ? '#7c3aed' : '#16a34a',
+                                      color: isAdmin ? '#f8f4fb' : '#237227',
                                       fontSize: 10,
                                       fontWeight: '700',
                                     }}>
@@ -1158,8 +1174,8 @@ export default function Contacts({ onContactSelected, currentUserId }: ContactsP
                                   gap: 4,
                                   marginLeft: 8,
                                 }}>
-                                <Ionicons name="checkmark-circle" size={16} color="#10b981" />
-                                <Text style={{ color: '#10b981', fontSize: 12, fontWeight: '600' }}>
+                                <Ionicons name="checkmark-circle" size={16} color="#237227" />
+                                <Text style={{ color: '#237227', fontSize: 12, fontWeight: '600' }}>
                                   Added
                                 </Text>
                               </View>
@@ -1170,7 +1186,7 @@ export default function Contacts({ onContactSelected, currentUserId }: ContactsP
                                 activeOpacity={0.75}
                                 style={{
                                   marginLeft: 8,
-                                  backgroundColor: '#10b981',
+                                  backgroundColor: '#237227',
                                   borderRadius: 10,
                                   paddingHorizontal: 14,
                                   paddingVertical: 8,
@@ -1191,7 +1207,7 @@ export default function Contacts({ onContactSelected, currentUserId }: ContactsP
                   </>
                 ) : modalQuery.trim().length > 0 && !searching ? (
                   <View style={{ alignItems: 'center', paddingVertical: 44 }}>
-                    <Ionicons name="search-outline" size={36} color="#d1d5db" />
+                    <Ionicons name="search-outline" size={36} color="#237227" />
                     <Text
                       style={{ color: '#374151', fontWeight: '600', fontSize: 15, marginTop: 12 }}>
                       No matches
@@ -1204,12 +1220,12 @@ export default function Contacts({ onContactSelected, currentUserId }: ContactsP
                   <View style={{ alignItems: 'center', paddingVertical: 40 }}>
                     <View
                       style={{
-                        backgroundColor: '#f0fdf4',
+                        backgroundColor: '#237227',
                         borderRadius: 16,
                         padding: 16,
                         marginBottom: 12,
                       }}>
-                      <Ionicons name="person-add-outline" size={30} color="#10b981" />
+                      <Ionicons name="person-add-outline" size={30} color="#f8fafb" />
                     </View>
                     <Text style={{ color: '#374151', fontWeight: '600', fontSize: 15 }}>
                       Find someone to add
@@ -1232,7 +1248,7 @@ export default function Contacts({ onContactSelected, currentUserId }: ContactsP
         <View className="px-6 py-6">
           {loading && !refreshing ? (
             <View className="items-center justify-center py-16">
-              <ActivityIndicator size="large" color="#10b981" />
+              <ActivityIndicator size="large" color="#237227" />
               <Text className="mt-4 text-gray-500">Loading contacts...</Text>
             </View>
           ) : filteredContacts.length > 0 ? (
@@ -1260,20 +1276,36 @@ export default function Contacts({ onContactSelected, currentUserId }: ContactsP
                 }}>
                 {/* Avatar */}
                 <View className="relative">
-                  <View
-                    className="items-center justify-center rounded-full shadow-md h-14 w-14"
-                    style={{ backgroundColor: contact.avatar_color }}>
-                    <Text className="text-base font-bold text-white">{contact.initials}</Text>
-                  </View>
+                  {contact.profile_picture_url ? (
+                    <Image
+                      source={{ uri: contact.profile_picture_url }}
+                      style={{ width: 56, height: 56, borderRadius: 28 }}
+                    />
+                  ) : (
+                    <View
+                      className="items-center justify-center rounded-full shadow-md h-14 w-14"
+                      style={{ backgroundColor: contact.avatar_color }}>
+                      <Text style={{ color: '#f8fafb', fontWeight: '700', fontSize: 16 }}>{contact.initials}</Text>
+                    </View>
+                  )}
                   {/* Status Indicator */}
                   <View
-                    className={`border-3 absolute bottom-0 right-0 h-4 w-4 rounded-full border-white ${
-                      contact.status === 'online'
-                        ? 'bg-green-500'
-                        : contact.status === 'busy'
-                          ? 'bg-yellow-500'
-                          : 'bg-gray-300'
-                    }`}
+                    style={{
+                      position: 'absolute',
+                      bottom: 0,
+                      right: 0,
+                      height: 16,
+                      width: 16,
+                      borderRadius: 8,
+                      borderWidth: 2,
+                      borderColor: 'white',
+                      backgroundColor:
+                        contact.status === 'online'
+                          ? '#237227'
+                          : contact.status === 'busy'
+                            ? '#f59e0b'
+                            : '#d1d5db',
+                    }}
                   />
                 </View>
 
@@ -1282,14 +1314,25 @@ export default function Contacts({ onContactSelected, currentUserId }: ContactsP
                   <View className="flex-row items-center gap-2 mb-1">
                     <Text className="flex-1 text-base font-bold text-gray-900">{contact.name}</Text>
                   </View>
-                  <Text className="mb-2 text-xs font-normal text-gray-600">{contact.role}</Text>
+                  <View
+                    style={{
+                      backgroundColor: '#f8fafb',
+                      borderRadius: 6,
+                      paddingHorizontal: 6,
+                      paddingVertical: 2,
+                      borderWidth: (contact.role || '').toLowerCase() === 'team' || (contact.role || '').toLowerCase() === 'admin' ? 0 : 1,
+                      borderColor: (contact.role || '').toLowerCase() === 'team' || (contact.role || '').toLowerCase() === 'admin' ? undefined : '#237227',
+                      alignSelf: 'flex-start',
+                    }}>
+                    <Text style={{ color: '#2d2d2d', fontSize: 12, fontWeight: '700' }}>{contact.role}</Text>
+                  </View>
                   {contact.lastMessage !== undefined ? (
                     <View className="flex-row items-center gap-2 mt-1">
                       <Ionicons
                         name="chatbubble-outline"
                         size={14}
                         color={
-                          contact.unreadCount && contact.unreadCount > 0 ? '#10b981' : '#9ca3af'
+                          contact.unreadCount && contact.unreadCount > 0 ? '#237227' : '#237227'
                         }
                       />
                       <Text
@@ -1313,7 +1356,7 @@ export default function Contacts({ onContactSelected, currentUserId }: ContactsP
                     </View>
                   ) : (
                     <View className="flex-row items-center gap-2">
-                      <Ionicons name="chatbubble-outline" size={14} color="#d1d5db" />
+                      <Ionicons name="chatbubble-outline" size={14} color="#237227" />
                       <Text className="text-xs text-gray-400">No messages yet</Text>
                     </View>
                   )}
@@ -1321,16 +1364,16 @@ export default function Contacts({ onContactSelected, currentUserId }: ContactsP
 
                 {/* Quick Actions */}
                 <View className="flex-row gap-2 ml-2">
-                  <TouchableOpacity className="p-2 rounded-full bg-green-50 active:scale-90">
-                    <Ionicons name="chevron-forward" size={16} color="#10b981" />
+                  <TouchableOpacity className="p-2 rounded-full bg-[#237227] active:scale-90">
+                    <Ionicons name="chevron-forward" size={16} color="#f8f4fb" />
                   </TouchableOpacity>
                 </View>
               </TouchableOpacity>
             ))
           ) : (
             <View className="items-center justify-center py-16">
-              <View className="p-4 mb-4 rounded-full bg-green-50">
-                <Ionicons name="search" size={48} color="#d1d5db" />
+              <View className="p-4 mb-4 rounded-full bg-[#237227]">
+                <Ionicons name="search" size={48} color="#f8f4fb" />
               </View>
               <Text className="text-base font-semibold text-gray-500">No contacts found</Text>
               <Text className="mt-2 text-sm text-gray-400">

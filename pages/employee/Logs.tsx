@@ -137,12 +137,12 @@ export default function Logs() {
       <View className="px-6 pt-12 pb-4 bg-white border-b border-gray-100">
         <View className="mb-6">
           <Text className="text-3xl font-extrabold text-gray-900">Logs</Text>
-          <Text className="mt-1 text-xs font-semibold text-green-600">All work activity</Text>
+          <Text className="mt-1 text-xs font-semibold text-[#237227]">All work activity</Text>
         </View>
 
         {/* Search Bar - Light Gray Border */}
-        <View className="flex-row items-center px-4 py-3 rounded-xl bg-gray-50">
-          <Ionicons name="search-outline" size={18} color="#6B7280" />
+        <View className="flex-row items-center px-4 py-3 rounded-xl bg-gray-50 border border-[#237227]">
+          <Ionicons name="search-outline" size={18} color="#237227" />
           <TextInput
             placeholder="Search activity..."
             value={searchText}
@@ -220,7 +220,7 @@ export default function Logs() {
           </View>
         ) : (
           <View className="items-center justify-center py-16">
-            <Ionicons name="document-text-outline" size={48} color="#9CA3AF" />
+            <Ionicons name="document-text-outline" size={48} color="#237227" />
             <Text className="mt-4 text-base text-gray-500">No activity found</Text>
           </View>
         )}

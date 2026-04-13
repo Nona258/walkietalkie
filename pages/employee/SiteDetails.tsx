@@ -51,7 +51,7 @@ const SweetAlert: React.FC<SweetAlertProps> = ({
   type = 'success',
   onClose,
 }) => {
-  const iconColor = type === 'success' ? '#10b981' : type === 'error' ? '#ef4444' : '#3b82f6';
+  const iconColor = type === 'success' ? '#237227' : type === 'error' ? '#ef4444' : '#3b82f6';
   const iconName =
     type === 'success' ? 'checkmark-circle' : type === 'error' ? 'alert-circle' : 'information-circle';
 
@@ -59,15 +59,15 @@ const SweetAlert: React.FC<SweetAlertProps> = ({
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
       <View className="items-center justify-center flex-1 bg-black/50">
         <View className="w-4/5 max-w-sm p-6 bg-white shadow-2xl rounded-3xl">
-          <View className="items-center">
-            <View className="items-center justify-center mb-3 rounded-full h-14 w-14 bg-green-50">
-              <Ionicons name={iconName} size={32} color={iconColor} />
+            <View className="items-center">
+            <View className="items-center justify-center mb-3 rounded-full h-14 w-14" style={{ backgroundColor: '#237227' }}>
+              <Ionicons name={iconName} size={32} color="#f8fafb" />
             </View>
             <Text className="mb-2 text-xl font-bold text-center text-gray-900">{title}</Text>
             <Text className="mb-6 text-sm text-center text-gray-600">{message}</Text>
             <TouchableOpacity
               onPress={onClose}
-              className="w-full py-3 bg-green-500 rounded-full active:scale-95">
+              className="w-full py-3 bg-[#237227] rounded-full active:scale-95">
               <Text className="font-bold text-center text-white">OK</Text>
             </TouchableOpacity>
           </View>
@@ -1127,8 +1127,8 @@ export default function SiteDetails({
                   <TouchableOpacity
                     disabled={updateSubmitting}
                     onPress={pickEvidencePhotos}
-                    className="px-4 py-2 border border-green-200 rounded-full bg-green-50 active:scale-95">
-                    <Text className="text-sm font-medium text-green-700">Add Photos</Text>
+                    className="px-4 py-2 border border-[#237227] rounded-full bg-[#f8f4fb] active:scale-95">
+                    <Text className="text-sm font-medium text-[#237227]">Add Photos</Text>
                   </TouchableOpacity>
                 </View>
 
@@ -1240,7 +1240,7 @@ export default function SiteDetails({
           <TouchableOpacity
             onPress={onBack}
             className="px-4 py-2 mb-4 border border-green-100 rounded-full bg-green-50">
-            <Text className="font-semibold text-green-600">Back to Sites</Text>
+            <Text className="font-semibold text-[#237227]">Back to Sites</Text>
           </TouchableOpacity>
           <Text className="font-semibold text-gray-500">No site selected</Text>
         </View>
@@ -1259,11 +1259,13 @@ export default function SiteDetails({
                 />
               </View>
             ) : (
-              <View className="items-center justify-center w-full h-64 bg-gray-100">
-                <Ionicons name="location-outline" size={48} color="#9ca3af" />
-                <Text className="mt-2 text-sm text-gray-500">Location not available</Text>
-                <Text className="text-xs text-gray-400">No coordinates provided for this site</Text>
-              </View>
+                <View className="items-center justify-center w-full h-64 bg-gray-100">
+                  <View className="items-center justify-center w-20 h-20 mb-3 rounded-full" style={{ backgroundColor: '#237227' }}>
+                    <Ionicons name="location-outline" size={32} color="#f8fafb" />
+                  </View>
+                  <Text className="mt-2 text-sm text-gray-500">Location not available</Text>
+                  <Text className="text-xs text-gray-400">No coordinates provided for this site</Text>
+                </View>
             )}
 
             {/* Site name and company */}
@@ -1278,7 +1280,7 @@ export default function SiteDetails({
             <View className="mx-6 mt-6 bg-white border border-gray-100 rounded-xl">
               {/* Branch */}
               <View className="flex-row items-center p-4 border-b border-gray-100">
-                <Ionicons name="business-outline" size={20} color="#6b7280" />
+                <Ionicons name="business-outline" size={20} color="#237227" />
                 <View className="flex-1 ml-3">
                   <Text className="text-xs text-gray-500">Branch</Text>
                   <Text className="text-base font-medium text-gray-900">
@@ -1289,7 +1291,7 @@ export default function SiteDetails({
 
               {/* Workforce */}
               <View className="flex-row items-center p-4 border-b border-gray-100">
-                <Ionicons name="people-outline" size={20} color="#6b7280" />
+                <Ionicons name="people-outline" size={20} color="#237227" />
                 <View className="flex-1 ml-3">
                   <Text className="text-xs text-gray-500">Workforce</Text>
                   <Text className="text-base font-medium text-gray-900">
@@ -1304,7 +1306,7 @@ export default function SiteDetails({
                   <Ionicons
                     name={memberInfo.isFull ? 'close-circle-outline' : 'checkmark-circle-outline'}
                     size={20}
-                    color={memberInfo.isFull ? '#dc2626' : '#10b981'}
+                    color={memberInfo.isFull ? '#dc2626' : '#237227'}
                   />
                   <View className="flex-1 ml-3">
                     <Text className="text-xs text-gray-500">Member Slots</Text>
@@ -1328,7 +1330,7 @@ export default function SiteDetails({
 
               {loadingMemberInfo && !memberInfo && (
                 <View className="flex-row items-center p-4 border-b border-gray-100">
-                  <ActivityIndicator size="small" color="#10b981" />
+                  <ActivityIndicator size="small" color="#237227" />
                   <View className="flex-1 ml-3">
                     <Text className="text-xs text-gray-500">Member Slots</Text>
                     <Text className="text-sm text-gray-500">Loading slot information...</Text>
@@ -1338,11 +1340,11 @@ export default function SiteDetails({
 
               {/* Team Leader */}
               <View className="flex-row items-center p-4 border-b border-gray-100">
-                <Ionicons name="person-circle-outline" size={20} color="#6b7280" />
+                <Ionicons name="person-circle-outline" size={20} color="#237227" />
                 <View className="flex-1 ml-3">
                   <Text className="text-xs text-gray-500">Team Leader</Text>
                   {loadingGroupInfo ? (
-                    <ActivityIndicator size="small" color="#10b981" />
+                    <ActivityIndicator size="small" color="#237227" />
                   ) : (
                     <Text className="text-base font-medium text-gray-900">
                       {leaderName || 'No leader assigned'}
@@ -1356,11 +1358,11 @@ export default function SiteDetails({
                 <Ionicons
                   name={isFinished ? 'checkmark-circle-outline' : 'alert-circle-outline'}
                   size={20}
-                  color={isFinished ? '#9ca3af' : '#10b981'}
+                  color={isFinished ? '#9ca3af' : '#237227'}
                 />
                 <View className="flex-1 ml-3">
                   <Text className="text-xs text-gray-500">Status</Text>
-                  <Text className={`text-base font-medium ${isFinished ? 'text-gray-500' : 'text-green-600'}`}>
+                  <Text className={`text-base font-medium ${isFinished ? 'text-gray-500' : 'text-[#237227]'}`}>
                     {site.status}
                   </Text>
                 </View>
@@ -1368,7 +1370,7 @@ export default function SiteDetails({
 
               {/* Coordinates */}
               <View className="flex-row items-center p-4">
-                <Ionicons name="location-outline" size={20} color="#6b7280" />
+                <Ionicons name="location-outline" size={20} color="#237227" />
                 <View className="flex-1 ml-3">
                   <Text className="text-xs text-gray-500">Coordinates</Text>
                   <Text className="text-base font-medium text-gray-900">{coordinateText}</Text>
@@ -1379,7 +1381,7 @@ export default function SiteDetails({
             {/* Site Members Card */}
             <View className="p-4 mx-6 mt-6 bg-white border border-gray-100 rounded-xl">
               <View className="flex-row items-center mb-3">
-                <Ionicons name="people-outline" size={20} color="#3b82f6" />
+                <Ionicons name="people-outline" size={20} color="#237227" />
                 <Text className="ml-2 text-base font-semibold text-gray-900">Site Members</Text>
                 <Text className="ml-auto text-sm text-gray-500">
                   {siteMembers.length} {siteMembers.length === 1 ? 'Member' : 'Members'}
@@ -1388,7 +1390,7 @@ export default function SiteDetails({
 
               {loadingSiteMembers ? (
                 <View className="items-center justify-center py-4">
-                  <ActivityIndicator size="small" color="#3b82f6" />
+                  <ActivityIndicator size="small" color="#237227" />
                 </View>
               ) : siteMembers.length === 0 ? (
                 <Text className="py-4 text-sm text-center text-gray-500">No members joined yet</Text>
@@ -1398,11 +1400,11 @@ export default function SiteDetails({
                     <View
                       key={member.id}
                       className={`flex-row items-center py-3 ${index < siteMembers.length - 1 ? 'border-b border-gray-50' : ''}`}>
-                      <View className="items-center justify-center w-8 h-8 bg-blue-100 rounded-full">
+                      <View className="items-center justify-center w-8 h-8 bg-[#237227] rounded-full">
                         {member.profilePictureUrl ? (
                           <Image source={{ uri: member.profilePictureUrl }} className="w-8 h-8 rounded-full" />
                         ) : (
-                          <Ionicons name="person" size={16} color="#3b82f6" />
+                          <Ionicons name="person" size={16} color="#f8f4fb" />
                         )}
                       </View>
                       <View className="flex-1 ml-3">
@@ -1412,8 +1414,8 @@ export default function SiteDetails({
                           <Text className="mt-0.5 text-xs text-gray-500">{member.phoneNumber}</Text>
                         )}
                       </View>
-                      <View className="px-2 py-1 rounded-full bg-blue-50">
-                        <Text className="text-xs font-semibold text-blue-600 capitalize">
+                      <View className="px-2 py-1 rounded-full border border-[#237227]">
+                        <Text className="text-xs font-semibold capitalize text-stone-800">
                           {member.role}
                         </Text>
                       </View>
@@ -1465,8 +1467,9 @@ export default function SiteDetails({
                 disabled={acceptLoading || hasAccepted || !!currentUserSiteId || isUserLeaderAny || memberInfo?.isFull}
                 className={`w-full items-center justify-center rounded-xl py-3 ${
                   hasAccepted || !!currentUserSiteId || memberInfo?.isFull
-                    ? 'bg-gray-300'
-                    : 'bg-green-500 active:scale-95'
+                    ? ' border border-[#237227]'
+                    : 'bg-[#237227] active:scale-95'
+                      
                 }`}>
                 {acceptLoading ? (
                   <ActivityIndicator color="#ffffff" />

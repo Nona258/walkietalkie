@@ -1116,13 +1116,13 @@ export default function Chat({ selectedContact, onBackPress, currentUserId }: Ch
   const handleChooseFromGallery = () => setShowMediaMenu(false);
 
   return (
-    <View className="flex-1 bg-white">
+    <View className="flex-1 bg-[#f8fafb]">
       {/* Chat Header */}
-      <View className="px-6 py-6 pt-12 bg-white border-b border-gray-100">
+      <View className="px-6 py-6 pt-12 bg-[#f8fafb] border-b border-gray-100">
         <View className="flex-row items-center justify-between mb-4">
           <TouchableOpacity onPress={onBackPress} className="active:scale-90">
             <View className="p-2 bg-gray-100 rounded-full">
-              <Ionicons name="chevron-back" size={24} color="#10b981" />
+              <Ionicons name="chevron-back" size={24} color="#237227" />
             </View>
           </TouchableOpacity>
           <View className="flex-1 mx-4">
@@ -1131,9 +1131,9 @@ export default function Chat({ selectedContact, onBackPress, currentUserId }: Ch
               <View
                 className={`h-2 w-2 rounded-full ${
                   isGroupChat
-                    ? 'bg-green-500'
+                    ? 'bg-[#237227]'
                     : selectedContact.status === 'online'
-                      ? 'bg-green-500'
+                      ? 'bg-[#237227]'
                       : selectedContact.status === 'busy'
                         ? 'bg-yellow-500'
                         : 'bg-gray-300'
@@ -1142,9 +1142,9 @@ export default function Chat({ selectedContact, onBackPress, currentUserId }: Ch
               <Text
                 className={`text-xs font-semibold ${
                   isGroupChat
-                    ? 'text-green-600'
+                    ? 'text-[#237227]'
                     : selectedContact.status === 'online'
-                      ? 'text-green-600'
+                      ? 'text-[#237227]'
                       : selectedContact.status === 'busy'
                         ? 'text-yellow-600'
                         : 'text-gray-500'
@@ -1160,8 +1160,8 @@ export default function Chat({ selectedContact, onBackPress, currentUserId }: Ch
             </View>
           </View>
           <TouchableOpacity className="active:scale-90">
-            <View className="p-2 bg-gray-100 rounded-full">
-              <Ionicons name="information-circle" size={24} color="#10b981" />
+            <View className="p-2 bg-[#237227] rounded-full">
+              <Ionicons name="information-circle" size={24} color="#f8f4fb" />
             </View>
           </TouchableOpacity>
         </View>
@@ -1176,13 +1176,13 @@ export default function Chat({ selectedContact, onBackPress, currentUserId }: Ch
         onContentSizeChange={() => scrollViewRef.current?.scrollToEnd({ animated: true })}>
         {loadingMessages ? (
           <View className="items-center justify-center py-12">
-            <ActivityIndicator size="large" color="#10b981" />
+            <ActivityIndicator size="large" color="#237227" />
             <Text className="mt-4 text-sm text-gray-500">Loading messages...</Text>
           </View>
         ) : messages.length === 0 ? (
           <View className="items-center justify-center py-12">
-            <View className="p-4 mb-4 rounded-full bg-green-50">
-              <Ionicons name="chatbubbles-outline" size={48} color="#d1d5db" />
+            <View className="p-4 mb-4 rounded-full bg-[#237227]">
+              <Ionicons name="chatbubbles-outline" size={48} color="#f8f4fb" />
             </View>
             <Text className="font-semibold text-gray-500">No messages yet</Text>
             <Text className="mt-2 text-sm text-gray-400">Start the conversation!</Text>
@@ -1218,8 +1218,8 @@ export default function Chat({ selectedContact, onBackPress, currentUserId }: Ch
                   <View key={message.id}>
                     {showDateSep && (
                       <View className="items-center my-4">
-                        <View className="rounded-full bg-green-100 px-4 py-1.5">
-                          <Text className="text-xs font-bold text-green-700">
+                        <View className="rounded-full px-4 py-1.5 bg-[#237227]">
+                          <Text className="text-xs font-bold text-[#f8fafb]">
                             {getDateLabel(rawTs)}
                           </Text>
                         </View>
@@ -1250,12 +1250,13 @@ export default function Chat({ selectedContact, onBackPress, currentUserId }: Ch
                                 prev === message.id ? null : message.id
                               );
                             }}
-                            className={`flex-row items-center gap-3 rounded-3xl px-4 py-3 shadow-sm ${
-                              message.isOwn
-                                ? 'bg-green-500 shadow-gray-200'
-                                : 'border border-gray-200 bg-white shadow-sm'
-                            }`}
-                            style={{ minWidth: 160 }}>
+                            className={`flex-row items-center gap-3 rounded-3xl px-4 py-3 shadow-sm`}
+                            style={{
+                              minWidth: 160,
+                              backgroundColor: message.isOwn ? '#237227' : '#ffffff',
+                              borderWidth: message.isOwn ? 0 : 1,
+                              borderColor: message.isOwn ? 'transparent' : '#e5e7eb',
+                            }}>
                             <View
                               className={`h-8 w-8 items-center justify-center rounded-full ${
                                 message.isOwn ? 'bg-white/20' : 'bg-green-100'
@@ -1263,7 +1264,7 @@ export default function Chat({ selectedContact, onBackPress, currentUserId }: Ch
                               <Ionicons
                                 name={isPlaying ? 'pause' : 'play'}
                                 size={16}
-                                color={message.isOwn ? '#ffffff' : '#10b981'}
+                                color={message.isOwn ? '#f8fafb' : '#237227'}
                               />
                             </View>
                             <View className="flex-1">
@@ -1281,16 +1282,15 @@ export default function Chat({ selectedContact, onBackPress, currentUserId }: Ch
                                 ))}
                               </View>
                               <Text
-                                className={`text-xs font-semibold ${
-                                  message.isOwn ? 'text-white/80' : 'text-green-600'
-                                }`}>
+                                className={`text-xs font-semibold`}
+                                style={{ color: message.isOwn ? '#f8fafb' : '#237227' }}>
                                 {message.duration || '0:00'}
                               </Text>
                             </View>
                             <Ionicons
                               name="mic"
                               size={14}
-                              color={message.isOwn ? '#ffffff80' : '#10b981'}
+                              color={message.isOwn ? '#f8fafb80' : '#237227'}
                             />
                           </TouchableOpacity>
                         ) : (
@@ -1298,23 +1298,25 @@ export default function Chat({ selectedContact, onBackPress, currentUserId }: Ch
                           <TouchableOpacity
                             activeOpacity={0.8}
                             onPress={() =>
-                              setExpandedMessageId((prev) =>
+                                                                                                     setExpandedMessageId((prev) =>
                                 prev === message.id ? null : message.id
                               )
                             }
-                            className={`rounded-3xl px-5 py-3 shadow-sm ${
-                              message.isOwn
-                                ? 'bg-green-500 shadow-gray-200'
-                                : 'border border-gray-200 bg-white shadow-sm'
-                            }`}>
+                            className={`rounded-3xl px-5 py-3 shadow-sm`}
+                            style={{
+                              backgroundColor: message.isOwn ? '#237227' : '#ffffff',
+                              borderWidth: message.isOwn ? 0 : 1,
+                              borderColor: message.isOwn ? 'transparent' : '#e5e7eb',
+                            }}>
                             <Text
                               className={`text-base ${
                                 message.isOwn
-                                  ? 'font-semibold text-white'
+                                  ? 'font-semibold'
                                   : message.isRead === false
                                     ? 'font-bold text-gray-900'
                                     : 'font-medium text-gray-900'
-                              }`}>
+                              }`}
+                              style={message.isOwn ? { color: '#f8fafb' } : undefined}>
                               {message.content}
                             </Text>
                           </TouchableOpacity>
@@ -1381,20 +1383,20 @@ export default function Chat({ selectedContact, onBackPress, currentUserId }: Ch
             <TouchableOpacity
               className="flex-row items-center px-4 py-3 bg-white border border-gray-200 rounded-2xl active:scale-95"
               onPress={handleCaptureImage}>
-              <View className="p-2 mr-3 bg-green-500 rounded-full">
-                <Ionicons name="camera" size={18} color="white" />
+              <View className="p-2 mr-3 bg-[#237227] rounded-full">
+                <Ionicons name="camera" size={18} color="#f8f4fb" />
               </View>
               <Text className="flex-1 font-semibold text-gray-900">Camera</Text>
-              <Ionicons name="chevron-forward" size={16} color="#d1d5db" />
+              <Ionicons name="chevron-forward" size={16} color="#237227" />
             </TouchableOpacity>
             <TouchableOpacity
               className="flex-row items-center px-4 py-3 bg-white border border-gray-200 rounded-2xl active:scale-95"
               onPress={handleChooseFromGallery}>
-              <View className="p-2 mr-3 bg-green-500 rounded-full">
-                <Ionicons name="image" size={18} color="white" />
+              <View className="p-2 mr-3 bg-[#237227] rounded-full">
+                <Ionicons name="image" size={18} color="#f8f4fb" />
               </View>
               <Text className="flex-1 font-semibold text-gray-900">Gallery</Text>
-              <Ionicons name="chevron-forward" size={16} color="#d1d5db" />
+              <Ionicons name="chevron-forward" size={16} color="#237227" />
             </TouchableOpacity>
           </View>
         )}
@@ -1403,13 +1405,13 @@ export default function Chat({ selectedContact, onBackPress, currentUserId }: Ch
           {/* Add Media Button */}
           <TouchableOpacity
             className={`h-11 w-11 items-center justify-center rounded-full border-2 transition-all active:scale-95 ${
-              showMediaMenu ? 'border-red-200 bg-red-50' : 'border-gray-200 bg-white'
+              showMediaMenu ? 'border-red-200 bg-red-50' : 'border-[#237227] bg-white'
             }`}
             onPress={() => setShowMediaMenu(!showMediaMenu)}>
             <Ionicons
               name={showMediaMenu ? 'close' : 'add'}
               size={24}
-              color={showMediaMenu ? '#dc2626' : '#10b981'}
+              color={showMediaMenu ? '#dc2626' : '#237227'}
             />
           </TouchableOpacity>
 
@@ -1417,8 +1419,8 @@ export default function Chat({ selectedContact, onBackPress, currentUserId }: Ch
           <View
             className={`flex-1 flex-row items-center rounded-2xl border-2 px-4 py-2.5 transition-all ${
               messageText.trim()
-                ? 'border-green-500 bg-white shadow-sm shadow-gray-200'
-                : 'border-gray-200 bg-white'
+                ? 'border-gray-300 bg-white shadow-sm shadow-gray-200'
+                : 'border-gray-300 bg-white'
             }`}>
             <TextInput
               placeholder="Type a message..."
@@ -1433,7 +1435,7 @@ export default function Chat({ selectedContact, onBackPress, currentUserId }: Ch
               className="ml-2 p-1.5 active:scale-90"
               onPress={handleSendMessage}
               disabled={!messageText.trim()}>
-              <Ionicons name="send" size={20} color={messageText.trim() ? '#10b981' : '#d1d5db'} />
+              <Ionicons name="send" size={20} color={'#237227'} />
             </TouchableOpacity>
           </View>
 
@@ -1441,19 +1443,21 @@ export default function Chat({ selectedContact, onBackPress, currentUserId }: Ch
           {isRecording ? (
             <View className="items-center">
               <TouchableOpacity
-                className="items-center justify-center border-2 border-red-400 rounded-full h-11 w-11 bg-red-50"
+                className="items-center justify-center bg-white border-2 rounded-full h-11 w-11"
+                style={{ borderColor: '#237227' }}
                 onPressOut={stopRecording}>
-                <Ionicons name="mic" size={22} color="#ef4444" />
+                <Ionicons name="mic" size={22} color="#237227" />
               </TouchableOpacity>
-              <Text className="mt-1 text-xs font-bold text-red-500">
+              <Text className="mt-1 text-xs font-bold" style={{ color: '#237227' }}>
                 {formatDuration(recordingTime)}
               </Text>
             </View>
           ) : (
             <TouchableOpacity
-              className="items-center justify-center bg-white border-2 border-gray-200 rounded-full h-11 w-11 active:scale-95"
+              className="items-center justify-center bg-white rounded-full h-11 w-11 active:scale-95"
+              style={{ borderWidth: 2, borderColor: '#237227' }}
               onPressIn={startRecording}>
-              <Ionicons name="mic" size={22} color="#6b7280" />
+              <Ionicons name="mic" size={22} color="#237227" />
             </TouchableOpacity>
           )}
         </View>

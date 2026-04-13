@@ -6,12 +6,14 @@ import {
   ScrollView,
   StatusBar,
   Image,
-  Modal,
   Pressable,
   ActivityIndicator,
+  Alert,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import supabase from '../../utils/supabase';
+import * as Location from 'expo-location';
+import SweetAlertModal from '../../components/SweetAlertModal';
 import {
   fetchMyNotifications,
   fetchMyUnreadNotificationCount,
@@ -19,6 +21,7 @@ import {
   markMyNotificationsViewed,
   type AppNotification,
 } from '../../utils/notifications';
+import { respondToContactRequest } from '../../utils/FriendRequests';
 
 type AttendanceRow = {
   id: number;
@@ -139,6 +142,8 @@ export default function Dashboard({
   const [attendance, setAttendance] = useState<AttendanceRow | null>(null);
   const [attendanceLoading, setAttendanceLoading] = useState(false);
   const [attendanceActionLoading, setAttendanceActionLoading] = useState(false);
+  const [showSweetAlert, setShowSweetAlert] = useState(false);
+  const [sweetAlertMessage, setSweetAlertMessage] = useState('');
 
   const [siteStats, setSiteStats] = useState<SiteStats>({
     pendingSites: 0,
@@ -152,6 +157,7 @@ export default function Dashboard({
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
   const [notificationsLoading, setNotificationsLoading] = useState(false);
   const [unreadCount, setUnreadCount] = useState(0);
+  const [notifActionLoading, setNotifActionLoading] = useState<Record<number, boolean>>({});
 
   const loadNotifications = useCallback(async () => {
     setNotificationsLoading(true);
@@ -162,6 +168,28 @@ export default function Dashboard({
       setNotificationsLoading(false);
     }
   }, []);
+
+  const handleRespondToRequest = async (notificationId: number, senderId: string, accept: boolean) => {
+    if (!currentUserId) {
+      Alert.alert('Error', 'Unable to determine current user');
+      return;
+    }
+    setNotifActionLoading((s) => ({ ...s, [notificationId]: true }));
+    try {
+      await respondToContactRequest(senderId, currentUserId, accept);
+
+      // remove the notification row (best-effort)
+      await supabase.from('notification').delete().eq('id', notificationId);
+
+      // refresh
+      await Promise.all([loadNotifications(), loadUnreadCount()]);
+    } catch (e: any) {
+      console.error('Failed to respond to contact request:', e);
+      Alert.alert('Error', e?.message || String(e));
+    } finally {
+      setNotifActionLoading((s) => ({ ...s, [notificationId]: false }));
+    }
+  };
 
   const loadUnreadCount = useCallback(async () => {
     const count = await fetchMyUnreadNotificationCount();
@@ -514,12 +542,55 @@ export default function Dashboard({
     }
   };
 
+  // Haversine formula - returns distance in meters between two lat/lon points
+  function haversineDistance(lat1: number, lon1: number, lat2: number, lon2: number) {
+    const toRad = (v: number) => (v * Math.PI) / 180;
+    const R = 6371000; // meters
+    const dLat = toRad(lat2 - lat1);
+    const dLon = toRad(lon2 - lon1);
+    const a =
+      Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+      Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) * Math.sin(dLon / 2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    return R * c;
+  }
+
   const isTimedIn = Boolean(attendance?.employee_start_time && !attendance?.employee_end_time);
 
   const handleTimeIn = useCallback(async () => {
     if (attendanceActionLoading) return;
     setAttendanceActionLoading(true);
     try {
+      // --- Location check start ---
+      // Target site coordinates (center)
+      const TARGET_LAT = 8.2246043;
+      const TARGET_LON = 124.2504357;
+      // Allowed radius in meters (adjust as needed)
+      const ALLOWED_RADIUS_METERS = 10;
+
+      const { status: permStatus } = await Location.requestForegroundPermissionsAsync();
+      if (permStatus !== 'granted') {
+        console.log('[TimeIn] location permission not granted', { permStatus });
+        setSweetAlertMessage('Location permission denied. Cannot time-in.');
+        setShowSweetAlert(true);
+        setAttendanceActionLoading(false);
+        return;
+      }
+
+      const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Highest });
+      const userLat = loc.coords.latitude;
+      const userLon = loc.coords.longitude;
+      const dist = haversineDistance(userLat, userLon, TARGET_LAT, TARGET_LON);
+      console.log('[TimeIn] location fetched', { userLat, userLon, target: { TARGET_LAT, TARGET_LON }, dist, ALLOWED_RADIUS_METERS });
+      if (dist > ALLOWED_RADIUS_METERS) {
+        console.log('[TimeIn] user outside allowed radius', { dist, ALLOWED_RADIUS_METERS });
+        setSweetAlertMessage('You cannot time-in early');
+        setShowSweetAlert(true);
+        setAttendanceActionLoading(false);
+        return;
+      }
+      // --- Location check end ---
+
       const {
         data: { user },
         error: authError,
@@ -534,6 +605,7 @@ export default function Dashboard({
       const now = new Date();
       const isOnTime = now.getHours() < 8 || (now.getHours() === 8 && now.getMinutes() === 0);
       const status = isOnTime ? 'On-Time' : 'Late';
+      console.log('[TimeIn] creating attendance record', { userId: user.id, time: toTimetzValue(now), status });
       const { data, error } = await supabase
         .from('user_attendances')
         .insert([
@@ -546,6 +618,7 @@ export default function Dashboard({
         .select('id, created_at, employee_start_time, employee_end_time, total_hours, status')
         .single();
       if (error) throw error;
+      console.log('[TimeIn] attendance created', data);
       setAttendance(data as any);
     } catch (e) {
       console.error('Time In error:', e);
@@ -570,6 +643,8 @@ export default function Dashboard({
         totalHours = formatTotalHoursFromSeconds(diff);
       }
 
+      console.log('[TimeOut] updating attendance', { attendanceId: attendance.id, startSeconds, endSeconds, totalHours });
+
       const { data, error } = await supabase
         .from('user_attendances')
         .update({ employee_end_time: toTimetzValue(now), total_hours: totalHours })
@@ -577,6 +652,7 @@ export default function Dashboard({
         .select('id, created_at, employee_start_time, employee_end_time, total_hours, status')
         .single();
       if (error) throw error;
+      console.log('[TimeOut] attendance updated', data);
       setAttendance(data as any);
     } catch (e) {
       console.error('Time Out error:', e);
@@ -600,7 +676,7 @@ export default function Dashboard({
         {/* Header */}
         <View className="flex-row items-center justify-between px-6 pt-12 pb-6 bg-white">
           <View className="flex-row items-center flex-1 gap-3">
-            <View className="items-center justify-center flex-shrink-0 overflow-hidden bg-green-100 rounded-full h-14 w-14">
+            <View className="items-center justify-center flex-shrink-0 overflow-hidden bg-[#237227] rounded-full h-14 w-14">
               {userData.profile_picture_url ? (
                 <Image
                   source={{ uri: userData.profile_picture_url }}
@@ -608,7 +684,7 @@ export default function Dashboard({
                   resizeMode="cover"
                 />
               ) : (
-                <Ionicons name="person" size={26} color="#10b981" />
+                <Ionicons name="person" size={26} color="#f8f4fb" />
               )}
             </View>
             <View className="flex-1 min-w-0">
@@ -620,10 +696,10 @@ export default function Dashboard({
           </View>
           <View className="flex-row items-center gap-3">
             <TouchableOpacity
-              className="p-3 bg-gray-100 rounded-full active:scale-95"
+              className="p-3 bg-[#237227] rounded-full active:scale-95"
               onPress={() => setIsNotificationOpen(true)}>
               <View className="relative">
-                <Ionicons name="notifications" size={24} color="#6b7280" />
+                <Ionicons name="notifications" size={22} color="#f8f4fb" />
                 {unreadCount > 0 && (
                   <View className="absolute -right-2 -top-2 min-w-[18px] items-center justify-center rounded-full bg-red-500 px-1">
                     <Text className="text-[11px] font-bold text-white">
@@ -635,26 +711,26 @@ export default function Dashboard({
             </TouchableOpacity>
             <TouchableOpacity
               onPress={onNavigateToSettings}
-              className="p-3 bg-gray-100 rounded-full active:scale-95">
-              <Ionicons name="settings" size={24} color="#6b7280" />
+              className="p-3 bg-[#237227] rounded-full active:scale-95">
+              <Ionicons name="settings" size={22} color="#f8f4fb" />
             </TouchableOpacity>
           </View>
         </View>
 
-        {/* Notifications Modal */}
-        <Modal
-          visible={isNotificationOpen}
-          transparent
-          animationType="fade"
-          onRequestClose={() => setIsNotificationOpen(false)}>
+        {/* Notifications Panel (right-side overlay) */}
+        {isNotificationOpen && (
           <Pressable
-            className="items-center justify-center flex-1 px-6 bg-black/40"
+            className="absolute inset-0 items-end"
+            style={{ zIndex: 50 }}
             onPress={() => setIsNotificationOpen(false)}>
-            <Pressable className="w-full max-w-md p-5 bg-white rounded-2xl" onPress={() => {}}>
+            <Pressable
+              className="w-full h-full max-w-md p-5 bg-white rounded-l-2xl"
+              onPress={() => {}}
+              style={{ shadowColor: '#000', shadowOffset: { width: -2, height: 0 }, shadowOpacity: 0.1, shadowRadius: 8, elevation: 8 }}>
               <View className="flex-row items-center justify-between">
                 <Text className="text-lg font-bold text-gray-900">Notifications</Text>
                 <TouchableOpacity
-                  className="p-2 bg-gray-100 rounded-full"
+                  className="p-2 bg-[#f8f4fb] rounded-full"
                   onPress={() => setIsNotificationOpen(false)}>
                   <Ionicons name="close" size={18} color="#6b7280" />
                 </TouchableOpacity>
@@ -667,40 +743,58 @@ export default function Dashboard({
                     <Text className="mt-2 text-sm text-gray-500">Loading…</Text>
                   </View>
                 ) : notifications.length === 0 ? (
-                  <Text className="py-6 text-sm text-center text-gray-500">
-                    You have no notifications.
-                  </Text>
+                  <Text className="py-6 text-sm text-center text-gray-500">You have no notifications.</Text>
                 ) : (
                   <ScrollView showsVerticalScrollIndicator={false}>
-                    {notifications.map((n) => (
-                      <View
-                        key={String(n.id)}
-                        className="p-3 mb-3 border border-gray-100 rounded-xl bg-gray-50">
-                        <Text className="text-sm font-bold text-gray-900">
-                          {n.title || 'Notification'}
-                        </Text>
-                        <Text className="mt-1 text-xs text-gray-600">{n.body || ''}</Text>
-                        <Text className="mt-2 text-[11px] text-gray-400">
-                          {n.created_at ? new Date(n.created_at).toLocaleString() : ''}
-                        </Text>
-                      </View>
-                    ))}
+                    {notifications.map((n) => {
+                      const rawBody = n.body || '';
+                      const senderMatch = rawBody.match(/__sender_id__:(\S+)/);
+                      const senderId = senderMatch ? senderMatch[1] : null;
+                      const bodyWithoutMarker = rawBody.replace(/__sender_id__:\S+\n?/, '').trim();
+
+                      return (
+                        <View
+                          key={String(n.id)}
+                          className="p-3 mb-3 border border-gray-100 rounded-xl bg-gray-50">
+                          <Text className="text-sm font-bold text-gray-900">{n.title || 'Notification'}</Text>
+                          <Text className="mt-1 text-xs text-gray-600">{bodyWithoutMarker}</Text>
+                          <Text className="mt-2 text-[11px] text-gray-400">{n.created_at ? new Date(n.created_at).toLocaleString() : ''}</Text>
+
+                          {senderId && n.title === 'Contact Request' && (
+                            <View className="flex-row gap-2 mt-3">
+                              <TouchableOpacity
+                                className="flex-1 py-2 bg-[#237227] rounded-xl"
+                                onPress={() => void handleRespondToRequest(Number(n.id), senderId, true)}
+                                disabled={Boolean(notifActionLoading[Number(n.id)])}>
+                                <Text className="text-sm font-semibold text-center text-white">{notifActionLoading[Number(n.id)] ? 'Processing...' : 'Accept'}</Text>
+                              </TouchableOpacity>
+                              <TouchableOpacity
+                                className="flex-1 py-2 bg-gray-100 rounded-xl"
+                                onPress={() => void handleRespondToRequest(Number(n.id), senderId, false)}
+                                disabled={Boolean(notifActionLoading[Number(n.id)])}>
+                                <Text className="text-sm font-semibold text-center text-gray-700">{notifActionLoading[Number(n.id)] ? 'Processing...' : 'Deny'}</Text>
+                              </TouchableOpacity>
+                            </View>
+                          )}
+                        </View>
+                      );
+                    })}
                   </ScrollView>
                 )}
               </View>
 
               <TouchableOpacity
-                className="w-full py-3 mt-3 bg-green-600 rounded-xl"
+                className="w-full py-3 mt-3 bg-[#237227] rounded-xl"
                 onPress={() => {
                   void loadNotifications();
                   void loadUnreadCount();
                 }}
                 disabled={notificationsLoading}>
-                <Text className="text-sm font-semibold text-center text-white">Refresh</Text>
+                <Text className="text-md font-semibold text-center text-[#f8f4fb]">Refresh</Text>
               </TouchableOpacity>
             </Pressable>
           </Pressable>
-        </Modal>
+        )}
 
         {/* Content */}
         <View className="w-full px-6 py-2 pb-32 bg-gray-50">
@@ -711,25 +805,25 @@ export default function Dashboard({
               icon="hourglass-outline"
               title="Pending Sites"
               value={statsValue(siteStats.pendingSites)}
-              color="bg-green-400"
+              color="bg-[#237227]"
             />
             <StatCard
               icon="checkmark-done-outline"
               title="Finished Today"
               value={statsValue(siteStats.finishedToday)}
-              color="bg-green-600"
+              color="bg-[#237227]"
             />
             <StatCard
               icon="calendar-outline"
               title="Hours This Week"
               value={statsText(siteStats.hoursThisWeek)}
-              color="bg-green-400"
+              color="bg-[#237227]"
             />
             <StatCard
               icon="trophy-outline"
               title="Finished This Week"
               value={statsValue(siteStats.finishedThisWeek)}
-              color="bg-green-500"
+              color="bg-[#237227]"
             />
           </View>
 
@@ -739,8 +833,8 @@ export default function Dashboard({
             <View className="w-full p-4 bg-white border border-gray-200 rounded-2xl">
               {/* Location */}
               <View className="flex-row items-center p-3 mb-2 rounded-xl bg-gray-50">
-                <View className="mr-4 rounded-full bg-green-500 p-2.5">
-                  <Ionicons name="location" size={20} color="white" />
+                <View className="mr-4 rounded-full bg-[#237227] p-2.5">
+                  <Ionicons name="location" size={20} color="#f8f4fb" />
                 </View>
                 <View className="flex-1">
                   <Text className="text-xs font-medium tracking-wider text-gray-500 uppercase">
@@ -790,9 +884,9 @@ export default function Dashboard({
                 activeOpacity={0.8}
                 disabled={attendanceLoading || attendanceActionLoading}
                 onPress={isTimedIn ? handleTimeOut : handleTimeIn}
-                className="mt-2 w-full flex-row items-center justify-center rounded-xl bg-green-600 py-3.5 active:scale-95">
-                <Ionicons name="finger-print" size={20} color="white" />
-                <Text className="ml-2 text-base font-semibold text-white">
+                className="mt-2 w-full flex-row items-center justify-center rounded-xl bg-[#237227] py-3.5 active:scale-95">
+                <Ionicons name="finger-print" size={20} color="#f8f4fb" />
+                <Text className="ml-2 text-base font-semibold text-[#f8f4fb]">
                   {attendanceActionLoading ? 'Saving…' : isTimedIn ? 'Time Out' : 'Time In'}
                 </Text>
               </TouchableOpacity>
@@ -800,6 +894,15 @@ export default function Dashboard({
           </View>
         </View>
       </ScrollView>
+      <SweetAlertModal
+        visible={showSweetAlert}
+        title={"Cannot Time-in"}
+        message={sweetAlertMessage}
+        type={'error'}
+        confirmText={'OK'}
+        onConfirm={() => setShowSweetAlert(false)}
+        onCancel={() => setShowSweetAlert(false)}
+      />
     </View>
   );
 }
@@ -818,8 +921,8 @@ function StatCard({
 }) {
   return (
     <View className="mb-3 w-[48%] rounded-2xl border border-gray-200 bg-white p-4 active:scale-95">
-      <View className={`${color} mb-3 self-start rounded-xl p-2.5`}>
-        <Ionicons name={icon} size={20} color="white" />
+      <View className={`${color} mb-3 self-start rounded-full p-2.5`}>
+        <Ionicons name={icon} size={20} color="#f8f4fb" />
       </View>
       <Text className="text-2xl font-black text-gray-900">{value}</Text>
       <Text className="mt-1 text-xs font-medium text-gray-500">{title}</Text>

@@ -53,7 +53,7 @@ export default function SweetAlertModal({
           {/* Icon */}
           <View
             className="items-center justify-center w-20 h-20 mb-5 rounded-full"
-            style={{ backgroundColor: icon.color }}>
+            style={{ backgroundColor: palette.green }}>
             <Ionicons name={icon.name} size={48} color={palette.cloudmist} />
           </View>
 

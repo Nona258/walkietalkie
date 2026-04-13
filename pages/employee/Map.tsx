@@ -283,7 +283,7 @@ export default function Map({ onBack, selectedSite }: { onBack?: () => void; sel
             <View className="absolute left-0 right-0 z-50 px-4 py-4 pt-4 top-4">
               <View className="flex-row items-center flex-1 px-4 py-3 bg-white border border-gray-300 shadow-lg rounded-2xl bg-opacity-95">
                 <TouchableOpacity onPress={onBack}>
-                  <Ionicons name="arrow-back" size={20} color="#10b981" />
+                  <Ionicons name="arrow-back" size={20} color="#237227" />
                 </TouchableOpacity>
                 <TextInput
                   placeholder="Search locations..."
@@ -294,7 +294,7 @@ export default function Map({ onBack, selectedSite }: { onBack?: () => void; sel
                   placeholderTextColor="#9ca3af"
                   returnKeyType="search"
                 />
-                <Ionicons name="location" size={20} color="#10b981" />
+                <Ionicons name="location" size={20} color="#237227" />
               </View>
               {showResults && searchResults.length > 0 && searchText.trim().length > 0 && (
                 <View className="mt-1 overflow-hidden bg-white border border-gray-300 shadow-lg rounded-2xl">
@@ -330,13 +330,13 @@ export default function Map({ onBack, selectedSite }: { onBack?: () => void; sel
           {selectedSite && !isStreetViewActive && (
             <View className="absolute right-0 px-0 bottom-4 left-4">
               <View
-                className="px-4 py-3 border border-green-200 shadow-lg rounded-2xl bg-green-50 bg-opacity-90"
+                className="px-4 py-3 shadow-lg rounded-2xl bg-[#e8f5e9] bg-opacity-90"
                 style={{ maxWidth: '70%' }}>
                 <View>
-                  <Text className="text-xs font-semibold text-gray-600 uppercase">
+                  <Text className="text-xs font-semibold text-[#237227] uppercase">
                     Site Location
                   </Text>
-                  <Text className="mt-1 text-lg font-bold text-gray-900" numberOfLines={2}>
+                  <Text className="mt-1 text-lg font-bold text-[#237227]" numberOfLines={2}>
                     {selectedSite.name}
                   </Text>
                 </View>

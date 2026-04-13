@@ -150,13 +150,13 @@ export default function Settings({
 
       <View className="flex-col flex-1 w-full">
         {/* HEADER WITH BACK BUTTON */}
-        <View className="flex-row items-center gap-4 px-6 pt-6 pb-6 bg-white">
+        <View className="flex-row items-center gap-4 px-6 pt-6 pb-6 bg-[#f8fafb] shadow-sm">
           <TouchableOpacity
             onPress={onBackToDashboard}
-            className="items-center justify-center w-10 h-10 bg-green-100 rounded-full active:scale-95">
-            <Ionicons name="chevron-back" size={24} color="#10b981" />
+            className="items-center justify-center w-10 h-10 bg-[#237227] rounded-full active:scale-95">
+            <Ionicons name="chevron-back" size={24} color="#f8fafb" />
           </TouchableOpacity>
-          <Text className="text-2xl font-extrabold text-gray-900">Settings</Text>
+          <Text className="text-2xl font-extrabold text-gray-800">Settings</Text>
         </View>
 
         {/* SCROLLABLE CONTENT */}
@@ -165,9 +165,9 @@ export default function Settings({
           contentContainerStyle={{ paddingHorizontal: 24, paddingTop: 32, paddingBottom: 32 }}
           showsVerticalScrollIndicator={true}>
           {/* User Info Card */}
-          <View className="w-full p-6 mb-8 border-2 border-green-200 shadow-md rounded-3xl bg-gradient-to-br from-white to-green-50 shadow-green-200">
+          <View className="w-full p-6 mb-8 rounded-3xl bg-gradient-to-br from-[#e8f5e9] to-[#237227] shadow-lg ">
             <View className="flex-row items-center mb-6">
-              <View className="items-center justify-center w-16 h-16 mr-4 overflow-hidden bg-green-500 rounded-full">
+              <View className="items-center justify-center w-16 h-16 mr-4 overflow-hidden bg-[#237227] rounded-full">
                 {userData.profile_picture_url ? (
                   <Image
                     source={{ uri: userData.profile_picture_url }}
@@ -175,16 +175,16 @@ export default function Settings({
                     resizeMode="cover"
                   />
                 ) : (
-                  <Ionicons name="person" size={32} color="white" />
+                  <Ionicons name="person" size={32} color="#f8fafb" />
                 )}
               </View>
               <View className="flex-1">
-                <Text className="text-lg font-extrabold text-gray-900">{userData.full_name}</Text>
+                <Text className="text-lg font-extrabold text-gray-800">{userData.full_name}</Text>
                 <Text className="text-sm text-gray-500">{userData.email}</Text>
               </View>
             </View>
-            <View className="self-start px-4 py-2 bg-green-100 rounded-full">
-              <Text className="text-xs font-bold text-green-700">EMPLOYEE</Text>
+            <View className="self-start px-4 py-2 bg-[#237227] rounded-full">
+              <Text className="text-xs font-bold text-[#f8fafb]">EMPLOYEE</Text>
             </View>
           </View>
 
@@ -226,11 +226,11 @@ export default function Settings({
             <TouchableOpacity
               onPress={onLogout}
               activeOpacity={0.8}
-              className="flex-row items-center justify-center p-4 bg-red-500 shadow-md rounded-2xl shadow-red-300 active:scale-95">
+              className="flex-row items-center justify-center p-4 bg-[#ef4444] shadow-md rounded-2xl active:scale-95">
               <Ionicons name="log-out-outline" size={24} color="white" />
-              <Text className="ml-3 text-lg font-bold text-white">Sign Out</Text>
+              <Text className="ml-3 text-lg font-bold text-[#f8fafb]">Sign Out</Text>
             </TouchableOpacity>
-            <Text className="mt-4 text-xs text-center text-gray-400">
+            <Text className="mt-4 text-xs text-center text-gray-500">
               You will be signed out from this device
             </Text>
           </View>
@@ -256,13 +256,13 @@ function SettingToggle({
   onValueChange: (next: boolean) => void;
 }) {
   return (
-    <View className="flex-row items-center justify-between p-4 mb-3 bg-white border border-green-100 shadow-md rounded-2xl shadow-green-100">
-      <View className="flex-row items-center flex-1">
-        <View className="p-3 mr-4 bg-green-100 rounded-full">
-          <Ionicons name={icon} size={24} color="#10b981" />
+    <View className="flex-row items-center justify-between p-4 mb-3 border border-[#237227] bg-white shadow-sm rounded-2xl">
+        <View className="flex-row items-center flex-1">
+        <View className="p-3 mr-4 bg-[#237227] rounded-full">
+          <Ionicons name={icon} size={24} color="#f8fafb" />
         </View>
         <View className="flex-1">
-          <Text className="text-base font-semibold text-gray-900">{label}</Text>
+          <Text className="text-base font-semibold text-gray-800">{label}</Text>
           <Text className="mt-1 text-xs text-gray-400">{description}</Text>
         </View>
       </View>
@@ -271,8 +271,8 @@ function SettingToggle({
         value={value}
         onValueChange={onValueChange}
         disabled={disabled}
-        trackColor={{ false: '#e5e7eb', true: '#bbf7d0' }}
-        thumbColor={value ? '#10b981' : '#f3f4f6'}
+        trackColor={{ false: '#e8f5e9', true: '#237227' }}
+        thumbColor={value ? '#f8fafb' : '#237227' }
       />
     </View>
   );
@@ -296,19 +296,19 @@ function SettingOption({
       onPress={onPress}
       disabled={disabled || !onPress}
       activeOpacity={0.7}
-      className={`mb-3 flex-row items-center justify-between rounded-2xl border border-green-100 bg-white p-4 shadow-md shadow-green-100 ${
+      className={`mb-3 flex-row items-center justify-between rounded-2xl shadow-sm border border-[#237227] bg-white p-5 ${
         disabled || !onPress ? 'opacity-60' : 'active:scale-95'
       }`}>
       <View className="flex-row items-center flex-1">
-        <View className="p-3 mr-4 bg-green-100 rounded-full">
-          <Ionicons name={icon} size={24} color="#10b981" />
+        <View className="p-3 mr-4 bg-[#237227] rounded-full">
+          <Ionicons name={icon} size={24} color="#f8fafb" />
         </View>
         <View className="flex-1">
-          <Text className="text-base font-semibold text-gray-900">{label}</Text>
+          <Text className="text-base font-semibold text-gray-800">{label}</Text>
           <Text className="mt-1 text-xs text-gray-400">{description}</Text>
         </View>
       </View>
-      <Ionicons name="chevron-forward" size={24} color="#d1d5db" />
+      <Ionicons name="chevron-forward" size={24} color="#237227" />
     </TouchableOpacity>
   );
 }
