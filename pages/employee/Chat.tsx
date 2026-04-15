@@ -123,6 +123,9 @@ export default function Chat({ selectedContact, onBackPress, currentUserId }: Ch
   const cameraRef = useRef<any>(null);
   
   const [now, setNow] = useState(new Date());
+  
+  // Add full-screen image viewer state
+  const [fullScreenImage, setFullScreenImage] = useState<string | null>(null);
 
   const messagesSubscriptionRef = useRef<any>(null);
   const scrollViewRef = useRef<ScrollView>(null);
@@ -1431,11 +1434,14 @@ export default function Chat({ selectedContact, onBackPress, currentUserId }: Ch
                       <View className={`max-w-[75%] ${message.isOwn ? 'items-end' : ''}`}>
                         {message.type === 'image' ? (
                           <TouchableOpacity
-                            onPress={() =>
+                            onPress={() => {
+                              // Open full screen image viewer
+                              setFullScreenImage(message.imageUrl || null);
+                              // Optionally also toggle timestamp
                               setExpandedMessageId((prev) =>
                                 prev === message.id ? null : message.id
-                              )
-                            }
+                              );
+                            }}
                             className="overflow-hidden rounded-2xl shadow-sm">
                             <Image
                               source={{ uri: message.imageUrl }}
@@ -1728,6 +1734,38 @@ export default function Chat({ selectedContact, onBackPress, currentUserId }: Ch
                 className="absolute bottom-8 right-4 rounded-full bg-black/50 p-3">
                 <Ionicons name="camera-reverse" size={24} color="white" />
               </TouchableOpacity>
+            </View>
+          )}
+        </View>
+      </Modal>
+
+      {/* Full Screen Image Viewer Modal */}
+      <Modal
+        animationType="fade"
+        transparent={true}
+        visible={!!fullScreenImage}
+        onRequestClose={() => setFullScreenImage(null)}>
+        <View className="flex-1 bg-black">
+          {/* Header with close button */}
+          <View className="absolute top-0 left-0 right-0 z-10 flex-row items-center justify-between px-4 pt-12 pb-4">
+            <TouchableOpacity
+              onPress={() => setFullScreenImage(null)}
+              className="rounded-full bg-black/50 p-2">
+              <Ionicons name="close" size={24} color="white" />
+            </TouchableOpacity>
+          </View>
+
+          {/* Image Container */}
+          {fullScreenImage && (
+            <View className="flex-1 items-center justify-center">
+              <Image
+                source={{ uri: fullScreenImage }}
+                style={{
+                  width: '100%',
+                  height: '100%',
+                }}
+                resizeMode="contain"
+              />
             </View>
           )}
         </View>

@@ -51,6 +51,7 @@ interface Message {
   isVoice?: boolean;
   duration?: string;
   audioUrl?: string;
+  imageUrl?: string;
 }
 
 interface User {
@@ -217,17 +218,19 @@ export default function ContactManagement({ onNavigate }: ContactManagementProps
     const durationStr = totalSeconds !== null ? `${mins}:${padZero(secs)}` : undefined;
     const hasAudio = typeof row.file_url === 'string' && row.file_url.length > 0;
     const isVoice = !!hasAudio;
+    const hasImage = typeof row.image_url === 'string' && row.image_url.length > 0;
     const isFromMe = currentUserId && row.sender_id && row.sender_id === currentUserId;
     return {
       id: String(row.id),
       sender: isFromMe ? 'Me' : selectedContact?.initials || 'CT',
-      text: row.transcription || row.content || (isVoice ? 'Voice message' : ''),
+      text: row.transcription || row.content || (isVoice ? 'Voice message' : (hasImage ? '📷 Image' : '')),
       time: created.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
       _rawTs: row.created_at || new Date().toISOString(),
       status: 'sent',
       isVoice,
       duration: isVoice ? durationStr : undefined,
       audioUrl: isVoice ? row.file_url || undefined : undefined,
+      imageUrl: hasImage ? row.image_url || undefined : undefined,
     };
   };
 
@@ -240,17 +243,19 @@ export default function ContactManagement({ onNavigate }: ContactManagementProps
     const durationStr = totalSeconds !== null ? `${mins}:${padZero(secs)}` : undefined;
     const hasAudio = typeof row.file_url === 'string' && row.file_url.length > 0;
     const isVoice = !!hasAudio;
+    const hasImage = typeof row.image_url === 'string' && row.image_url.length > 0;
     const isFromMe = currentUserId && row.sender_id && row.sender_id === currentUserId;
     return {
       id: String(row.id),
       sender: isFromMe ? 'Me' : 'Member',
-      text: row.transcription || row.content || (isVoice ? 'Voice message' : ''),
+      text: row.transcription || row.content || (isVoice ? 'Voice message' : (hasImage ? '📷 Image' : '')),
       time: created.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
       _rawTs: row.created_at || new Date().toISOString(),
       status: 'sent',
       isVoice,
       duration: isVoice ? durationStr : undefined,
       audioUrl: isVoice ? row.file_url || undefined : undefined,
+      imageUrl: hasImage ? row.image_url || undefined : undefined,
     };
   };
 
@@ -1590,6 +1595,22 @@ export default function ContactManagement({ onNavigate }: ContactManagementProps
                                 {message.duration || formatRecordingTime(recordingTime) || 'Voice'}
                               </Text>
                             </TouchableOpacity>
+                          ) : message.imageUrl ? (
+                            <View
+                              style={{ borderRadius: 16, overflow: 'hidden', alignSelf: isMe ? 'flex-end' : 'flex-start', maxWidth: '100%' }}
+                            >
+                              <Image
+                                source={{ uri: message.imageUrl }}
+                                style={{ width: 220, height: 220, borderRadius: 16 }}
+                                resizeMode="cover"
+                              />
+                              {message.text && message.text !== '📷 Image' && (
+                                <Text
+                                  className={`text-sm leading-5 mt-1 ${isMe ? 'text-white' : 'text-gray-800'}`}>
+                                  {message.text}
+                                </Text>
+                              )}
+                            </View>
                           ) : (
                             <TouchableOpacity
                               activeOpacity={0.8}
