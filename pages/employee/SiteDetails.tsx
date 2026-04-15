@@ -77,6 +77,20 @@ const SweetAlert: React.FC<SweetAlertProps> = ({
   );
 };
 
+// Helper: count how many active sites the user has accepted (accepted_sites with site_id not null)
+async function getAcceptedSitesCount(userId: string): Promise<number> {
+  const { count, error } = await supabase
+    .from('accepted_sites')
+    .select('*', { count: 'exact', head: true })
+    .eq('user_id', userId)
+    .not('site_id', 'is', null);
+  if (error) {
+    console.error('Error counting accepted sites:', error);
+    return 0;
+  }
+  return count || 0;
+}
+
 // ------------------------------------------------------------
 // Main SiteDetails component
 // ------------------------------------------------------------
@@ -208,7 +222,7 @@ export default function SiteDetails({
   // Helper to check if site has valid coordinates
   const hasValidCoordinates = site?.latitude != null && site?.longitude != null;
 
-  // Handler for becoming leader and joining site
+  // Handler for becoming leader and joining site (unchanged from original)
   const handleBecomeLeaderAndJoin = async () => {
     if (!site?.id || !currentUserId) return;
     try {
@@ -239,7 +253,7 @@ export default function SiteDetails({
         console.warn('Skipping group_members insert:', (e as any)?.message || String(e));
       }
 
-      // Create new chat group (assuming chat_groups table exists)
+      // Create new chat group
       try {
         const { error: chatError } = await supabase
           .from('chat_groups')
@@ -298,7 +312,7 @@ export default function SiteDetails({
         const userId = authData?.user?.id || null;
         setCurrentUserId(userId);
 
-        // Always fetch user's site_id and archived_sitegroup_id (source of truth for "already accepted")
+        // Always fetch user's site_id and archived_sitegroup_id
         let userSiteId: string | null = null;
         let userArchivedId: string | null = null;
         if (userId) {
@@ -313,8 +327,6 @@ export default function SiteDetails({
             if (userRow?.archived_sitegroup_id) userArchivedId = String(userRow.archived_sitegroup_id);
           }
         }
-        // Save active site id separately from archived id. Accept/join logic should only
-        // consider `site_id` so archived membership doesn't block joining active sites.
         setCurrentUserSiteId(userSiteId);
         setCurrentUserArchivedId(userArchivedId);
 
@@ -360,22 +372,17 @@ export default function SiteDetails({
         }
 
         // Determine whether current user already joined this site.
-        // For active sites: users.site_id or group_members.site_id
-        // For finished sites: users.archived_sitegroup_id or group_members.archived_sitegroup_id
-        if (!isFinished) {
-          if (userSiteId && String(userSiteId) === String(site.id)) {
-            setHasAccepted(true);
-            return;
-          }
-        } else {
-          if (userArchivedId && String(userArchivedId) === String(site.id)) {
-            setHasAccepted(true);
-            return;
-          }
+        let isMember = false;
+        // 1) Check users.site_id (leader assignment)
+        if (!isFinished && userSiteId && String(userSiteId) === String(site.id)) {
+          isMember = true;
         }
-
-        // Fallback: group_members (best-effort)
-        if (userId) {
+        // 2) Check users.archived_sitegroup_id (finished site)
+        if (!isMember && isFinished && userArchivedId && String(userArchivedId) === String(site.id)) {
+          isMember = true;
+        }
+        // 3) Check group_members (best-effort)
+        if (!isMember && userId) {
           try {
             const gmQuery = supabase.from('group_members').select('id').eq('user_id', userId).limit(1);
             if (!isFinished) {
@@ -385,13 +392,30 @@ export default function SiteDetails({
             }
             const { data: memberRow, error: memberErr } = await gmQuery;
             if (!memberErr && (memberRow || []).length > 0) {
-              setHasAccepted(true);
-              return;
+              isMember = true;
             }
           } catch {
             // ignore
           }
         }
+        // 4) Check accepted_sites (for active sites only)
+        if (!isMember && userId && !isFinished) {
+          try {
+            const { data: acceptedRow, error: acceptErr } = await supabase
+              .from('accepted_sites')
+              .select('id')
+              .eq('user_id', userId)
+              .eq('site_id', site.id)
+              .maybeSingle();
+            if (!acceptErr && acceptedRow) {
+              isMember = true;
+            }
+          } catch {
+            // ignore
+          }
+        }
+
+        setHasAccepted(isMember);
       } catch (err: any) {
         console.warn('Failed to load team info:', err?.message || String(err));
       } finally {
@@ -450,7 +474,6 @@ export default function SiteDetails({
 
   useEffect(() => {
     // Ask permission for selecting evidence photos.
-    // (No-op on web; mobile will prompt.)
     (async () => {
       try {
         await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -478,17 +501,13 @@ export default function SiteDetails({
 
     const serialError = serial.length === 0 ? 'Starlink serial is required.' : null;
 
-    // If 'None' is selected we are finishing the site: require evidence photos.
-    // If an actual issue is selected, photos are optional for submitting the issue.
     let issueError: string | null = null;
     let descError: string | null = null;
     let evidenceError: string | null = null;
 
     if (isNone) {
-      // Finishing: evidence required, description optional
       evidenceError = evidenceCount === 0 ? 'At least one evidence photo is required.' : null;
     } else {
-      // Reporting an issue: issue + description required, photos optional
       issueError = issue.length === 0 ? 'Technical issue is required.' : null;
       descError = desc.length === 0 ? 'Issue description is required.' : null;
     }
@@ -503,7 +522,6 @@ export default function SiteDetails({
   }, [starlinkSerial, technicalIssue, issueDescription, evidenceAssets.length]);
 
   useEffect(() => {
-    // When opening the Update modal, prefill fields from the latest DB record.
     (async () => {
       if (!updateVisible || !site?.id) return;
       try {
@@ -518,16 +536,13 @@ export default function SiteDetails({
         setTechnicalIssue((data?.technical_issue as string | null) || '');
         setIssueDescription((data?.issue_description as string | null) || '');
 
-        // Evidence URLs are stored in DB, but for uploads we track local assets.
-        // Keep evidenceAssets empty until user selects new photos.
         setEvidenceAssets([]);
       } catch (e) {
-        // Prefill is best-effort; don't block opening.
+        // Prefill is best-effort
       }
     })();
   }, [updateVisible, site?.id]);
 
-  // Clear issue description when "None" is selected (field will be hidden)
   useEffect(() => {
     if ((technicalIssue || '').trim().toLowerCase() === 'none') {
       setIssueDescription('');
@@ -616,32 +631,28 @@ export default function SiteDetails({
       const userId = authData?.user?.id;
       if (!userId) throw new Error('Not signed in');
 
-      // Upload evidence photos to Supabase Storage.
+      // Upload evidence photos
       const uploadedUrls: string[] = [];
       for (let i = 0; i < evidenceAssets.length; i++) {
         const asset = evidenceAssets[i];
-
         const manipulated = await ImageManipulator.manipulateAsync(asset.uri, [], {
           compress: 0.85,
           format: ImageManipulator.SaveFormat.JPEG,
         });
-
         const response = await fetch(manipulated.uri);
         const blob = await response.blob();
-
         const filePath = `${site.id}/${userId}/${Date.now()}_${i}.jpg`;
         const { error: uploadError } = await supabase.storage
           .from('site_evidence')
           .upload(filePath, blob, { contentType: 'image/jpeg', upsert: true });
         if (uploadError) throw uploadError;
-
         const { data: urlData } = supabase.storage.from('site_evidence').getPublicUrl(filePath);
         const publicUrl = urlData?.publicUrl;
         if (!publicUrl) throw new Error('Failed to generate evidence URL');
         uploadedUrls.push(publicUrl);
       }
 
-      // ARCHIVE: fetch, insert to archive, then delete from sites (no triggers)
+      // Archive the site
       const { data: siteRow, error: fetchError } = await supabase
         .from('sites')
         .select('*')
@@ -662,19 +673,15 @@ export default function SiteDetails({
         evidence_urls: uploadedUrls,
       };
 
-      // Insert into archive and capture the resulting id (useful if DB returns it)
       const { data: insertedArchived, error: insertError } = await supabase
         .from('archived_sitegroup')
         .insert([archivedRow])
         .select('id')
         .maybeSingle();
       if (insertError) throw insertError;
-
       const archivedId = (insertedArchived && insertedArchived.id) || site.id;
 
-      // Move site messages to archived_sitegroup. IMPORTANT: do NOT set a
-      // conversation_id here because the DB enforces exactly one of
-      // conversation_id / site_id / archived_sitegroup_id to be non-null.
+      // Move messages
       if (site && site.id) {
         const { error: messagesUpdateError } = await supabase
           .from('messages')
@@ -687,14 +694,14 @@ export default function SiteDetails({
         if (messagesUpdateError) throw messagesUpdateError;
       }
 
-      // Update group_members: set site_id to null, archived_sitegroup_id to this id
+      // Update group_members
       const { error: groupUpdateError } = await supabase
         .from('group_members')
         .update({ site_id: null, archived_sitegroup_id: archivedId })
         .eq('site_id', site.id);
       if (groupUpdateError) throw groupUpdateError;
 
-      // Update users: set site_id to null, archived_sitegroup_id to this id
+      // Update users
       const { error: userUpdateError } = await supabase
         .from('users')
         .update({ site_id: null, archived_sitegroup_id: archivedId })
@@ -764,7 +771,6 @@ export default function SiteDetails({
       const userId = authData?.user?.id;
       if (!userId) throw new Error('Not signed in');
 
-      // Upload evidence photos if any (optional for issue reports)
       const uploadedUrls: string[] = [];
       for (let i = 0; i < evidenceAssets.length; i++) {
         const asset = evidenceAssets[i];
@@ -784,7 +790,6 @@ export default function SiteDetails({
         if (publicUrl) uploadedUrls.push(publicUrl);
       }
 
-      // Update site record with issue info (do NOT archive)
       const updatePayload: any = {
         starlink_serial: serial,
         technical_issue: issue,
@@ -817,6 +822,7 @@ export default function SiteDetails({
     }
   };
 
+  // Updated handleAcceptSite: records acceptance in accepted_sites table, enforces limit of 5, allows leaders
   const handleAcceptSite = async () => {
     if (!site?.id) return;
 
@@ -840,172 +846,147 @@ export default function SiteDetails({
       return;
     }
 
-    // Leaders (already assigned as a group leader) should only update their pending site.
-    if (isUserLeaderAny) {
+    // Check if the user already accepted this specific site (via accepted_sites)
+    const { data: alreadyAccepted, error: checkError } = await supabase
+      .from('accepted_sites')
+      .select('id')
+      .eq('user_id', currentUserId)
+      .eq('site_id', site.id)
+      .maybeSingle();
+
+    if (alreadyAccepted) {
       setSweetAlert({
         visible: true,
-        title: 'Not allowed',
-        message: 'Leaders cannot accept new sites.',
+        title: 'Already accepted',
+        message: 'You have already joined this site.',
+        type: 'info',
+      });
+      return;
+    }
+
+    // Enforce maximum of 5 accepted active sites
+    const acceptedCount = await getAcceptedSitesCount(currentUserId);
+    if (acceptedCount >= 5) {
+      setSweetAlert({
+        visible: true,
+        title: 'Limit reached',
+        message: 'You can accept at most 5 sites. Please leave another site before accepting a new one.',
         type: 'error',
       });
       return;
     }
 
-    // If user already has a site assignment, they should not re-accept.
-    try {
-      const { data: userRow } = await supabase
-        .from('users')
-        .select('site_id')
-        .eq('id', currentUserId)
-        .maybeSingle();
-      if (userRow?.site_id) {
-        setHasAccepted(true);
-        setCurrentUserSiteId(String(userRow.site_id));
-        setSweetAlert({
-          visible: true,
-          title: 'Already accepted',
-          message: 'This site is already assigned to you.',
-          type: 'info',
-        });
-        return;
-      }
-    } catch {
-      // ignore; accept flow will try to continue
-    }
-
-    try {
-      setAcceptLoading(true);
-
-      // Accept rules:
-      // - For Pending sites: joinable if it already has a leader assigned
-      // - For Active sites: not joinable (no leader yet)
-      if (isActive) {
-        setSweetAlert({
-          visible: true,
-          title: 'Not available',
-          message: 'This site is not yet open for joining. Please wait for a leader assignment.',
-          type: 'error',
-        });
-        return;
-      }
-
-      if (!isPending) {
-        setSweetAlert({
-          visible: true,
-          title: 'Not available',
-          message: 'This site cannot be accepted at this time.',
-          type: 'error',
-        });
-        return;
-      }
-
-      // Ensure leader is assigned to this site
-      const { data: siteRow, error: siteErr } = await supabase
-        .from('sites')
-        .select('leader_id')
-        .eq('id', site.id)
-        .maybeSingle();
-      if (siteErr) throw siteErr;
-
-      const existingLeaderId = siteRow?.leader_id ? String(siteRow.leader_id) : null;
-      if (!existingLeaderId) {
-        setSweetAlert({
-          visible: true,
-          title: 'Not available',
-          message: 'This site has no leader assigned yet.',
-          type: 'error',
-        });
-        return;
-      }
-
-      setLeaderId(existingLeaderId);
-      try {
-        const { data: leaderRow } = await supabase
-          .from('users')
-          .select('full_name')
-          .eq('id', existingLeaderId)
-          .maybeSingle();
-        setLeaderName((leaderRow?.full_name as string | null) || null);
-      } catch {
-        // ignore
-      }
-
-      // CHECK FOR AVAILABLE SLOTS before accepting
-      const slotCheckResult = await joinSiteWithSlotManagement(site.id, currentUserId);
-      if (!slotCheckResult.success) {
-        setSweetAlert({
-          visible: true,
-          title: 'Cannot Join',
-          message: slotCheckResult.message,
-          type: 'error',
-        });
-        // Refresh member info to show site is full
-        const updatedInfo = await getSiteMemberInfo(site.id);
-        setMemberInfo(updatedInfo);
-        return;
-      }
-
-      // Persist membership: link the current user to the site
-      const { error: updateUserError } = await supabase
-        .from('users')
-        .update({ site_id: site.id })
-        .eq('id', currentUserId);
-      if (updateUserError) throw updateUserError;
-
-      // Best-effort: notify the site leader that someone accepted/joined.
-      try {
-        await notifyLeaderSiteAccepted({
-          leaderId: existingLeaderId,
-          siteName: site?.name || 'Unnamed site',
-          acceptedByUserId: currentUserId,
-        });
-      } catch (e) {
-        console.warn('notifyLeaderSiteAccepted failed:', (e as any)?.message || String(e));
-      }
-
-      // Best-effort: insert membership row (if your DB has group_members)
-      try {
-        const { error: gmError } = await supabase
-          .from('group_members')
-          .insert([{ site_id: site.id, user_id: currentUserId }]);
-
-        // Ignore duplicate row error if constraint exists
-        if (gmError && (gmError as any).code !== '23505') {
-          console.warn('group_members insert failed:', gmError.message);
-        }
-      } catch (e) {
-        // If table doesn't exist or RLS blocks it, don't block accept
-        console.warn('Skipping group_members insert:', (e as any)?.message || String(e));
-      }
-
-      // Check if site is now full and mark as Pending if needed
-      const siteNowFull = await checkAndMarkSiteAsFull(site.id);
-      if (siteNowFull) {
-        console.log('Site is now full - status updated to Pending');
-      }
-
-      setHasAccepted(true);
-      const successMessage = slotCheckResult.siteIsFull
-        ? 'Site accepted. This site is now full!'
-        : slotCheckResult.message;
+    // Only pending sites with a leader are joinable
+    if (!isPending) {
       setSweetAlert({
         visible: true,
-        title: 'Site accepted',
-        message: successMessage,
-        type: 'success',
+        title: 'Not available',
+        message: 'This site cannot be accepted at this time.',
+        type: 'error',
       });
-      onSiteUpdated?.('Pending');
-      onBack?.();
-    } catch (err: any) {
+      return;
+    }
+
+    // Ensure a leader is assigned to this site
+    const { data: siteRow, error: siteErr } = await supabase
+      .from('sites')
+      .select('leader_id')
+      .eq('id', site.id)
+      .maybeSingle();
+    if (siteErr) throw siteErr;
+    const existingLeaderId = siteRow?.leader_id ? String(siteRow.leader_id) : null;
+    if (!existingLeaderId) {
+      setSweetAlert({
+        visible: true,
+        title: 'Not available',
+        message: 'This site has no leader assigned yet.',
+        type: 'error',
+      });
+      return;
+    }
+
+    setLeaderId(existingLeaderId);
+    try {
+      const { data: leaderRow } = await supabase
+        .from('users')
+        .select('full_name')
+        .eq('id', existingLeaderId)
+        .maybeSingle();
+      setLeaderName((leaderRow?.full_name as string | null) || null);
+    } catch {
+      // ignore
+    }
+
+    // Check slot availability (using group_members)
+    const slotCheckResult = await joinSiteWithSlotManagement(site.id, currentUserId);
+    if (!slotCheckResult.success) {
+      setSweetAlert({
+        visible: true,
+        title: 'Cannot Join',
+        message: slotCheckResult.message,
+        type: 'error',
+      });
+      const updatedInfo = await getSiteMemberInfo(site.id);
+      setMemberInfo(updatedInfo);
+      return;
+    }
+
+    // --- Record acceptance in accepted_sites table ---
+    const { error: acceptError } = await supabase
+  .from('accepted_sites')
+  .insert([{ user_id: currentUserId, site_id: site.id, archived_sitegroup_id: null }]);
+    if (acceptError) {
+      console.error('Failed to record acceptance:', acceptError);
       setSweetAlert({
         visible: true,
         title: 'Error',
-        message: err?.message || 'Failed to accept site. Please try again.',
+        message: 'Failed to accept site. Please try again.',
         type: 'error',
       });
-    } finally {
-      setAcceptLoading(false);
+      return;
     }
+
+    // Also add to group_members for chat, member lists, and slot counting
+    try {
+      const { error: gmError } = await supabase
+        .from('group_members')
+        .insert([{ site_id: site.id, user_id: currentUserId }]);
+      if (gmError && (gmError as any).code !== '23505') {
+        console.warn('group_members insert failed:', gmError.message);
+      }
+    } catch (e) {
+      console.warn('Skipping group_members insert:', (e as any)?.message || String(e));
+    }
+
+    // Notify the leader (best effort)
+    try {
+      await notifyLeaderSiteAccepted({
+        leaderId: existingLeaderId,
+        siteName: site?.name || 'Unnamed site',
+        acceptedByUserId: currentUserId,
+      });
+    } catch (e) {
+      console.warn('notifyLeaderSiteAccepted failed:', (e as any)?.message || String(e));
+    }
+
+    // Check if site is now full (based on members_count vs group_members count)
+    const siteNowFull = await checkAndMarkSiteAsFull(site.id);
+    if (siteNowFull) {
+      console.log('Site is now full - status updated to Pending');
+    }
+
+    setHasAccepted(true);
+    const successMessage = slotCheckResult.siteIsFull
+      ? 'Site accepted. This site is now full!'
+      : slotCheckResult.message;
+    setSweetAlert({
+      visible: true,
+      title: 'Site accepted',
+      message: successMessage,
+      type: 'success',
+    });
+    onSiteUpdated?.('Pending');
+    onBack?.();
   };
 
   const isNoneSelected = (technicalIssue || '').trim().toLowerCase() === 'none';
@@ -1014,7 +995,6 @@ export default function SiteDetails({
     <View className="flex-1 bg-white">
       <StatusBar barStyle="dark-content" />
 
-      {/* SweetAlert Modal */}
       <SweetAlert
         visible={sweetAlert.visible}
         title={sweetAlert.title}
@@ -1023,7 +1003,7 @@ export default function SiteDetails({
         onClose={() => setSweetAlert((prev) => ({ ...prev, visible: false }))}
       />
 
-      {/* Update Modal (same as before, already modern) */}
+      {/* Update Modal */}
       <Modal
         visible={updateVisible}
         transparent
@@ -1034,7 +1014,6 @@ export default function SiteDetails({
         }}>
         <View className="flex-1 items-center justify-center bg-black/50 p-4">
           <View className="w-full max-w-md rounded-3xl bg-white shadow-2xl">
-            {/* Header */}
             <View className="flex-row items-center justify-between border-b border-gray-100 px-5 py-5">
               <View>
                 <Text className="text-2xl font-extrabold text-gray-900">Update Site</Text>
@@ -1054,7 +1033,6 @@ export default function SiteDetails({
               className="max-h-[70vh] px-5 py-2"
               showsVerticalScrollIndicator={false}
               bounces={false}>
-              {/* Starlink Serial */}
               <View className="mb-5">
                 <Text className="text-sm font-semibold text-gray-700">Starlink Serial</Text>
                 <Text className="mt-0.5 text-xs text-gray-500">Required</Text>
@@ -1071,7 +1049,6 @@ export default function SiteDetails({
                 )}
               </View>
 
-              {/* Technical Issue */}
               <View className="mb-5">
                 <Text className="text-sm font-semibold text-gray-700">Technical Issue</Text>
                 <Text className="mt-0.5 text-xs text-gray-500">
@@ -1094,7 +1071,6 @@ export default function SiteDetails({
                 )}
               </View>
 
-              {/* Issue Description (hidden when "None" selected) */}
               {!isNoneSelected && (
                 <View className="mb-5">
                   <Text className="text-sm font-semibold text-gray-700">Issue Description</Text>
@@ -1115,7 +1091,6 @@ export default function SiteDetails({
                 </View>
               )}
 
-              {/* Evidence Photos - Simplified & Modern */}
               <View className="mb-5">
                 <View className="flex-row items-center justify-between">
                   <View>
@@ -1164,7 +1139,6 @@ export default function SiteDetails({
               </View>
             </ScrollView>
 
-            {/* Footer with Submit Button */}
             <View className="border-t border-gray-100 px-5 pb-6 pt-4">
               <TouchableOpacity
                 disabled={updateSubmitting || !validation.isValid}
@@ -1247,7 +1221,6 @@ export default function SiteDetails({
       ) : (
         <>
           <ScrollView className="flex-1" showsVerticalScrollIndicator={false}>
-            {/* Map section with placeholder if coordinates missing */}
             {hasValidCoordinates ? (
               <View className="relative h-64 w-full">
                 <SiteLocationMap
@@ -1266,7 +1239,6 @@ export default function SiteDetails({
               </View>
             )}
 
-            {/* Site name and company */}
             <View className="px-6 pt-6">
               <Text className="text-2xl font-bold text-gray-900">{site.name}</Text>
               {site.companyName && (
@@ -1274,9 +1246,7 @@ export default function SiteDetails({
               )}
             </View>
 
-            {/* Unified info card */}
             <View className="mx-6 mt-6 rounded-xl border border-gray-100 bg-white">
-              {/* Branch */}
               <View className="flex-row items-center border-b border-gray-100 p-4">
                 <Ionicons name="business-outline" size={20} color="#6b7280" />
                 <View className="ml-3 flex-1">
@@ -1287,18 +1257,14 @@ export default function SiteDetails({
                 </View>
               </View>
 
-              {/* Workforce */}
               <View className="flex-row items-center border-b border-gray-100 p-4">
                 <Ionicons name="people-outline" size={20} color="#6b7280" />
                 <View className="ml-3 flex-1">
                   <Text className="text-xs text-gray-500">Workforce</Text>
-                  <Text className="text-base font-medium text-gray-900">
-                    {workforceLabel}
-                  </Text>
+                  <Text className="text-base font-medium text-gray-900">{workforceLabel}</Text>
                 </View>
               </View>
 
-              {/* Member Slots */}
               {memberInfo && (
                 <View className={`flex-row items-center border-b border-gray-100 p-4 ${memberInfo.isFull ? 'bg-red-50' : 'bg-green-50'}`}>
                   <Ionicons
@@ -1336,7 +1302,6 @@ export default function SiteDetails({
                 </View>
               )}
 
-              {/* Team Leader */}
               <View className="flex-row items-center border-b border-gray-100 p-4">
                 <Ionicons name="person-circle-outline" size={20} color="#6b7280" />
                 <View className="ml-3 flex-1">
@@ -1351,7 +1316,6 @@ export default function SiteDetails({
                 </View>
               </View>
 
-              {/* Site Status */}
               <View className="flex-row items-center border-b border-gray-100 p-4">
                 <Ionicons
                   name={isFinished ? 'checkmark-circle-outline' : 'alert-circle-outline'}
@@ -1366,7 +1330,6 @@ export default function SiteDetails({
                 </View>
               </View>
 
-              {/* Coordinates */}
               <View className="flex-row items-center p-4">
                 <Ionicons name="location-outline" size={20} color="#6b7280" />
                 <View className="ml-3 flex-1">
@@ -1376,7 +1339,6 @@ export default function SiteDetails({
               </View>
             </View>
 
-            {/* Site Members Card */}
             <View className="mx-6 mt-6 rounded-xl border border-gray-100 bg-white p-4">
               <View className="mb-3 flex-row items-center">
                 <Ionicons name="people-outline" size={20} color="#3b82f6" />
@@ -1453,29 +1415,21 @@ export default function SiteDetails({
                 className="w-full items-center justify-center rounded-xl bg-green-500 py-3 active:scale-95">
                 <Text className="text-base font-bold text-white">Update Site</Text>
               </TouchableOpacity>
-            ) : isPending && isUserLeaderAny ? (
-              <TouchableOpacity
-                disabled
-                className="w-full items-center justify-center rounded-xl bg-gray-300 py-3">
-                <Text className="text-base font-bold text-gray-600">Assigned to another leader</Text>
-              </TouchableOpacity>
             ) : isPending ? (
               <TouchableOpacity
                 onPress={handleAcceptSite}
-                disabled={acceptLoading || hasAccepted || !!currentUserSiteId || isUserLeaderAny || memberInfo?.isFull}
+                disabled={acceptLoading || hasAccepted || memberInfo?.isFull}
                 className={`w-full items-center justify-center rounded-xl py-3 ${
-                  hasAccepted || !!currentUserSiteId || memberInfo?.isFull
-                    ? 'bg-gray-300'
-                    : 'bg-green-500 active:scale-95'
+                  hasAccepted || memberInfo?.isFull ? 'bg-gray-300' : 'bg-green-500 active:scale-95'
                 }`}>
                 {acceptLoading ? (
                   <ActivityIndicator color="#ffffff" />
                 ) : (
                   <Text
                     className={`text-base font-bold ${
-                      hasAccepted || !!currentUserSiteId || memberInfo?.isFull ? 'text-gray-600' : 'text-white'
+                      hasAccepted || memberInfo?.isFull ? 'text-gray-600' : 'text-white'
                     }`}>
-                    {memberInfo?.isFull ? 'Site is Full' : hasAccepted || !!currentUserSiteId ? 'Joined' : 'Accept & Join'}
+                    {memberInfo?.isFull ? 'Site is Full' : hasAccepted ? 'Joined' : 'Accept & Join'}
                   </Text>
                 )}
               </TouchableOpacity>

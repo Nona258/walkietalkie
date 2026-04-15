@@ -981,27 +981,11 @@ export default function SiteManagement({ onNavigate }: SiteManagementProps) {
     }
     const safeName = sanitizeSiteName(siteName);
     const selectedLeaderId = leaderId && leaderId.trim() ? leaderId.trim() : null;
-    if (selectedLeaderId) {
-      const { data: leaderSites, error: leaderSitesError } = await supabase
-        .from('sites')
-        .select('id, status')
-        .eq('leader_id', selectedLeaderId);
-      if (leaderSitesError) {
-        showAlert('Error', 'Unable to verify leader availability. Please try again.', 'error');
-        return;
-      }
-      const leaderHasNonFinishedSite = (leaderSites || []).some(
-        (s: any) => String(s?.status || '') !== 'Finished'
-      );
-      if (leaderHasNonFinishedSite) {
-        showAlert(
-          'Leader Unavailable',
-          'This employee is already assigned as a site leader. Choose another leader.',
-          'error'
-        );
-        return;
-      }
-    }
+    
+    // REMOVED: The restriction that prevented a user from being assigned as a leader
+    // if they already lead another non-finished site. Now any user can be leader
+    // of multiple sites.
+
     const { data: insertedSite, error } = await supabase
       .from('sites')
       .insert([
