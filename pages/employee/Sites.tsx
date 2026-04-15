@@ -45,6 +45,7 @@ export default function Sites({ onMapPress, onSiteMapPress }: SitesProps) {
   const [searchText, setSearchText] = useState('');
   const [selectedSite, setSelectedSite] = useState<Site | null>(null);
   const [loading, setLoading] = useState(false);
+  const [acceptedCount, setAcceptedCount] = useState(0);
 
   // Helper to fetch member counts for given site IDs
   async function fetchMemberCounts(siteIds: string[]): Promise<Record<string, number>> {
@@ -63,6 +64,20 @@ export default function Sites({ onMapPress, onSiteMapPress }: SitesProps) {
       counts[siteId] = (counts[siteId] || 0) + 1;
     });
     return counts;
+  }
+
+  // Helper to fetch accepted site IDs for a user (active sites only)
+  async function fetchAcceptedSiteIds(userId: string): Promise<Set<string>> {
+    const { data, error } = await supabase
+      .from('accepted_sites')
+      .select('site_id')
+      .eq('user_id', userId)
+      .not('site_id', 'is', null);
+    if (error) {
+      console.error('Error fetching accepted sites:', error);
+      return new Set();
+    }
+    return new Set((data || []).map((row: any) => String(row.site_id)).filter(Boolean));
   }
 
   const mapRowToSite = (item: any, memberCounts: Record<string, number> = {}): Site => ({
@@ -126,6 +141,7 @@ export default function Sites({ onMapPress, onSiteMapPress }: SitesProps) {
         setFinishedSites([]);
         setCurrentUserSiteId(null);
         setIsLeaderAny(false);
+        setAcceptedCount(0);
         return;
       }
 
@@ -156,6 +172,10 @@ export default function Sites({ onMapPress, onSiteMapPress }: SitesProps) {
       if (memberSiteIds.size === 0 && userSiteId) {
         memberSiteIds.add(userSiteId);
       }
+      // NEW: fetch accepted site IDs from accepted_sites table
+      const acceptedSiteIds = await fetchAcceptedSiteIds(userId);
+      acceptedSiteIds.forEach(id => memberSiteIds.add(id));
+      setAcceptedCount(acceptedSiteIds.size);
 
       const { data: leaderSites, error: leaderSitesError } = await supabase
         .from('sites')
@@ -237,6 +257,29 @@ export default function Sites({ onMapPress, onSiteMapPress }: SitesProps) {
         const pendingCounts = await fetchMemberCounts(pendingIds);
         setPendingSites((pendingAssigned || []).map(s => mapRowToSite(s, pendingCounts)));
 
+        // Also include sites the leader has accepted as a member (from accepted_sites)
+        if (acceptedSiteIds.size > 0) {
+          const { data: acceptedLeaderSites, error: acceptedLeaderError } = await supabase
+            .from('sites')
+            .select(
+              `id, name, status, latitude, longitude, created_at, finished_at, members_count,
+               company:company_id ( company_name ),
+               branch:branch_id ( branch_name )`
+            )
+            .in('id', Array.from(acceptedSiteIds))
+            .eq('status', 'Pending')
+            .order('created_at', { ascending: true })
+            .order('name', { ascending: true });
+          if (!acceptedLeaderError && acceptedLeaderSites) {
+            const acceptedCounts = await fetchMemberCounts(acceptedLeaderSites.map(s => s.id));
+            const mappedAccepted = acceptedLeaderSites.map(s => mapRowToSite(s, acceptedCounts));
+            setPendingSites(prev => {
+              const existingIds = new Set(prev.map(s => s.id));
+              const newSites = mappedAccepted.filter(s => !existingIds.has(s.id));
+              return [...prev, ...newSites];
+            });
+          }
+        }
         const { data: finishedAssigned, error: finishedAssignedError } = await supabase
           .from('archived_sitegroup')
           .select(
@@ -277,7 +320,29 @@ export default function Sites({ onMapPress, onSiteMapPress }: SitesProps) {
         if (mySitesError) throw mySitesError;
 
         const memberCountsForMySites = await fetchMemberCounts(siteIdList);
-        const mappedSites = (mySites || []).map(s => mapRowToSite(s, memberCountsForMySites));
+        let mappedSites = (mySites || []).map(s => mapRowToSite(s, memberCountsForMySites));
+
+        // Also explicitly fetch any accepted sites that might not be in group_members yet
+        // (This is a safety net; normally they are already in memberSiteIds)
+        if (acceptedSiteIds.size > 0) {
+          const acceptedIdList = Array.from(acceptedSiteIds);
+          const { data: acceptedSitesData, error: acceptedSitesError } = await supabase
+            .from('sites')
+            .select(
+              `id, name, status, latitude, longitude, created_at, finished_at, members_count,
+               company:company_id ( company_name ),
+               branch:branch_id ( branch_name )`
+            )
+            .in('id', acceptedIdList)
+            .order('created_at', { ascending: true });
+          if (!acceptedSitesError && acceptedSitesData) {
+            const acceptedCounts = await fetchMemberCounts(acceptedIdList);
+            const mappedAccepted = acceptedSitesData.map(s => mapRowToSite(s, acceptedCounts));
+            const existingIds = new Set(mappedSites.map(s => s.id));
+            mappedSites.push(...mappedAccepted.filter(s => !existingIds.has(s.id)));
+          }
+        }
+
         setPendingSites(mappedSites.filter((s) => s.status === 'Pending'));
 
         const { data: finishedArchived, error: finishedArchivedError } = await supabase

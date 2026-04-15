@@ -91,6 +91,8 @@ export default function Contacts({ onContactSelected, currentUserId }: ContactsP
   const LAST_READ_STORAGE_KEY = 'contacts_last_read_map';
 
   const messagesSubscriptionRef = useRef<any>(null);
+  // Use a ref instead of state to avoid re-renders when accepted sites change
+  const acceptedSiteIdsRef = useRef<Set<string>>(new Set());
   const backdropAnim = useRef(new Animated.Value(0)).current;
   const sheetAnim = useRef(new Animated.Value(600)).current;
 
@@ -228,6 +230,55 @@ export default function Contacts({ onContactSelected, currentUserId }: ContactsP
         (contactRows || []).map((r: any) => r.contact_id).filter(Boolean)
       );
 
+      // 2. Fetch accepted sites (from accepted_sites table) – store in ref
+      let acceptedSiteContacts: Contact[] = [];
+      try {
+        const newAcceptedSet = new Set<string>();
+        const { data: acceptedRows, error: acceptedError } = await supabase
+          .from('accepted_sites')
+          .select('site_id')
+          .eq('user_id', activeChatUserId)
+          .not('site_id', 'is', null);
+        if (!acceptedError && acceptedRows) {
+          const acceptedSiteIdsRaw = acceptedRows.map((row: any) => String(row.site_id)).filter(Boolean);
+          acceptedSiteIdsRaw.forEach((id: string) => newAcceptedSet.add(id));
+          acceptedSiteIdsRef.current = newAcceptedSet;
+          if (acceptedSiteIdsRaw.length > 0) {
+            const { data: sitesData, error: sitesError } = await supabase
+              .from('sites')
+              .select('id, name')
+              .in('id', acceptedSiteIdsRaw);
+            if (!sitesError && sitesData) {
+              acceptedSiteContacts = sitesData
+                .map((site: any) => {
+                  const siteName = site.name || 'Team';
+                  const contactId = `site:${String(site.id)}`;
+                  if (mySiteContact && mySiteContact.siteId === String(site.id)) return null;
+                  return {
+                    id: contactId,
+                    name: siteName,
+                    role: 'Team',
+                    initials: getInitials(siteName),
+                    status: 'offline',
+                    avatar_color: getAvatarColor(String(site.id)),
+                    email: '',
+                    phone_number: undefined,
+                    isGroup: true,
+                    siteId: String(site.id),
+                    lastMessage: undefined,
+                    lastMessageTime: undefined,
+                    lastMessageTimestamp: undefined,
+                    unreadCount: 0,
+                  } as Contact;
+                })
+                .filter(Boolean) as Contact[];
+            }
+          }
+        }
+      } catch (e) {
+        console.warn('Error fetching accepted sites:', e);
+      }
+
       // 2. Fetch all conversations involving the current user
       const { data: conversations, error: conversationError } = await supabase
         .from('conversations')
@@ -255,10 +306,11 @@ export default function Contacts({ onContactSelected, currentUserId }: ContactsP
 
       console.log('Contact user IDs (contacts + conversations):', Array.from(contactUserIds));
 
-      // If no contacts or conversations, show empty list
+      // If no contacts or conversations, show at least site/accepted site contacts
       if (contactUserIds.size === 0) {
         console.log('No contacts or conversations found');
-        setContacts(mySiteContact ? [mySiteContact] : []);
+        const emptyBase = mySiteContact ? [mySiteContact, ...acceptedSiteContacts] : acceptedSiteContacts;
+        setContacts(emptyBase);
         setLoading(false);
         setRefreshing(false);
         return;
@@ -411,7 +463,9 @@ export default function Contacts({ onContactSelected, currentUserId }: ContactsP
           })
         );
         // Combine base contacts and include archived-sitegroup-based contacts
-        const baseContacts = mySiteContact ? [mySiteContact, ...contactsWithMessages] : contactsWithMessages;
+        const baseContacts = mySiteContact
+          ? [mySiteContact, ...acceptedSiteContacts, ...contactsWithMessages]
+          : [...acceptedSiteContacts, ...contactsWithMessages];
 
         // --- Archived sitegroup contacts ---
         const archivedIds = new Set<string>();
@@ -593,29 +647,33 @@ export default function Contacts({ onContactSelected, currentUserId }: ContactsP
           (payload) => {
             const newMsg = payload.new as any;
 
-            // Handle team messages (site chat): messages.site_id is set, receiver_id can be null
-            if (newMsg.site_id && mySiteId && String(newMsg.site_id) === String(mySiteId)) {
-              if (newMsg.sender_id === activeChatUserId) return;
-              const siteContactId = `site:${String(mySiteId)}`;
-              const created = newMsg.created_at ? new Date(newMsg.created_at) : new Date();
-              const msgText = newMsg.transcription || newMsg.content || '';
-              const msgTime = created.toLocaleTimeString([], {
-                hour: '2-digit',
-                minute: '2-digit',
-              });
+            // Handle group/site messages (site_id may be any accepted site or user's own site)
+            if (newMsg.site_id) {
+              const siteId = String(newMsg.site_id);
+              const isUserSite = mySiteId === siteId;
+              const isAcceptedSite = acceptedSiteIdsRef.current && acceptedSiteIdsRef.current.has(siteId);
+              if ((isUserSite || isAcceptedSite) && newMsg.sender_id !== activeChatUserId) {
+                const siteContactId = `site:${siteId}`;
+                const created = newMsg.created_at ? new Date(newMsg.created_at) : new Date();
+                const msgText = newMsg.transcription || newMsg.content || '';
+                const msgTime = created.toLocaleTimeString([], {
+                  hour: '2-digit',
+                  minute: '2-digit',
+                });
 
-              setContacts((prevContacts) =>
-                prevContacts.map((c) => {
-                  if (c.id !== siteContactId) return c;
-                  return {
-                    ...c,
-                    lastMessage: msgText,
-                    lastMessageTime: msgTime,
-                    unreadCount: (c.unreadCount || 0) + 1,
-                  };
-                })
-              );
-              return;
+                setContacts((prevContacts) =>
+                  prevContacts.map((c) => {
+                    if (c.id !== siteContactId) return c;
+                    return {
+                      ...c,
+                      lastMessage: msgText,
+                      lastMessageTime: msgTime,
+                      unreadCount: (c.unreadCount || 0) + 1,
+                    };
+                  })
+                );
+                return;
+              }
             }
 
             // Only handle messages received by the current user (not sent)
