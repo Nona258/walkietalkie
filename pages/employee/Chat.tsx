@@ -7,8 +7,16 @@ import {
   TextInput,
   Alert,
   ActivityIndicator,
+  Modal,
+  Image,
+  StyleSheet,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { Camera, CameraType, useCameraPermissions } from 'expo-camera';
+import { Platform } from 'react-native';
+import * as ImagePicker from 'expo-image-picker';
+import * as ImageManipulator from 'expo-image-manipulator';
+import { decode } from 'base64-arraybuffer';
 import supabase, { getOrCreateConversation } from '../../utils/supabase';
 
 interface Contact {
@@ -35,6 +43,7 @@ interface Message {
   isVoice?: boolean;
   audioUrl?: string;
   duration?: string;
+  imageUrl?: string;
 }
 
 interface ChatProps {
@@ -114,6 +123,13 @@ export default function Chat({ selectedContact, onBackPress, currentUserId }: Ch
   const [currentlyPlayingId, setCurrentlyPlayingId] = useState<string | null>(null);
   // Ticks every 30 s so delivery labels like "Delivered 2 minutes ago" stay up-to-date
   const [now, setNow] = useState(new Date());
+
+  // Camera / image state
+  const [cameraModalVisible, setCameraModalVisible] = useState(false);
+  const [capturedImage, setCapturedImage] = useState<string | null>(null);
+  const [cameraFacing, setCameraFacing] = useState<'front' | 'back'>('back');
+  const [permission, requestPermission] = useCameraPermissions();
+   const cameraRef = useRef<any>(null);
 
   const messagesSubscriptionRef = useRef<any>(null);
   const scrollViewRef = useRef<ScrollView>(null);
@@ -410,6 +426,167 @@ export default function Chat({ selectedContact, onBackPress, currentUserId }: Ch
       setMessages([]);
     } finally {
       setLoadingMessages(false);
+    }
+  };
+
+  // Helper function to upload image to Supabase storage
+  const uploadImage = async (imageUri: string): Promise<string | null> => {
+    try {
+      // Compress and resize the image
+      const manipulatedImage = await ImageManipulator.manipulateAsync(
+        imageUri,
+        [{ resize: { width: 1024 } }], // Resize to max width 1024px
+        { compress: 0.7, format: ImageManipulator.SaveFormat.JPEG, base64: true }
+      );
+
+      if (!manipulatedImage.base64) {
+        throw new Error('Failed to process image');
+      }
+
+      // Generate unique filename
+      const fileExt = 'jpg';
+      const fileName = `${Date.now()}_${Math.random().toString(36).substring(7)}.${fileExt}`;
+      const filePath = `chat_images/${fileName}`;
+
+      // Upload to Supabase storage
+      const { data: uploadData, error: uploadError } = await supabase.storage
+        .from('chat-media') // Make sure this bucket exists in your Supabase
+        .upload(filePath, decode(manipulatedImage.base64), {
+          contentType: 'image/jpeg',
+          cacheControl: '3600',
+        });
+
+      if (uploadError) throw uploadError;
+
+      // Get public URL
+      const { data: { publicUrl } } = supabase.storage
+        .from('chat-media')
+        .getPublicUrl(filePath);
+
+      return publicUrl;
+    } catch (error) {
+      console.error('Error uploading image:', error);
+      return null;
+    }
+  };
+
+  const sendImageMessage = async (imageUri: string) => {
+    if (!activeChatUserId) {
+      Alert.alert('Error', 'User not authenticated');
+      return;
+    }
+
+    const tempId = `image-${Date.now()}`;
+    const nowIso = new Date().toISOString();
+    
+    // Add temporary message with local URI
+    const tempMsg: Message = {
+      id: tempId,
+      sender: 'You',
+      content: '📷 Image (uploading...)',
+      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      _rawTs: nowIso,
+      isOwn: true,
+      status: 'sending',
+      type: 'image',
+      imageUrl: imageUri, // Local URI for preview
+    };
+    setMessages([...messages, tempMsg]);
+    setTimeout(() => scrollViewRef.current?.scrollToEnd({ animated: true }), 100);
+
+    try {
+      // Upload image to Supabase storage
+      const uploadedImageUrl = await uploadImage(imageUri);
+      
+      if (!uploadedImageUrl) {
+        throw new Error('Failed to upload image');
+      }
+
+      // Prepare the insert payload based on chat type
+      let insertPayload: any;
+      
+      if (isGroupChat) {
+        if (!activeSiteId && !activeArchivedId) {
+          throw new Error('Group chat not properly configured');
+        }
+        insertPayload = isArchivedGroup
+          ? {
+              conversation_id: null,
+              archived_sitegroup_id: activeArchivedId,
+              sender_id: activeChatUserId,
+              receiver_id: null,
+              image_url: uploadedImageUrl,
+              created_at: new Date().toISOString(),
+            }
+          : {
+              conversation_id: null,
+              site_id: activeSiteId,
+              sender_id: activeChatUserId,
+              receiver_id: null,
+              image_url: uploadedImageUrl,
+              created_at: new Date().toISOString(),
+            };
+      } else {
+        if (!conversationId) {
+          // Try to get or create conversation
+          const convId = await getOrCreateConversation(activeChatUserId, selectedContact.id);
+          if (!convId) {
+            throw new Error('Could not create conversation');
+          }
+          setConversationId(convId);
+          insertPayload = {
+            conversation_id: convId,
+            sender_id: activeChatUserId,
+            receiver_id: selectedContact.id,
+            image_url: uploadedImageUrl,
+            created_at: new Date().toISOString(),
+          };
+        } else {
+          insertPayload = {
+            conversation_id: conversationId,
+            sender_id: activeChatUserId,
+            receiver_id: selectedContact.id,
+            image_url: uploadedImageUrl,
+            created_at: new Date().toISOString(),
+          };
+        }
+      }
+
+      // Save message to database
+      const { data, error } = await supabase
+        .from('messages')
+        .insert([insertPayload])
+        .select()
+        .single();
+
+      if (error) throw error;
+
+      // Update the temporary message with the actual data
+      setMessages((msgs) =>
+        msgs.map((m) =>
+          m.id === tempId 
+            ? { 
+                ...m, 
+                id: String(data.id), 
+                status: 'sent' as const,
+                content: '📷 Image',
+                imageUrl: uploadedImageUrl
+              } 
+            : m
+        )
+      );
+
+      // Mark as delivered after a short delay
+      setTimeout(() => {
+        setMessages((msgs) =>
+          msgs.map((m) => (m.id === String(data.id) ? { ...m, status: 'delivered' as const } : m))
+        );
+      }, 500);
+
+    } catch (error) {
+      console.error('Error sending image:', error);
+      Alert.alert('Error', 'Failed to send image. Please try again.');
+      setMessages((msgs) => msgs.filter((m) => m.id !== tempId));
     }
   };
 
@@ -1112,11 +1289,65 @@ export default function Chat({ selectedContact, onBackPress, currentUserId }: Ch
     }
   };
 
-  const handleCaptureImage = () => setShowMediaMenu(false);
-  const handleChooseFromGallery = () => setShowMediaMenu(false);
+  const handleChooseFromGallery = async () => {
+    setShowMediaMenu(false);
+    
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      allowsEditing: true,
+      quality: 0.8,
+    });
+
+    if (!result.canceled && result.assets[0]) {
+      await sendImageMessage(result.assets[0].uri);
+    }
+  };
+
+  const handleOpenCamera = async () => {
+    setShowMediaMenu(false);
+    
+    if (!permission?.granted) {
+      const result = await requestPermission();
+      if (!result.granted) {
+        Alert.alert('Permission Required', 'Camera access is needed to take photos.');
+        return;
+      }
+    }
+    
+    setCapturedImage(null);
+    setCameraFacing('back');
+    setCameraModalVisible(true);
+  };
+
+  const takePicture = async () => {
+    if (cameraRef.current) {
+      try {
+        const photo = await cameraRef.current.takePictureAsync({ 
+          quality: 0.8,
+          skipProcessing: false
+        });
+        setCapturedImage(photo.uri);
+      } catch (error) {
+        console.error('Error taking picture:', error);
+        Alert.alert('Error', 'Failed to take picture. Please try again.');
+      }
+    }
+  };
+
+  const switchCamera = () => {
+    setCameraFacing(current => current === 'back' ? 'front' : 'back');
+  };
+
+  const handleSendImage = async () => {
+    if (!capturedImage || !activeChatUserId) return;
+    await sendImageMessage(capturedImage);
+    setCameraModalVisible(false);
+    setCapturedImage(null);
+  };
 
   return (
-    <View className="flex-1 bg-[#f8fafb]">
+    <>
+      <View className="flex-1 bg-[#f8fafb]">
       {/* Chat Header */}
       <View className="px-6 py-6 pt-12 bg-[#f8fafb] border-b border-gray-100">
         <View className="flex-row items-center justify-between mb-4">
@@ -1380,9 +1611,9 @@ export default function Chat({ selectedContact, onBackPress, currentUserId }: Ch
         {/* Media Menu */}
         {showMediaMenu && (
           <View className="flex-col gap-2 mb-4 w-44">
-            <TouchableOpacity
-              className="flex-row items-center px-4 py-3 bg-white border border-gray-200 rounded-2xl active:scale-95"
-              onPress={handleCaptureImage}>
+              <TouchableOpacity
+                className="flex-row items-center px-4 py-3 bg-white border border-gray-200 rounded-2xl active:scale-95"
+                onPress={handleOpenCamera}>
               <View className="p-2 mr-3 bg-[#237227] rounded-full">
                 <Ionicons name="camera" size={18} color="#f8f4fb" />
               </View>
@@ -1462,6 +1693,73 @@ export default function Chat({ selectedContact, onBackPress, currentUserId }: Ch
           )}
         </View>
       </View>
-    </View>
+      </View>
+
+      {/* Camera Modal */}
+      <Modal
+        animationType="slide"
+        transparent={false}
+        visible={cameraModalVisible}
+        onRequestClose={() => {
+          setCameraModalVisible(false);
+          setCapturedImage(null);
+        }}>
+        <View className="flex-1 bg-black">
+          {capturedImage ? (
+            // Preview mode with back arrow to return to camera
+            <View className="flex-1">
+              {/* Back Arrow Button - to go back to camera */}
+              <TouchableOpacity
+                onPress={() => setCapturedImage(null)}
+                className="absolute z-10 p-2 rounded-full top-12 left-4 bg-black/50">
+                <Ionicons name="arrow-back" size={24} color="white" />
+              </TouchableOpacity>
+
+              <Image
+                source={{ uri: capturedImage }}
+                style={[
+                  StyleSheet.absoluteFillObject,
+                  cameraFacing === 'front' ? { transform: [{ scaleX: 1 }] } : { transform: [{ scaleX: -1 }] },
+                ]}
+                resizeMode="cover"
+              />
+              
+              {/* Send Button */}
+              <TouchableOpacity
+                onPress={handleSendImage}
+                className="absolute p-4 bg-[#237227] rounded-full shadow-lg bottom-8 right-4">
+                <Ionicons name="send" size={24} color="#f8f4fb" />
+              </TouchableOpacity>
+            </View>
+          ) : (
+            // Camera mode with X button to close
+            <View className="flex-1">
+              {/* X Button - to close camera */}
+              <TouchableOpacity
+                onPress={() => setCameraModalVisible(false)}
+                className="absolute z-10 p-2 rounded-full top-12 left-4 bg-black/50">
+                <Ionicons name="close" size={24} color="white" />
+              </TouchableOpacity>
+              
+              {/* Capture Button */}
+              <View className="absolute items-center w-full bottom-8">
+                <TouchableOpacity
+                  onPress={takePicture}
+                  className="w-20 h-20 border-4 border-white rounded-full bg-white/30">
+                  <View className="w-full h-full bg-white rounded-full" />
+                </TouchableOpacity>
+              </View>
+              
+              {/* Switch Camera Button */}
+              <TouchableOpacity
+                onPress={switchCamera}
+                className="absolute p-3 rounded-full bottom-8 right-4 bg-black/50">
+                <Ionicons name="camera-reverse" size={24} color="white" />
+              </TouchableOpacity>
+            </View>
+          )}
+        </View>
+      </Modal>
+    </>
   );
 }

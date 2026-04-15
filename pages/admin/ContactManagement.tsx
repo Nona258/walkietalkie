@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -98,13 +98,11 @@ export default function ContactManagement({ onNavigate, isMobileMenuOpen, setIsM
     Record<string, { text: string; time: string; unreadCount: number } | null>
   >({});
 
-  const [selectedMembers, setSelectedMembers] = useState<string[]>([]);
   const [employeeSearch, setEmployeeSearch] = useState('');
   const [showContactsModal, setShowContactsModal] = useState(false);
 
   // Database users state
   const [users, setUsers] = useState<User[]>([]);
-  const [isLoadingUsers, setIsLoadingUsers] = useState(false);
 
   // Authenticated user id
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
@@ -211,7 +209,7 @@ export default function ContactManagement({ onNavigate, isMobileMenuOpen, setIsM
   };
 
   // Map DB row to UI Message
-  const mapRowToMessage = (row: any): Message => {
+  const mapRowToMessage = useCallback((row: any): Message => {
     const created = row.created_at ? new Date(row.created_at) : new Date();
     const durationMs = typeof row.duration_ms === 'number' ? row.duration_ms : null;
     const totalSeconds = durationMs !== null ? Math.round(durationMs / 1000) : null;
@@ -234,10 +232,10 @@ export default function ContactManagement({ onNavigate, isMobileMenuOpen, setIsM
       duration: isVoice ? durationStr : undefined,
       audioUrl: isVoice ? row.file_url || undefined : undefined,
     };
-  };
+  }, [currentUserId, selectedContact]);
 
   // Map a DB row from site messages (stored in messages table with site_id) into a UI Message
-  const mapSiteRowToMessage = (row: any): Message => {
+  const mapSiteRowToMessage = useCallback((row: any): Message => {
     const created = row.created_at ? new Date(row.created_at) : new Date();
     const durationMs = typeof row.duration_ms === 'number' ? row.duration_ms : null;
     const totalSeconds = durationMs !== null ? Math.round(durationMs / 1000) : null;
@@ -260,75 +258,253 @@ export default function ContactManagement({ onNavigate, isMobileMenuOpen, setIsM
       duration: isVoice ? durationStr : undefined,
       audioUrl: isVoice ? row.file_url || undefined : undefined,
     };
-  };
+  }, [currentUserId]);
 
-  const fetchMessagesForConversation = async (
-    conversationId: string | null
-  ): Promise<Message[]> => {
-    try {
-      if (!conversationId) return [];
+  const fetchMessagesForConversation = useCallback(
+    async (conversationId: string | null): Promise<Message[]> => {
+      try {
+        if (!conversationId) return [];
 
-      const { data, error } = await supabase
-        .from('messages')
-        .select('*')
-        .eq('conversation_id', conversationId)
-        .order('created_at', { ascending: true });
+        const { data, error } = await supabase
+          .from('messages')
+          .select('*')
+          .eq('conversation_id', conversationId)
+          .order('created_at', { ascending: true });
 
-      if (error) {
-        console.error('Failed to fetch messages:', error);
+        if (error) {
+          console.error('Failed to fetch messages:', error);
+          return [];
+        }
+
+        const mapped = (data || []).map(mapRowToMessage) as Message[];
+
+        // Mark all unread messages in this conversation that were NOT sent by admin as read
+        // Use auth.getUser() directly to avoid stale closure on currentUserId state
+        try {
+          const { data: authData } = await supabase.auth.getUser();
+          const meId = authData?.user?.id;
+          if (meId) {
+            await supabase
+              .from('messages')
+              .update({ is_read: true })
+              .eq('conversation_id', conversationId)
+              .neq('sender_id', meId)
+              .not('is_read', 'is', true);
+          }
+        } catch (markErr) {
+          console.warn('Failed to mark messages as read:', markErr);
+        }
+
+        return mapped;
+      } catch (e) {
+        console.error('Error fetching messages:', e);
         return [];
       }
+    },
+    [mapRowToMessage]
+  );
 
-      const mapped = (data || []).map(mapRowToMessage) as Message[];
+  const fetchSiteMessages = useCallback(
+    async (siteId: string | null): Promise<Message[]> => {
+      try {
+        if (!siteId) return [];
 
-      // Mark all unread messages in this conversation that were NOT sent by admin as read
-      // Use auth.getUser() directly to avoid stale closure on currentUserId state
+        const { data, error } = await supabase
+          .from('messages')
+          .select('*')
+          .eq('site_id', siteId)
+          .order('created_at', { ascending: true });
+
+        if (error) {
+          console.error('Failed to fetch group messages:', error);
+          return [];
+        }
+
+        return (data || []).map(mapSiteRowToMessage) as Message[];
+      } catch (e) {
+        console.error('Error fetching site messages:', e);
+        return [];
+      }
+    },
+    [mapSiteRowToMessage]
+  );
+
+    const getOrCreateConversation = useCallback(
+      async (contactUserId: string | null): Promise<string | null> => {
+        try {
+          if (!contactUserId) return null;
+          let meId = currentUserId;
+          if (!meId) {
+            const { data, error } = await supabase.auth.getUser();
+            if (error || !data?.user) {
+              console.error('Unable to determine current user for conversation:', error);
+              return null;
+            }
+            meId = data.user.id;
+            setCurrentUserId(meId);
+          }
+          if (meId === contactUserId) {
+            console.warn('Skipping conversation creation for self-chat.');
+            return null;
+          }
+
+          console.log('Looking for conversation between:', meId, 'and', contactUserId);
+
+          // Find existing conversation - fetch all and filter client-side to avoid 406 errors
+          const { data: allConversations, error: findError } = await supabase
+            .from('conversations')
+            .select('id, user_one, user_two');
+
+          if (findError) {
+            console.error('Error looking up conversation:', findError);
+            return null;
+          }
+
+          console.log('All conversations:', allConversations);
+
+          // Find the matching conversation
+          if (allConversations && allConversations.length > 0) {
+            const matching = allConversations.find(
+              (conv: any) =>
+                (conv.user_one === meId && conv.user_two === contactUserId) ||
+                (conv.user_one === contactUserId && conv.user_two === meId)
+            );
+            if (matching) {
+              console.log('Found existing conversation:', matching.id);
+              return matching.id as string;
+            }
+          }
+
+          // Create new conversation if not found
+          console.log('Creating new conversation');
+          const userOne = meId < contactUserId ? meId : contactUserId;
+          const userTwo = meId < contactUserId ? contactUserId : meId;
+
+          const { data: created, error: createError } = await supabase
+            .from('conversations')
+            .insert([{ user_one: userOne, user_two: userTwo }])
+            .select('id')
+            .single();
+
+          if (createError || !created) {
+            console.error('Error creating conversation:', createError);
+            return null;
+          }
+          console.log('Created new conversation:', created.id);
+          return created.id as string;
+        } catch (e) {
+          console.error('Unexpected error in getOrCreateConversation:', e);
+          return null;
+        }
+      },
+      [currentUserId]
+    );
+
+    // Fetch last messages for each direct contact (for contact list preview)
+    const fetchLastMessagesForContacts = useCallback(async (directContacts: Contact[]) => {
       try {
         const { data: authData } = await supabase.auth.getUser();
         const meId = authData?.user?.id;
-        if (meId) {
-          await supabase
-            .from('messages')
-            .update({ is_read: true })
-            .eq('conversation_id', conversationId)
-            .neq('sender_id', meId)
-            .not('is_read', 'is', true);
-        }
-      } catch (markErr) {
-        console.warn('Failed to mark messages as read:', markErr);
+        if (!meId) return;
+
+        const contactUserIds = directContacts.map((c) => c.userId).filter((id): id is string => !!id);
+
+        if (contactUserIds.length === 0) return;
+
+        // Fetch all conversations involving the admin
+        const { data: conversations } = await supabase
+          .from('conversations')
+          .select('id, user_one, user_two');
+
+        const myConversations = (conversations || []).filter(
+          (conv: any) => conv.user_one === meId || conv.user_two === meId
+        );
+
+        // Build a map: contactUserId -> [conversationId, ...]
+        const convMap = new Map<string, string[]>();
+        myConversations.forEach((conv: any) => {
+          const otherId = conv.user_one === meId ? conv.user_two : conv.user_one;
+          if (!convMap.has(otherId)) convMap.set(otherId, []);
+          convMap.get(otherId)!.push(conv.id);
+        });
+
+        // Build reverse map: conversationId -> contact.id for realtime lookups
+        const reverseMap = new Map<string, string>();
+
+        const map: Record<string, { text: string; time: string; unreadCount: number } | null> = {};
+
+        await Promise.all(
+          directContacts.map(async (contact) => {
+            if (!contact.userId) {
+              map[String(contact.id)] = null;
+              return;
+            }
+            const convIds = convMap.get(contact.userId);
+            if (!convIds || convIds.length === 0) {
+              map[String(contact.id)] = null;
+              return;
+            }
+
+            // Register all conversation IDs for this contact in the reverse map
+            convIds.forEach((cid) => reverseMap.set(cid, String(contact.id)));
+
+            // Fetch latest message across all conversations for this contact
+            const results = await Promise.all(
+              convIds.map((cid) =>
+                supabase
+                  .from('messages')
+                  .select('*')
+                  .eq('conversation_id', cid)
+                  .order('created_at', { ascending: false })
+                  .limit(1)
+              )
+            );
+
+            const latest = results
+              .flatMap((r) => r.data || [])
+              .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+
+            if (latest.length > 0) {
+              const last = latest[0];
+              const isVoice = typeof last.file_url === 'string' && last.file_url.length > 0;
+              const text = isVoice ? '🎤 Voice message' : last.transcription || 'Message';
+              const time = new Date(last.created_at).toLocaleTimeString([], {
+                hour: '2-digit',
+                minute: '2-digit',
+              });
+
+              // Count unread messages from the other user across all their conversations
+              let unreadCount = 0;
+              try {
+                const unreadResults = await Promise.all(
+                  convIds.map((cid) =>
+                    supabase
+                      .from('messages')
+                      .select('id')
+                      .eq('conversation_id', cid)
+                      .not('is_read', 'is', true)
+                      .neq('sender_id', meId!)
+                  )
+                );
+                unreadCount = unreadResults.reduce((sum, r) => sum + (r.data ? r.data.length : 0), 0);
+              } catch (_) { void _; }
+
+              map[String(contact.id)] = { text, time, unreadCount };
+            } else {
+              map[String(contact.id)] = null;
+            }
+          })
+        );
+
+        setLastMessagesMap(map);
+        convToContactIdRef.current = reverseMap;
+      } catch (e) {
+        console.error('Error fetching last messages for contacts:', e);
       }
+    }, []);
 
-      return mapped;
-    } catch (e) {
-      console.error('Error fetching messages:', e);
-      return [];
-    }
-  };
-
-  const fetchSiteMessages = async (siteId: string | null): Promise<Message[]> => {
-    try {
-      if (!siteId) return [];
-
-      const { data, error } = await supabase
-        .from('messages')
-        .select('*')
-        .eq('site_id', siteId)
-        .order('created_at', { ascending: true });
-
-      if (error) {
-        console.error('Failed to fetch group messages:', error);
-        return [];
-      }
-
-      return (data || []).map(mapSiteRowToMessage) as Message[];
-    } catch (e) {
-      console.error('Error fetching site messages:', e);
-      return [];
-    }
-  };
-
-  // Load direct contacts and group chats from DB
-  const loadContactsFromDb = async () => {
+    // Load direct contacts and group chats from DB
+  const loadContactsFromDb = useCallback(async () => {
     try {
       const { data: userData, error: userError } = await supabase.auth.getUser();
       if (userError || !userData?.user) {
@@ -422,114 +598,12 @@ export default function ContactManagement({ onNavigate, isMobileMenuOpen, setIsM
     } catch (e) {
       console.error('Unexpected error loading contacts from Supabase:', e);
     }
-  };
+  }, [fetchLastMessagesForContacts]);
 
-  // Fetch last messages for each direct contact (for contact list preview)
-  const fetchLastMessagesForContacts = async (directContacts: Contact[]) => {
-    try {
-      const { data: authData } = await supabase.auth.getUser();
-      const meId = authData?.user?.id;
-      if (!meId) return;
 
-      const contactUserIds = directContacts.map((c) => c.userId).filter((id): id is string => !!id);
-
-      if (contactUserIds.length === 0) return;
-
-      // Fetch all conversations involving the admin
-      const { data: conversations } = await supabase
-        .from('conversations')
-        .select('id, user_one, user_two');
-
-      const myConversations = (conversations || []).filter(
-        (conv: any) => conv.user_one === meId || conv.user_two === meId
-      );
-
-      // Build a map: contactUserId -> [conversationId, ...]
-      const convMap = new Map<string, string[]>();
-      myConversations.forEach((conv: any) => {
-        const otherId = conv.user_one === meId ? conv.user_two : conv.user_one;
-        if (!convMap.has(otherId)) convMap.set(otherId, []);
-        convMap.get(otherId)!.push(conv.id);
-      });
-
-      // Build reverse map: conversationId -> contact.id for realtime lookups
-      const reverseMap = new Map<string, string>();
-
-      const map: Record<string, { text: string; time: string; unreadCount: number } | null> = {};
-
-      await Promise.all(
-        directContacts.map(async (contact) => {
-          if (!contact.userId) {
-            map[String(contact.id)] = null;
-            return;
-          }
-          const convIds = convMap.get(contact.userId);
-          if (!convIds || convIds.length === 0) {
-            map[String(contact.id)] = null;
-            return;
-          }
-
-          // Register all conversation IDs for this contact in the reverse map
-          convIds.forEach((cid) => reverseMap.set(cid, String(contact.id)));
-
-          // Fetch latest message across all conversations for this contact
-          const results = await Promise.all(
-            convIds.map((cid) =>
-              supabase
-                .from('messages')
-                .select('*')
-                .eq('conversation_id', cid)
-                .order('created_at', { ascending: false })
-                .limit(1)
-            )
-          );
-
-          const latest = results
-            .flatMap((r) => r.data || [])
-            .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
-
-          if (latest.length > 0) {
-            const last = latest[0];
-            const isVoice = typeof last.file_url === 'string' && last.file_url.length > 0;
-            const text = isVoice ? '🎤 Voice message' : last.transcription || 'Message';
-            const time = new Date(last.created_at).toLocaleTimeString([], {
-              hour: '2-digit',
-              minute: '2-digit',
-            });
-
-            // Count unread messages from the other user across all their conversations
-            let unreadCount = 0;
-            try {
-              const unreadResults = await Promise.all(
-                convIds.map((cid) =>
-                  supabase
-                    .from('messages')
-                    .select('id')
-                    .eq('conversation_id', cid)
-                    .not('is_read', 'is', true)
-                    .neq('sender_id', meId!)
-                )
-              );
-              unreadCount = unreadResults.reduce((sum, r) => sum + (r.data ? r.data.length : 0), 0);
-            } catch (_) {}
-
-            map[String(contact.id)] = { text, time, unreadCount };
-          } else {
-            map[String(contact.id)] = null;
-          }
-        })
-      );
-
-      setLastMessagesMap(map);
-      convToContactIdRef.current = reverseMap;
-    } catch (e) {
-      console.error('Error fetching last messages for contacts:', e);
-    }
-  };
 
   // Fetch users (for adding contacts)
   const fetchUsers = async () => {
-    setIsLoadingUsers(true);
     try {
       const { data, error } = await supabase
         .from('users')
@@ -550,15 +624,13 @@ export default function ContactManagement({ onNavigate, isMobileMenuOpen, setIsM
       setUsers(transformed);
     } catch (e) {
       console.error('Error fetching users:', e);
-    } finally {
-      setIsLoadingUsers(false);
     }
   };
 
   // Initial load
   useEffect(() => {
     loadContactsFromDb();
-  }, []);
+  }, [loadContactsFromDb]);
 
   // Unlock browser audio autoplay on first user interaction.
   // We create an AudioContext here because once it is in 'running' state it
@@ -574,7 +646,7 @@ export default function ContactManagement({ onNavigate, isMobileMenuOpen, setIsM
         const ctx = new AudioCtx();
         await ctx.resume();
         audioContextRef.current = ctx;
-      } catch (e) {
+      } catch (e) { void e;
         // Fallback: at least unblock HTMLAudioElement by playing silent audio
         try {
           const silent = new Audio(
@@ -582,7 +654,7 @@ export default function ContactManagement({ onNavigate, isMobileMenuOpen, setIsM
           );
           silent.volume = 0;
           silent.play().catch(() => {});
-        } catch (_) {}
+        } catch (_) { void _; }
       }
     };
     document.addEventListener('click', unlock, { once: true });
@@ -628,7 +700,7 @@ export default function ContactManagement({ onNavigate, isMobileMenuOpen, setIsM
       if (statusChannelRef.current) {
         try {
           supabase.removeChannel(statusChannelRef.current);
-        } catch (e) {}
+        } catch (e) { void e; }
         statusChannelRef.current = null;
       }
     };
@@ -727,7 +799,7 @@ export default function ContactManagement({ onNavigate, isMobileMenuOpen, setIsM
       if (lastMessagesChannelRef.current) {
         try {
           supabase.removeChannel(lastMessagesChannelRef.current);
-        } catch (e) {}
+        } catch (e) { void e; }
         lastMessagesChannelRef.current = null;
       }
     };
@@ -741,7 +813,7 @@ export default function ContactManagement({ onNavigate, isMobileMenuOpen, setIsM
         if (!error && data?.user) {
           setCurrentUserId(data.user.id);
         }
-      } catch (e) {
+      } catch (e) { void e;
         console.error('Failed to load current user id:', e);
       }
     })();
@@ -756,7 +828,7 @@ export default function ContactManagement({ onNavigate, isMobileMenuOpen, setIsM
         try {
           audioPlayerRef.current.pause();
           audioPlayerRef.current.src = '';
-        } catch (e) {}
+        } catch (e) { void e; }
       }
     };
   }, []);
@@ -769,11 +841,7 @@ export default function ContactManagement({ onNavigate, isMobileMenuOpen, setIsM
     if (messagesChannelRef.current) {
       try {
         supabase.removeChannel(messagesChannelRef.current);
-      } catch (e) {
-        try {
-          messagesChannelRef.current.unsubscribe();
-        } catch (err) {}
-      }
+      } catch (e) { void e; }
       messagesChannelRef.current = null;
     }
 
@@ -894,17 +962,13 @@ export default function ContactManagement({ onNavigate, isMobileMenuOpen, setIsM
       if (messagesChannelRef.current) {
         try {
           supabase.removeChannel(messagesChannelRef.current);
-        } catch (e) {
-          try {
-            messagesChannelRef.current.unsubscribe();
-          } catch (err) {}
-        }
+        } catch (e) { void e; }
         messagesChannelRef.current = null;
       }
     };
     // Re-run whenever the selected contact OR the current user id changes so that
     // mapRowToMessage always has the correct sender info in its closure.
-  }, [selectedContact, currentUserId]);
+  }, [selectedContact, currentUserId, fetchMessagesForConversation, fetchSiteMessages, getOrCreateConversation, mapRowToMessage, mapSiteRowToMessage]);
 
   // Audio recording
   const startRecording = () => {
@@ -992,7 +1056,7 @@ export default function ContactManagement({ onNavigate, isMobileMenuOpen, setIsM
         mr.stop();
         try {
           ref.stream.getTracks().forEach((t: any) => t.stop());
-        } catch (e) {}
+        } catch (e) { void e; }
       } catch (e) {
         console.error('Error stopping MediaRecorder:', e);
       } finally {
@@ -1060,7 +1124,7 @@ export default function ContactManagement({ onNavigate, isMobileMenuOpen, setIsM
     if (currentlyPlayingId === message.id && audioPlayerRef.current) {
       try {
         audioPlayerRef.current.pause();
-      } catch (e) {}
+      } catch (e) { void e; }
       audioPlayerRef.current = null;
       setCurrentlyPlayingId(null);
       return;
@@ -1069,7 +1133,7 @@ export default function ContactManagement({ onNavigate, isMobileMenuOpen, setIsM
       try {
         audioPlayerRef.current.pause();
         audioPlayerRef.current.src = '';
-      } catch (e) {}
+      } catch (e) { void e; }
       audioPlayerRef.current = null;
       setCurrentlyPlayingId(null);
     }
@@ -1117,7 +1181,7 @@ export default function ContactManagement({ onNavigate, isMobileMenuOpen, setIsM
       try {
         audioPlayerRef.current.pause();
         audioPlayerRef.current.src = '';
-      } catch (e) {}
+      } catch (e) { void e; }
       audioPlayerRef.current = null;
     }
 
@@ -1169,73 +1233,7 @@ export default function ContactManagement({ onNavigate, isMobileMenuOpen, setIsM
     return (mins * 60 + secs) * 1000;
   };
 
-  const getOrCreateConversation = async (contactUserId: string | null): Promise<string | null> => {
-    try {
-      if (!contactUserId) return null;
-      let meId = currentUserId;
-      if (!meId) {
-        const { data, error } = await supabase.auth.getUser();
-        if (error || !data?.user) {
-          console.error('Unable to determine current user for conversation:', error);
-          return null;
-        }
-        meId = data.user.id;
-        setCurrentUserId(meId);
-      }
-      if (meId === contactUserId) {
-        console.warn('Skipping conversation creation for self-chat.');
-        return null;
-      }
-
-      console.log('Looking for conversation between:', meId, 'and', contactUserId);
-
-      // Find existing conversation - fetch all and filter client-side to avoid 406 errors
-      const { data: allConversations, error: findError } = await supabase
-        .from('conversations')
-        .select('id, user_one, user_two');
-
-      if (findError) {
-        console.error('Error looking up conversation:', findError);
-        return null;
-      }
-
-      console.log('All conversations:', allConversations);
-
-      // Find the matching conversation
-      if (allConversations && allConversations.length > 0) {
-        const matching = allConversations.find(
-          (conv: any) =>
-            (conv.user_one === meId && conv.user_two === contactUserId) ||
-            (conv.user_one === contactUserId && conv.user_two === meId)
-        );
-        if (matching) {
-          console.log('Found existing conversation:', matching.id);
-          return matching.id as string;
-        }
-      }
-
-      // Create new conversation if not found
-      console.log('Creating new conversation');
-      const userOne = meId < contactUserId ? meId : contactUserId;
-      const userTwo = meId < contactUserId ? contactUserId : meId;
-
-      const { data: created, error: createError } = await supabase
-        .from('conversations')
-        .insert([{ user_one: userOne, user_two: userTwo }])
-        .select('id')
-        .single();
-
-      if (createError || !created) {
-        console.error('Error creating conversation:', createError);
-        return null;
-      }
-      console.log('Created new conversation:', created.id);
-      return created.id as string;
-    } catch (e) {
-      console.error('Unexpected error in getOrCreateConversation:', e);
-      return null;
-    }
-  };
+  
 
   const saveMessageToDb = async (message: Message) => {
     try {
@@ -1332,7 +1330,6 @@ export default function ContactManagement({ onNavigate, isMobileMenuOpen, setIsM
   };
 
   const openContactsModal = () => {
-    setSelectedMembers([]);
     setEmployeeSearch('');
     fetchUsers();
     setShowContactsModal(true);

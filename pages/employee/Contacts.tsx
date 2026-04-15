@@ -51,9 +51,11 @@ interface ContactsProps {
 type FilterType = 'all' | 'online' | 'offline' | 'teams' | 'unread' | 'archived';
 
 // Helper to generate consistent avatar color from user id
-// Use the brand green for initials avatars to match design
-const getAvatarColor = (_id: string): string => {
-  return '#237227';
+// Deterministic selection from a palette for visual variety
+const getAvatarColor = (id: string): string => {
+  const colors = ['#10b981', '#059669', '#34d399', '#6ee7b7', '#3b82f6', '#8b5cf6'];
+  const index = id.split('').reduce((acc, ch) => acc + ch.charCodeAt(0), 0) % colors.length;
+  return colors[index];
 };
 
 // Helper to get initials from full name
@@ -832,10 +834,60 @@ export default function Contacts({ onContactSelected, currentUserId }: ContactsP
       // Get current user
       const { data: { user }, error: authError } = await supabase.auth.getUser();
       if (authError || !user) throw new Error('Unable to get current user');
-      await sendContactRequest(user.id, userId);
-      Alert.alert('Contact request sent', 'A request has been sent. The user must accept to become friends.');
-      fetchContacts();
-      closeAddModal();
+
+      // Fetch target user's role
+      const { data: targetUser, error: targetError } = await supabase
+        .from('users')
+        .select('role')
+        .eq('id', userId)
+        .single();
+      if (targetError) throw targetError;
+
+      // Fetch current user's role (best effort)
+      const { data: currentUserData, error: currentRoleError } = await supabase
+        .from('users')
+        .select('role')
+        .eq('id', user.id)
+        .single();
+      if (currentRoleError) console.warn('Could not fetch current user role', currentRoleError);
+
+      const isTargetAdmin = (targetUser?.role || '').toLowerCase() === 'admin';
+      const isCurrentUserAdmin = (currentUserData?.role || '').toLowerCase() === 'admin';
+
+      // If either user is an admin, add the contact immediately (bypass request)
+      if (isCurrentUserAdmin || isTargetAdmin) {
+        const { data: existing } = await supabase
+          .from('contacts')
+          .select('id')
+          .eq('user_id', user.id)
+          .eq('contact_id', userId)
+          .eq('status', 'friends')
+          .maybeSingle();
+        if (existing) {
+          Alert.alert('Already added', 'This user is already your contact.');
+          return;
+        }
+
+        const { error: insertError } = await supabase
+          .from('contacts')
+          .insert({
+            user_id: user.id,
+            contact_id: userId,
+            status: 'friends',
+            created_at: new Date().toISOString(),
+          });
+        if (insertError) throw insertError;
+
+        Alert.alert('Contact added', 'User has been added to your contacts.');
+        fetchContacts();
+        closeAddModal();
+      } else {
+        // Regular flow: send contact request
+        await sendContactRequest(user.id, userId);
+        Alert.alert('Contact request sent', 'A request has been sent. The user must accept to become friends.');
+        fetchContacts();
+        closeAddModal();
+      }
     } catch (err: any) {
       Alert.alert('Request failed', err?.message || String(err));
     } finally {

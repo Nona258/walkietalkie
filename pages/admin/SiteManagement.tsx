@@ -14,6 +14,7 @@ import { Ionicons } from '@expo/vector-icons';
 import SweetAlertModal from '../../components/SweetAlertModal';
 import '../../global.css';
 import supabase from '../../utils/supabase';
+import { notifyNewSiteCreated } from '../../utils/notifications';
 
 interface Site {
   id: string;
@@ -102,8 +103,6 @@ export default function SiteManagement({ onNavigate, isMobileMenuOpen, setIsMobi
   const [siteName, setSiteName] = useState('');
   const [company, setCompany] = useState(''); // stores company id
   const [branch_id, setBranchId] = useState('');
-  const [startTime, setStartTime] = useState('');
-  const [endTime, setEndTime] = useState('');
   const [membersCount, setMembersCount] = useState('');
   const [latitude, setLatitude] = useState<number | null>(null);
   const [longitude, setLongitude] = useState<number | null>(null);
@@ -1162,12 +1161,6 @@ export default function SiteManagement({ onNavigate, isMobileMenuOpen, setIsMobi
       case 'branch_id':
         setBranchId(value);
         break;
-      case 'startTime':
-        setStartTime(value);
-        break;
-      case 'endTime':
-        setEndTime(value);
-        break;
       case 'membersCount':
         setMembersCount(value);
         break;
@@ -1226,8 +1219,6 @@ export default function SiteManagement({ onNavigate, isMobileMenuOpen, setIsMobi
     setSiteName('');
     setCompany('');
     setBranchId('');
-    setStartTime('');
-    setEndTime('');
     setMembersCount('');
     setLeaderId('');
     setLatitude(null);
@@ -1370,8 +1361,6 @@ export default function SiteManagement({ onNavigate, isMobileMenuOpen, setIsMobi
           name: safeName,
           company_id: company || null,
           branch_id: branch_id || null,
-          start_time: startTime || null,
-          end_time: endTime || null,
           members_count: membersCount ? parseInt(membersCount) : null,
           leader_id: selectedLeaderId,
           status: selectedLeaderId ? 'Pending' : 'Active',
@@ -1399,22 +1388,34 @@ export default function SiteManagement({ onNavigate, isMobileMenuOpen, setIsMobi
           console.error('Error inserting leader into group_members:', memberInsertError);
         }
       }
-      await supabase.from('activity_logs').insert([
-        {
-          user_name: 'Admin User',
-          initials: 'AD',
-          action: `Added New Site: ${safeName}`,
-          description: 'New site location has been added to the system',
-          location: 'System',
-          type: 'system',
-          color: '#d1fae5',
-          icon: 'add-circle-outline',
-        },
-      ]);
-      showAlert('Success!', `${safeName} has been added successfully`, 'success');
-      resetForm();
-      setIsAddModalOpen(false);
-      fetchSites();
+        await supabase.from('activity_logs').insert([
+          {
+            user_name: 'Admin User',
+            initials: 'AD',
+            action: `Added New Site: ${safeName}`,
+            description: 'New site location has been added to the system',
+            location: 'System',
+            type: 'system',
+            color: '#d1fae5',
+            icon: 'add-circle-outline',
+          },
+        ]);
+
+        // Notify users about the newly created site using the centralized notifications helper
+        try {
+          await notifyNewSiteCreated({
+            siteName: safeName,
+            leaderId: selectedLeaderId,
+            siteStatus: selectedLeaderId ? 'Pending' : 'Active',
+          });
+        } catch (e) {
+          console.error('Error sending new site notifications', e);
+        }
+
+        showAlert('Success!', `${safeName} has been added successfully`, 'success');
+        resetForm();
+        setIsAddModalOpen(false);
+        fetchSites();
     }
   };
 
@@ -1423,8 +1424,6 @@ export default function SiteManagement({ onNavigate, isMobileMenuOpen, setIsMobi
     setSiteName(site.name);
     setCompany((site as any).company_id ? String((site as any).company_id) : '');
     setBranchId(site.branch_id ? String(site.branch_id) : '');
-    setStartTime((site as any).start_time || '');
-    setEndTime((site as any).end_time || '');
     setMembersCount(site.members_count ? String(site.members_count) : '');
     setLatitude(site.latitude || null);
     setLongitude(site.longitude || null);
@@ -1447,8 +1446,6 @@ export default function SiteManagement({ onNavigate, isMobileMenuOpen, setIsMobi
         name: safeName,
         company_id: company || null,
         branch_id: branch_id || null,
-        start_time: startTime || null,
-        end_time: endTime || null,
         members_count: membersCount ? parseInt(membersCount) : null,
         latitude: latitude,
         longitude: longitude,
@@ -2262,42 +2259,6 @@ export default function SiteManagement({ onNavigate, isMobileMenuOpen, setIsMobi
               </View>
 
               <View className="flex-row flex-wrap -mx-2">
-                <View className="w-1/2 px-2 mb-4">
-                  <Text className="mb-2 text-sm font-medium text-stone-700">Start Time</Text>
-                  <div className={`rounded-xl border border-stone-300 bg-white px-4 py-3`}>
-                    <input
-                      type="time"
-                      style={{
-                        width: '100%',
-                        background: 'transparent',
-                        border: 'none',
-                        fontSize: 16,
-                        color: '#44403c',
-                      }}
-                      value={startTime}
-                      onChange={(e) => handleFieldChange('startTime', e.target.value)}
-                    />
-                  </div>
-                </View>
-
-                <View className="w-1/2 px-2 mb-4">
-                  <Text className="mb-2 text-sm font-medium text-stone-700">End Time</Text>
-                  <div className={`rounded-xl border border-stone-300 bg-white px-4 py-3`}>
-                    <input
-                      type="time"
-                      style={{
-                        width: '100%',
-                        background: 'transparent',
-                        border: 'none',
-                        fontSize: 16,
-                        color: '#44403c',
-                      }}
-                      value={endTime}
-                      onChange={(e) => handleFieldChange('endTime', e.target.value)}
-                    />
-                  </div>
-                </View>
-
                 <View className="w-full px-2 mb-4">
                   <Text className="mb-2 text-sm font-medium text-stone-700">
                     Employees to Deploy <Text className="text-red-500">*</Text>
@@ -2575,46 +2536,8 @@ export default function SiteManagement({ onNavigate, isMobileMenuOpen, setIsMobi
               </View>
 
               <View className="flex-row flex-wrap -mx-2">
-                <View className="w-1/2 px-2 mb-4">
-                  <Text className="mb-2 text-sm font-medium text-stone-700">Start Time</Text>
-                  <div className={`rounded-xl border border-stone-300 bg-white px-4 py-3`}>
-                    <input
-                      type="time"
-                      style={{
-                        width: '100%',
-                        background: 'transparent',
-                        border: 'none',
-                        fontSize: 16,
-                        color: '#44403c',
-                      }}
-                      value={startTime}
-                      onChange={(e) => handleFieldChange('startTime', e.target.value)}
-                    />
-                  </div>
-                </View>
-
-                <View className="w-1/2 px-2 mb-4">
-                  <Text className="mb-2 text-sm font-medium text-stone-700">End Time</Text>
-                  <div className={`rounded-xl border border-stone-300 bg-white px-4 py-3`}>
-                    <input
-                      type="time"
-                      style={{
-                        width: '100%',
-                        background: 'transparent',
-                        border: 'none',
-                        fontSize: 16,
-                        color: '#44403c',
-                      }}
-                      value={endTime}
-                      onChange={(e) => handleFieldChange('endTime', e.target.value)}
-                    />
-                  </div>
-                </View>
-
-                <View className="w-1/2 px-2 mb-4">
-                  <Text className="mb-2 text-sm font-medium text-stone-700">
-                    Employees to Deploy
-                  </Text>
+                <View className="w-full px-2 mb-4">
+                  <Text className="mb-2 text-sm font-medium text-stone-700">Employees to Deploy</Text>
                   <div
                     className={`border bg-white ${
                       touched.membersCount && errors.membersCount
