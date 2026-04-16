@@ -288,21 +288,13 @@ export default function ForgotPassword({ onBackToSignIn }: ForgotPasswordProps) 
         className="flex-1 overflow-hidden">
         <View className="flex-1 justify-center overflow-hidden px-8">
           {/* Header */}
-          <View className="mb-8 flex-row items-center">
-            <TouchableOpacity
-              className="mr-3 h-10 w-10 items-center justify-center rounded-full bg-green-100"
-              onPress={onBackToSignIn}
-              disabled={loading}>
-              <Ionicons name="chevron-back" size={22} color="#10b981" />
-            </TouchableOpacity>
-            <View className="flex-1">
-              <Text className="text-2xl font-bold text-[#111827]">Forgot Password</Text>
-              <Text className="mt-1 text-sm text-[#6b7280]">
-                {canUpdatePassword
-                  ? 'Set a new password for your account.'
-                  : 'Enter your email to receive a reset link.'}
-              </Text>
-            </View>
+          <View className="mb-8 items-center">
+            <Text className="text-3xl font-bold italic tracking-wide text-[#111827] text-center">Forgot Password</Text>
+            <Text className="mt-1 text-sm text-[#6b7280] text-center">
+              {canUpdatePassword
+                ? 'Set a new password for your account.'
+                : 'Enter your email to receive a reset link.'}
+            </Text>
           </View>
 
           {!canUpdatePassword ? (
