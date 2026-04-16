@@ -130,6 +130,8 @@ export default function Chat({ selectedContact, onBackPress, currentUserId }: Ch
   const messagesSubscriptionRef = useRef<any>(null);
   const scrollViewRef = useRef<ScrollView>(null);
   const [expandedMessageId, setExpandedMessageId] = useState<string | null>(null);
+  // Modal for message actions
+  const [messageActionModal, setMessageActionModal] = useState<{ visible: boolean; message: Message | null }>({ visible: false, message: null });
   const typingChannelRef = useRef<any>(null);
   const typingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const mediaRecorderRef = useRef<any>(null);
@@ -1309,6 +1311,20 @@ export default function Chat({ selectedContact, onBackPress, currentUserId }: Ch
     }
   };
 
+  // Handler for Edit
+  const handleEditMessage = () => {
+    // Implement your edit logic here
+    setMessageActionModal({ visible: false, message: null });
+    Alert.alert('Edit', 'Edit message feature coming soon.');
+  };
+
+  // Handler for Delete
+  const handleDeleteMessage = () => {
+    // Implement your delete logic here
+    setMessageActionModal({ visible: false, message: null });
+    Alert.alert('Delete', 'Delete message feature coming soon.');
+  };
+
   return (
     <View className="flex-1 bg-white">
       {/* Chat Header */}
@@ -1435,12 +1451,13 @@ export default function Chat({ selectedContact, onBackPress, currentUserId }: Ch
                         {message.type === 'image' ? (
                           <TouchableOpacity
                             onPress={() => {
-                              // Open full screen image viewer
                               setFullScreenImage(message.imageUrl || null);
-                              // Optionally also toggle timestamp
-                              setExpandedMessageId((prev) =>
-                                prev === message.id ? null : message.id
-                              );
+                              setExpandedMessageId((prev) => prev === message.id ? null : message.id);
+                            }}
+                            onLongPress={() => {
+                              if (message.isOwn && message.status === 'delivered') {
+                                setMessageActionModal({ visible: true, message });
+                              }
                             }}
                             className="overflow-hidden rounded-2xl shadow-sm">
                             <Image
@@ -1454,9 +1471,12 @@ export default function Chat({ selectedContact, onBackPress, currentUserId }: Ch
                           <TouchableOpacity
                             onPress={() => {
                               handlePlayVoice(message);
-                              setExpandedMessageId((prev) =>
-                                prev === message.id ? null : message.id
-                              );
+                              setExpandedMessageId((prev) => prev === message.id ? null : message.id);
+                            }}
+                            onLongPress={() => {
+                              if (message.isOwn && message.status === 'delivered') {
+                                setMessageActionModal({ visible: true, message });
+                              }
                             }}
                             className={`flex-row items-center gap-3 rounded-3xl px-4 py-3 shadow-sm ${
                               message.isOwn
@@ -1505,10 +1525,13 @@ export default function Chat({ selectedContact, onBackPress, currentUserId }: Ch
                           <TouchableOpacity
                             activeOpacity={0.8}
                             onPress={() =>
-                              setExpandedMessageId((prev) =>
-                                prev === message.id ? null : message.id
-                              )
+                              setExpandedMessageId((prev) => prev === message.id ? null : message.id)
                             }
+                            onLongPress={() => {
+                              if (message.isOwn && message.status === 'delivered') {
+                                setMessageActionModal({ visible: true, message });
+                              }
+                            }}
                             className={`rounded-3xl px-5 py-3 shadow-sm ${
                               message.isOwn
                                 ? 'bg-green-500 shadow-gray-200'
@@ -1665,6 +1688,37 @@ export default function Chat({ selectedContact, onBackPress, currentUserId }: Ch
           )}
         </View>
       </View>
+
+      {/* Message Action Modal */}
+      <Modal
+        transparent
+        visible={messageActionModal.visible}
+        animationType="fade"
+        onRequestClose={() => setMessageActionModal({ visible: false, message: null })}
+      >
+        <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: 'rgba(0,0,0,0.3)' }}>
+          <View style={{ backgroundColor: 'white', borderRadius: 8, padding: 24, minWidth: 220, alignItems: 'center' }}>
+            <TouchableOpacity
+              onPress={handleEditMessage}
+              style={{ marginBottom: 18, width: '100%' }}
+            >
+              <Text style={{ fontSize: 17, textAlign: 'center', color: '#10b981', fontWeight: 'bold' }}>Edit</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={handleDeleteMessage}
+              style={{ width: '100%' }}
+            >
+              <Text style={{ fontSize: 17, textAlign: 'center', color: '#ef4444', fontWeight: 'bold' }}>Delete</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={() => setMessageActionModal({ visible: false, message: null })}
+              style={{ marginTop: 18, width: '100%' }}
+            >
+              <Text style={{ fontSize: 15, textAlign: 'center', color: '#6b7280' }}>Cancel</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
 
       {/* Camera Modal */}
       <Modal
