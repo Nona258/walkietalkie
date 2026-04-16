@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, Animated } from 'react-native';
+import { View, Text, ScrollView, TouchableOpacity, Animated, Image } from 'react-native';
 import { Ionicons, Feather } from '@expo/vector-icons';
+import supabase from '../utils/supabase';
 
 interface AdminNavbarProps {
   activeTab:
@@ -65,6 +66,57 @@ export default function AdminNavbar({
 }: AdminNavbarProps) {
   const [isExpanded, setIsExpanded] = useState(true);
   const sidebarWidth = useRef(new Animated.Value(EXPANDED_WIDTH)).current;
+  const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
+  const [displayInitials, setDisplayInitials] = useState('AD');
+  const [displayName, setDisplayName] = useState('Admin User');
+  const [displayRole, setDisplayRole] = useState('Super Admin');
+
+  useEffect(() => {
+    const loadProfile = async () => {
+      try {
+        const { data: authData } = await supabase.auth.getUser();
+        const user = authData?.user;
+        const userId = user?.id;
+        if (!userId) return;
+
+        const { data: dbUser, error } = await supabase
+          .from('users')
+          .select('full_name, role, profile_picture_url')
+          .eq('id', userId)
+          .single();
+        if (error || !dbUser) return;
+
+        const name = dbUser.full_name || user.user_metadata?.full_name || user.email || 'Admin User';
+        setDisplayName(name);
+        setDisplayRole(dbUser.role || 'Super Admin');
+
+        const initials = String(name)
+          .split(' ')
+          .map((p) => p?.[0] || '')
+          .join('')
+          .toUpperCase()
+          .slice(0, 2);
+        setDisplayInitials(initials || 'AD');
+
+        const picPath = dbUser.profile_picture_url || user.user_metadata?.profile_picture || null;
+        if (!picPath) return;
+
+        if (String(picPath).startsWith('http://') || String(picPath).startsWith('https://')) {
+          setAvatarUrl(`${picPath}?t=${Date.now()}`);
+          return;
+        }
+
+        const relative = String(picPath).replace(/^profile_picture\//, '');
+        const { data: publicData } = supabase.storage.from('profile_picture').getPublicUrl(relative);
+        if (publicData?.publicUrl) {
+          setAvatarUrl(`${publicData.publicUrl}?t=${Date.now()}`);
+        }
+      } catch (e) {
+        // ignore load errors
+      }
+    };
+    loadProfile();
+  }, []);
 
   useEffect(() => {
     Animated.timing(sidebarWidth, {
@@ -193,14 +245,22 @@ export default function AdminNavbar({
       <View className={`border-t border-stone-100 pb-5 pt-3 ${isExpanded ? 'px-3' : 'px-2'}`}>
         <View
           className={`mb-2 flex-row items-center rounded-xl bg-stone-50 py-3 ${isExpanded ? 'px-3' : 'justify-center px-0'}`}>
-          <View
-            className={`h-8 w-8 items-center justify-center rounded-lg bg-emerald-500 ${isExpanded ? 'mr-3' : ''}`}>
-            <Text className="text-xs font-bold text-white">AD</Text>
-          </View>
+          {avatarUrl ? (
+            <Image
+              source={{ uri: avatarUrl }}
+              className={`${isExpanded ? 'mr-3' : ''} h-8 w-8 rounded-lg`}
+              style={{ resizeMode: 'cover' }}
+            />
+          ) : (
+            <View
+              className={`h-8 w-8 items-center justify-center rounded-lg bg-emerald-500 ${isExpanded ? 'mr-3' : ''}`}>
+              <Text className="text-xs font-bold text-white">{displayInitials}</Text>
+            </View>
+          )}
           {isExpanded && (
             <View className="flex-1">
-              <Text className="text-xs font-semibold text-stone-800">Admin User</Text>
-              <Text className="text-xs text-stone-400">Super Admin</Text>
+              <Text className="text-xs font-semibold text-stone-800">{displayName}</Text>
+              <Text className="text-xs text-stone-400">{displayRole}</Text>
             </View>
           )}
         </View>

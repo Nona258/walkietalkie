@@ -1,25 +1,208 @@
-
-import React, { useEffect, useState } from 'react';
-import { View, Text, TouchableOpacity, ScrollView, StatusBar, ActivityIndicator, Alert } from 'react-native';
+import React, { useEffect, useMemo, useState } from 'react';
+import {
+  View,
+  Text,
+  TouchableOpacity,
+  ScrollView,
+  StatusBar,
+  ActivityIndicator,
+  Alert,
+  Modal,
+  TextInput,
+  Image,
+} from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import SiteLocationMap from '../../components/SiteLocationMap';
 import supabase from '../../utils/supabase';
+import {
+  joinSiteWithSlotManagement,
+  checkAndMarkSiteAsFull,
+  getSiteMemberInfo,
+  getSiteMembers,
+} from '../../utils/siteMemberSlots';
+import { notifyLeaderSiteAccepted } from '../../utils/notifications';
 import type { Site } from './Sites';
+import * as ImagePicker from 'expo-image-picker';
+import * as ImageManipulator from 'expo-image-manipulator';
 
 interface SiteDetailsProps {
   site: Site | null | undefined;
   onBack?: () => void;
   onViewOnMap?: () => void;
+  onSiteUpdated?: (nextTab?: 'Pending' | 'Finished') => void;
+  onSiteMapPress?: (site: Site) => void;
 }
 
-export default function SiteDetails({ site, onBack, onViewOnMap }: SiteDetailsProps) {
-  const [groupLeaderName, setGroupLeaderName] = useState<string | null>(null);
-  const [groupName, setGroupName] = useState<string | null>(null);
-  const [groupId, setGroupId] = useState<string | null>(null);
+// ------------------------------------------------------------
+// Custom SweetAlert component (centered modal)
+// ------------------------------------------------------------
+interface SweetAlertProps {
+  visible: boolean;
+  title: string;
+  message: string;
+  type?: 'success' | 'error' | 'info';
+  onClose: () => void;
+}
+
+const SweetAlert: React.FC<SweetAlertProps> = ({
+  visible,
+  title,
+  message,
+  type = 'success',
+  onClose,
+}) => {
+  const iconColor = type === 'success' ? '#10b981' : type === 'error' ? '#ef4444' : '#3b82f6';
+  const iconName =
+    type === 'success' ? 'checkmark-circle' : type === 'error' ? 'alert-circle' : 'information-circle';
+
+  return (
+    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
+      <View className="flex-1 items-center justify-center bg-black/50">
+        <View className="w-4/5 max-w-sm rounded-3xl bg-white p-6 shadow-2xl">
+          <View className="items-center">
+            <View className="mb-3 h-14 w-14 items-center justify-center rounded-full bg-green-50">
+              <Ionicons name={iconName} size={32} color={iconColor} />
+            </View>
+            <Text className="mb-2 text-center text-xl font-bold text-gray-900">{title}</Text>
+            <Text className="mb-6 text-center text-sm text-gray-600">{message}</Text>
+            <TouchableOpacity
+              onPress={onClose}
+              className="w-full rounded-full bg-green-500 py-3 active:scale-95">
+              <Text className="text-center font-bold text-white">OK</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </View>
+    </Modal>
+  );
+};
+
+// Helper: count how many active sites the user has accepted (accepted_sites with site_id not null)
+async function getAcceptedSitesCount(userId: string): Promise<number> {
+  const { count, error } = await supabase
+    .from('accepted_sites')
+    .select('*', { count: 'exact', head: true })
+    .eq('user_id', userId)
+    .not('site_id', 'is', null);
+  if (error) {
+    console.error('Error counting accepted sites:', error);
+    return 0;
+  }
+  return count || 0;
+}
+
+// ------------------------------------------------------------
+// Main SiteDetails component
+// ------------------------------------------------------------
+export default function SiteDetails({
+  site,
+  onBack,
+  onViewOnMap,
+  onSiteUpdated,
+  onSiteMapPress,
+}: SiteDetailsProps) {
+  const [leaderName, setLeaderName] = useState<string | null>(null);
+  const [leaderId, setLeaderId] = useState<string | null>(null);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+  const [currentUserSiteId, setCurrentUserSiteId] = useState<string | null>(null);
+  const [currentUserArchivedId, setCurrentUserArchivedId] = useState<string | null>(null);
   const [hasAccepted, setHasAccepted] = useState(false);
   const [loadingGroupInfo, setLoadingGroupInfo] = useState(false);
   const [acceptLoading, setAcceptLoading] = useState(false);
+  const [isUserLeaderAny, setIsUserLeaderAny] = useState(false);
+
+  // Member slot management
+  const [memberInfo, setMemberInfo] = useState<{
+    maxMembers: number | null;
+    currentMembers: number;
+    availableSlots: number | null;
+    isFull: boolean;
+  } | null>(null);
+  const [loadingMemberInfo, setLoadingMemberInfo] = useState(false);
+
+  // Site members list
+  const [siteMembers, setSiteMembers] = useState<
+    Array<{
+      id: string;
+      fullName: string;
+      email: string;
+      phoneNumber: string | null;
+      profilePictureUrl: string | null;
+      role: string;
+      joinedAt: string | null;
+    }>
+  >([]);
+  const [loadingSiteMembers, setLoadingSiteMembers] = useState(false);
+
+  // Update modal state
+  const [updateVisible, setUpdateVisible] = useState(false);
+  const [updateSubmitting, setUpdateSubmitting] = useState(false);
+  const [updateTriedSubmit, setUpdateTriedSubmit] = useState(false);
+  const [starlinkSerial, setStarlinkSerial] = useState('');
+  const [technicalIssue, setTechnicalIssue] = useState<string>('');
+  const [technicalIssuePickerVisible, setTechnicalIssuePickerVisible] = useState(false);
+  const [issueDescription, setIssueDescription] = useState('');
+  const [evidenceAssets, setEvidenceAssets] = useState<ImagePicker.ImagePickerAsset[]>([]);
+
+  // SweetAlert state
+  const [sweetAlert, setSweetAlert] = useState({
+    visible: false,
+    title: '',
+    message: '',
+    type: 'success' as 'success' | 'error' | 'info',
+  });
+
+  const technicalIssueOptions = useMemo(
+    () => [
+      'None',
+      'Starlink installation issue',
+      'Internet down (no connection)',
+      'Intermittent connection',
+      'Slow internet speed',
+      'High latency / unstable',
+      'Obstruction / no signal',
+      'Power issue',
+      'Cable / port issue',
+      'Router / Wi‑Fi issue',
+      'Account / activation issue',
+      'No equipment',
+      'Other',
+    ],
+    []
+  );
+
+  const issueDescriptionPlaceholder = useMemo(() => {
+    switch (technicalIssue) {
+      case 'None':
+        return 'Optional — provide details only if reporting an issue.';
+      case 'Starlink installation issue':
+        return 'Describe what step failed (mounting, dish alignment, activation, setup)...';
+      case 'Internet down (no connection)':
+        return 'Describe symptoms (no internet, offline light, app status) and what you tried...';
+      case 'Intermittent connection':
+        return 'Describe when it disconnects (time, weather, duration) and any patterns...';
+      case 'Slow internet speed':
+        return 'Describe measured speed, number of users, and time of day...';
+      case 'High latency / unstable':
+        return 'Describe latency spikes, dropouts, and any steps performed...';
+      case 'Obstruction / no signal':
+        return 'Describe obstruction sources (trees/buildings), signal status, and site conditions...';
+      case 'Power issue':
+        return 'Describe power source, outages, voltage concerns, and equipment behavior...';
+      case 'Cable / port issue':
+        return 'Describe cable condition, connectors, ports checked, and observed damage...';
+      case 'Router / Wi‑Fi issue':
+        return 'Describe Wi‑Fi symptoms (SSID missing, cannot connect, weak signal) and troubleshooting...';
+      case 'Account / activation issue':
+        return 'Describe account status, activation errors, and any messages shown in the app...';
+      case 'No equipment':
+        return 'List missing equipment (dish, router, cable, mount) and current site readiness...';
+      case 'Other':
+        return 'Describe the issue clearly with steps taken and current status...';
+      default:
+        return 'Describe what happened...';
+    }
+  }, [technicalIssue]);
 
   const coordinateText =
     site && site.latitude != null && site.longitude != null
@@ -27,14 +210,97 @@ export default function SiteDetails({ site, onBack, onViewOnMap }: SiteDetailsPr
       : 'Location not set';
 
   const workforceLabel =
-    site && site.membersCount != null
-      ? `${site.membersCount} Members`
-      : 'No data';
+    site && site.membersCount != null ? `${site.membersCount} Members` : 'No data';
+
+  const isFinished = site?.status === 'Finished';
+  const isActiveish = site?.status === 'Active' || site?.status === 'Pending';
+  const isPending = site?.status === 'Pending';
+  const isActive = site?.status === 'Active';
+  const isLeaderForThisSite = !!currentUserId && !!leaderId && currentUserId === leaderId;
+  const hasNoLeader = !leaderId;
+
+  // Helper to check if site has valid coordinates
+  const hasValidCoordinates = site?.latitude != null && site?.longitude != null;
+
+  // Handler for becoming leader and joining site (unchanged from original)
+  const handleBecomeLeaderAndJoin = async () => {
+    if (!site?.id || !currentUserId) return;
+    try {
+      setAcceptLoading(true);
+      // Assign current user as leader and set status to 'Pending'
+      const { error: siteUpdateError } = await supabase
+        .from('sites')
+        .update({ leader_id: currentUserId, status: 'Pending' })
+        .eq('id', site.id);
+      if (siteUpdateError) throw siteUpdateError;
+
+      // Update user's site_id
+      const { error: userUpdateError } = await supabase
+        .from('users')
+        .update({ site_id: site.id })
+        .eq('id', currentUserId);
+      if (userUpdateError) throw userUpdateError;
+
+      // Insert into group_members
+      try {
+        const { error: gmError } = await supabase
+          .from('group_members')
+          .insert([{ site_id: site.id, user_id: currentUserId }]);
+        if (gmError && (gmError as any).code !== '23505') {
+          console.warn('group_members insert failed:', gmError.message);
+        }
+      } catch (e) {
+        console.warn('Skipping group_members insert:', (e as any)?.message || String(e));
+      }
+
+      // Create new chat group
+      try {
+        const { error: chatError } = await supabase
+          .from('chat_groups')
+          .insert([
+            {
+              site_id: site.id,
+              name: site.name + ' Chat',
+              created_by: currentUserId,
+              created_at: new Date().toISOString(),
+            },
+          ]);
+        if (chatError) {
+          console.warn('chat_groups insert failed:', chatError.message);
+        }
+      } catch (e) {
+        console.warn('Skipping chat_groups insert:', (e as any)?.message || String(e));
+      }
+
+      setSweetAlert({
+        visible: true,
+        title: 'Success',
+        message: 'You are now the team leader and have joined the site. A chat group has been created.',
+        type: 'success',
+      });
+      onSiteUpdated?.('Pending');
+      onBack?.();
+    } catch (err: any) {
+      setSweetAlert({
+        visible: true,
+        title: 'Error',
+        message: err?.message || 'Failed to become leader. Please try again.',
+        type: 'error',
+      });
+    } finally {
+      setAcceptLoading(false);
+    }
+  };
 
   useEffect(() => {
-    const loadGroupInfo = async () => {
+    const loadTeamInfo = async () => {
       try {
         setLoadingGroupInfo(true);
+
+        // Reset per-site derived state to avoid showing stale info while loading.
+        setLeaderName(null);
+        setLeaderId(null);
+        setHasAccepted(false);
 
         if (!site || !site.id) {
           return;
@@ -46,135 +312,917 @@ export default function SiteDetails({ site, onBack, onViewOnMap }: SiteDetailsPr
         const userId = authData?.user?.id || null;
         setCurrentUserId(userId);
 
-        // Fetch group linked to this site (if any)
-        const { data: groupData, error: groupError } = await supabase
-          .from('groups')
-          .select('id, name, leader:leader_id ( full_name ), site_id')
-          .eq('site_id', site.id)
-          .maybeSingle();
+        // Always fetch user's site_id and archived_sitegroup_id
+        let userSiteId: string | null = null;
+        let userArchivedId: string | null = null;
+        if (userId) {
+          const { data: userRow, error: userError } = await supabase
+            .from('users')
+            .select('site_id, archived_sitegroup_id')
+            .eq('id', userId)
+            .maybeSingle();
 
-        if (!groupError && groupData) {
-          setGroupId(groupData.id);
-          setGroupName(groupData.name);
-          const leaderName = Array.isArray((groupData as any).leader)
-            ? (groupData as any).leader[0]?.full_name
-            : (groupData as any).leader?.full_name;
-          setGroupLeaderName(leaderName || null);
-
-          // If we have a logged in user, check whether they're already in this group
-          if (userId) {
-            const { data: userRow, error: userError } = await supabase
-              .from('users')
-              .select('group_id')
-              .eq('id', userId)
-              .maybeSingle();
-
-            if (!userError && userRow && userRow.group_id === groupData.id) {
-              setHasAccepted(true);
-            }
+          if (!userError) {
+            if (userRow?.site_id) userSiteId = String(userRow.site_id);
+            if (userRow?.archived_sitegroup_id) userArchivedId = String(userRow.archived_sitegroup_id);
           }
-        } else if (groupError && (groupError as any).code !== 'PGRST116') {
-          // Ignore "no rows" error, surface others
-          console.warn('Error loading group info:', groupError.message);
         }
+        setCurrentUserSiteId(userSiteId);
+        setCurrentUserArchivedId(userArchivedId);
+
+        // Determine whether the current user is a leader of any site.
+        if (userId) {
+          const { data: leaderRows, error: leaderErr } = await supabase
+            .from('sites')
+            .select('id')
+            .eq('leader_id', userId)
+            .limit(1);
+          if (!leaderErr && (leaderRows || []).length > 0) {
+            setIsUserLeaderAny(true);
+          } else {
+            setIsUserLeaderAny(false);
+          }
+        } else {
+          setIsUserLeaderAny(false);
+        }
+
+        // Fetch leader for this site: use archived_sitegroup for finished sites
+        const tableName = isFinished ? 'archived_sitegroup' : 'sites';
+        const { data: siteRow, error: siteErr } = await supabase
+          .from(tableName)
+          .select('leader_id')
+          .eq('id', site.id)
+          .maybeSingle();
+        if (siteErr) throw siteErr;
+
+        const nextLeaderId = siteRow?.leader_id ? String(siteRow.leader_id) : null;
+        setLeaderId(nextLeaderId);
+
+        if (nextLeaderId) {
+          try {
+            const { data: leaderRow, error: leaderErr } = await supabase
+              .from('users')
+              .select('full_name')
+              .eq('id', nextLeaderId)
+              .maybeSingle();
+            if (!leaderErr) setLeaderName((leaderRow?.full_name as string | null) || null);
+          } catch {
+            // ignore
+          }
+        }
+
+        // Determine whether current user already joined this site.
+        let isMember = false;
+        // 1) Check users.site_id (leader assignment)
+        if (!isFinished && userSiteId && String(userSiteId) === String(site.id)) {
+          isMember = true;
+        }
+        // 2) Check users.archived_sitegroup_id (finished site)
+        if (!isMember && isFinished && userArchivedId && String(userArchivedId) === String(site.id)) {
+          isMember = true;
+        }
+        // 3) Check group_members (best-effort)
+        if (!isMember && userId) {
+          try {
+            const gmQuery = supabase.from('group_members').select('id').eq('user_id', userId).limit(1);
+            if (!isFinished) {
+              gmQuery.eq('site_id', site.id as any);
+            } else {
+              gmQuery.eq('archived_sitegroup_id', site.id as any);
+            }
+            const { data: memberRow, error: memberErr } = await gmQuery;
+            if (!memberErr && (memberRow || []).length > 0) {
+              isMember = true;
+            }
+          } catch {
+            // ignore
+          }
+        }
+        // 4) Check accepted_sites (for active sites only)
+        if (!isMember && userId && !isFinished) {
+          try {
+            const { data: acceptedRow, error: acceptErr } = await supabase
+              .from('accepted_sites')
+              .select('id')
+              .eq('user_id', userId)
+              .eq('site_id', site.id)
+              .maybeSingle();
+            if (!acceptErr && acceptedRow) {
+              isMember = true;
+            }
+          } catch {
+            // ignore
+          }
+        }
+
+        setHasAccepted(isMember);
       } catch (err: any) {
-        console.warn('Failed to load group info:', err?.message || String(err));
+        console.warn('Failed to load team info:', err?.message || String(err));
       } finally {
         setLoadingGroupInfo(false);
       }
     };
 
-    loadGroupInfo();
+    loadTeamInfo();
   }, [site]);
 
-  const handleAcceptSite = async () => {
-    if (!currentUserId) {
-      Alert.alert('Not signed in', 'You need to be signed in to accept a site.');
+  // Load member info for slot management
+  useEffect(() => {
+    const loadMemberInfo = async () => {
+      if (!site?.id) {
+        setMemberInfo(null);
+        return;
+      }
+
+      setLoadingMemberInfo(true);
+      try {
+        const info = await getSiteMemberInfo(site.id);
+        setMemberInfo(info);
+      } catch (err) {
+        console.error('Failed to load member info:', err);
+        setMemberInfo(null);
+      } finally {
+        setLoadingMemberInfo(false);
+      }
+    };
+
+    loadMemberInfo();
+  }, [site?.id]);
+
+  // Load site members list
+  useEffect(() => {
+    const loadMembers = async () => {
+      if (!site?.id) {
+        setSiteMembers([]);
+        return;
+      }
+
+      setLoadingSiteMembers(true);
+      try {
+        const members = await getSiteMembers(site.id);
+        setSiteMembers(members);
+      } catch (err) {
+        console.error('Failed to load site members:', err);
+        setSiteMembers([]);
+      } finally {
+        setLoadingSiteMembers(false);
+      }
+    };
+
+    loadMembers();
+  }, [site?.id]);
+
+  useEffect(() => {
+    // Ask permission for selecting evidence photos.
+    (async () => {
+      try {
+        await ImagePicker.requestMediaLibraryPermissionsAsync();
+      } catch {
+        // ignore
+      }
+    })();
+  }, []);
+
+  const resetUpdateForm = () => {
+    setUpdateTriedSubmit(false);
+    setStarlinkSerial('');
+    setTechnicalIssue('');
+    setIssueDescription('');
+    setEvidenceAssets([]);
+  };
+
+  const validation = useMemo(() => {
+    const serial = starlinkSerial.trim();
+    const issue = technicalIssue.trim();
+    const desc = issueDescription.trim();
+    const evidenceCount = evidenceAssets.length;
+
+    const isNone = issue.toLowerCase() === 'none';
+
+    const serialError = serial.length === 0 ? 'Starlink serial is required.' : null;
+
+    let issueError: string | null = null;
+    let descError: string | null = null;
+    let evidenceError: string | null = null;
+
+    if (isNone) {
+      evidenceError = evidenceCount === 0 ? 'At least one evidence photo is required.' : null;
+    } else {
+      issueError = issue.length === 0 ? 'Technical issue is required.' : null;
+      descError = desc.length === 0 ? 'Issue description is required.' : null;
+    }
+
+    return {
+      serialError,
+      issueError,
+      descError,
+      evidenceError,
+      isValid: !serialError && !issueError && !descError && !evidenceError,
+    };
+  }, [starlinkSerial, technicalIssue, issueDescription, evidenceAssets.length]);
+
+  useEffect(() => {
+    (async () => {
+      if (!updateVisible || !site?.id) return;
+      try {
+        const { data, error } = await supabase
+          .from('sites')
+          .select('starlink_serial, technical_issue, issue_description, evidence_urls')
+          .eq('id', site.id)
+          .maybeSingle();
+        if (error) throw error;
+
+        setStarlinkSerial((data?.starlink_serial as string | null) || '');
+        setTechnicalIssue((data?.technical_issue as string | null) || '');
+        setIssueDescription((data?.issue_description as string | null) || '');
+
+        setEvidenceAssets([]);
+      } catch (e) {
+        // Prefill is best-effort
+      }
+    })();
+  }, [updateVisible, site?.id]);
+
+  useEffect(() => {
+    if ((technicalIssue || '').trim().toLowerCase() === 'none') {
+      setIssueDescription('');
+    }
+  }, [technicalIssue]);
+
+  const pickEvidencePhotos = async () => {
+    try {
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        quality: 0.85,
+        allowsMultipleSelection: true,
+        selectionLimit: 0,
+      });
+
+      if (result.canceled) return;
+      const assets = result.assets || [];
+      if (assets.length === 0) return;
+
+      setEvidenceAssets((prev) => {
+        const existingUris = new Set(prev.map((a) => a.uri));
+        const merged = [...prev];
+        for (const asset of assets) {
+          if (!existingUris.has(asset.uri)) merged.push(asset);
+        }
+        return merged;
+      });
+    } catch (e: any) {
+      Alert.alert('Error', e?.message || 'Failed to pick photos');
+    }
+  };
+
+  const uploadEvidenceAndFinish = async () => {
+    if (!site?.id) return;
+
+    if (!isLeaderForThisSite) {
+      setSweetAlert({
+        visible: true,
+        title: 'Not allowed',
+        message: 'Only the assigned leader can update and finish this site.',
+        type: 'error',
+      });
+      return;
+    }
+
+    const serial = starlinkSerial.trim();
+    const issue = technicalIssue.trim();
+    const isNone = issue.toLowerCase() === 'none';
+
+    setUpdateTriedSubmit(true);
+    if (!serial) {
+      setSweetAlert({
+        visible: true,
+        title: 'Validation',
+        message: 'Please provide the Starlink serial before submitting.',
+        type: 'error',
+      });
+      return;
+    }
+
+    if (isNone && evidenceAssets.length === 0) {
+      setSweetAlert({
+        visible: true,
+        title: 'Validation',
+        message: 'Please attach at least one evidence photo to finish this site.',
+        type: 'error',
+      });
+      return;
+    }
+
+    if (!isNone && (!issue || !issueDescription.trim())) {
+      setSweetAlert({
+        visible: true,
+        title: 'Validation',
+        message: 'Please complete the technical issue and description before submitting.',
+        type: 'error',
+      });
       return;
     }
 
     try {
-      setAcceptLoading(true);
+      setUpdateSubmitting(true);
 
-      let finalGroupId = groupId;
+      const { data: authData, error: authError } = await supabase.auth.getUser();
+      if (authError) throw authError;
+      const userId = authData?.user?.id;
+      if (!userId) throw new Error('Not signed in');
 
-      // If no group exists yet for this site, create one and set current user as leader
-      if (!finalGroupId) {
-        const { data: newGroup, error: createError } = await supabase
-          .from('groups')
-          .insert({
-            name: groupName || `${site?.name || 'Site'} Team`,
-            site_id: site?.id,
-            leader_id: currentUserId,
+      // Upload evidence photos
+      const uploadedUrls: string[] = [];
+      for (let i = 0; i < evidenceAssets.length; i++) {
+        const asset = evidenceAssets[i];
+        const manipulated = await ImageManipulator.manipulateAsync(asset.uri, [], {
+          compress: 0.85,
+          format: ImageManipulator.SaveFormat.JPEG,
+        });
+        const response = await fetch(manipulated.uri);
+        const blob = await response.blob();
+        const filePath = `${site.id}/${userId}/${Date.now()}_${i}.jpg`;
+        const { error: uploadError } = await supabase.storage
+          .from('site_evidence')
+          .upload(filePath, blob, { contentType: 'image/jpeg', upsert: true });
+        if (uploadError) throw uploadError;
+        const { data: urlData } = supabase.storage.from('site_evidence').getPublicUrl(filePath);
+        const publicUrl = urlData?.publicUrl;
+        if (!publicUrl) throw new Error('Failed to generate evidence URL');
+        uploadedUrls.push(publicUrl);
+      }
+
+      // Archive the site
+      const { data: siteRow, error: fetchError } = await supabase
+        .from('sites')
+        .select('*')
+        .eq('id', site.id)
+        .maybeSingle();
+      if (fetchError || !siteRow) throw fetchError || new Error('Site not found');
+
+      const nowIso = new Date().toISOString();
+      const archivedRow = {
+        ...siteRow,
+        status: 'Finished',
+        updated_at: nowIso,
+        finished_at: nowIso,
+        finished_by: userId,
+        starlink_serial: serial,
+        technical_issue: issue,
+        issue_description: issueDescription.trim(),
+        evidence_urls: uploadedUrls,
+      };
+
+      const { data: insertedArchived, error: insertError } = await supabase
+        .from('archived_sitegroup')
+        .insert([archivedRow])
+        .select('id')
+        .maybeSingle();
+      if (insertError) throw insertError;
+      const archivedId = (insertedArchived && insertedArchived.id) || site.id;
+
+      // Move messages
+      if (site && site.id) {
+        const { error: messagesUpdateError } = await supabase
+          .from('messages')
+          .update({
+            conversation_id: null,
+            site_id: null,
+            archived_sitegroup_id: archivedId,
           })
-          .select('id, name, leader:leader_id ( full_name )')
-          .single();
-
-        if (createError) throw createError;
-
-        finalGroupId = newGroup.id;
-        setGroupId(newGroup.id);
-        setGroupName(newGroup.name);
-        const leaderName = Array.isArray((newGroup as any).leader)
-          ? (newGroup as any).leader[0]?.full_name
-          : (newGroup as any).leader?.full_name;
-        setGroupLeaderName(leaderName || null);
+          .eq('site_id', site.id);
+        if (messagesUpdateError) throw messagesUpdateError;
       }
 
-      if (!finalGroupId) {
-        throw new Error('Unable to determine group id for this site');
-      }
+      // Update group_members
+      const { error: groupUpdateError } = await supabase
+        .from('group_members')
+        .update({ site_id: null, archived_sitegroup_id: archivedId })
+        .eq('site_id', site.id);
+      if (groupUpdateError) throw groupUpdateError;
 
-      // Persist membership: link the current user to the group
-      const { error: updateUserError } = await supabase
+      // Update users
+      const { error: userUpdateError } = await supabase
         .from('users')
-        .update({ group_id: finalGroupId })
-        .eq('id', currentUserId);
-      if (updateUserError) throw updateUserError;
+        .update({ site_id: null, archived_sitegroup_id: archivedId })
+        .eq('site_id', site.id);
+      if (userUpdateError) throw userUpdateError;
 
-      // Best-effort: insert membership row (if your DB has group_members)
-      try {
-        const { error: gmError } = await supabase
-          .from('group_members')
-          .insert([{ group_id: finalGroupId, user_id: currentUserId }]);
+      // Delete from sites
+      const { error: deleteError } = await supabase.from('sites').delete().eq('id', site.id);
+      if (deleteError) throw deleteError;
 
-        // Ignore duplicate row error if constraint exists
-        if (gmError && (gmError as any).code !== '23505') {
-          console.warn('group_members insert failed:', gmError.message);
-        }
-      } catch (e) {
-        // If table doesn't exist or RLS blocks it, don't block accept
-        console.warn('Skipping group_members insert:', (e as any)?.message || String(e));
-      }
-
-      setHasAccepted(true);
-      Alert.alert('Site accepted', 'You have joined this site team.');
+      setSweetAlert({
+        visible: true,
+        title: 'Site Finished',
+        message: 'The site has been successfully archived and removed from active sites.',
+        type: 'success',
+      });
+      setUpdateVisible(false);
+      resetUpdateForm();
+      onSiteUpdated?.('Finished');
+      onBack?.();
     } catch (err: any) {
-      Alert.alert('Error', err?.message || 'Failed to accept site. Please try again.');
+      setSweetAlert({
+        visible: true,
+        title: 'Error',
+        message: err?.message || 'Failed to update site',
+        type: 'error',
+      });
     } finally {
-      setAcceptLoading(false);
+      setUpdateSubmitting(false);
     }
   };
+
+  const submitIssueReport = async () => {
+    if (!site?.id) return;
+
+    if (!isLeaderForThisSite) {
+      setSweetAlert({
+        visible: true,
+        title: 'Not allowed',
+        message: 'Only the assigned leader can submit an issue report.',
+        type: 'error',
+      });
+      return;
+    }
+
+    const serial = starlinkSerial.trim();
+    const issue = technicalIssue.trim();
+    const desc = issueDescription.trim();
+
+    setUpdateTriedSubmit(true);
+
+    if (!serial || !issue || !desc) {
+      setSweetAlert({
+        visible: true,
+        title: 'Validation',
+        message: 'Please provide Starlink serial, technical issue and description.',
+        type: 'error',
+      });
+      return;
+    }
+
+    try {
+      setUpdateSubmitting(true);
+
+      const { data: authData, error: authError } = await supabase.auth.getUser();
+      if (authError) throw authError;
+      const userId = authData?.user?.id;
+      if (!userId) throw new Error('Not signed in');
+
+      const uploadedUrls: string[] = [];
+      for (let i = 0; i < evidenceAssets.length; i++) {
+        const asset = evidenceAssets[i];
+        const manipulated = await ImageManipulator.manipulateAsync(asset.uri, [], {
+          compress: 0.85,
+          format: ImageManipulator.SaveFormat.JPEG,
+        });
+        const response = await fetch(manipulated.uri);
+        const blob = await response.blob();
+        const filePath = `${site.id}/${userId}/${Date.now()}_${i}.jpg`;
+        const { error: uploadError } = await supabase.storage
+          .from('site_evidence')
+          .upload(filePath, blob, { contentType: 'image/jpeg', upsert: true });
+        if (uploadError) throw uploadError;
+        const { data: urlData } = supabase.storage.from('site_evidence').getPublicUrl(filePath);
+        const publicUrl = urlData?.publicUrl;
+        if (publicUrl) uploadedUrls.push(publicUrl);
+      }
+
+      const updatePayload: any = {
+        starlink_serial: serial,
+        technical_issue: issue,
+        issue_description: desc,
+        updated_at: new Date().toISOString(),
+      };
+      if (uploadedUrls.length > 0) updatePayload.evidence_urls = uploadedUrls;
+
+      const { error: updateErr } = await supabase.from('sites').update(updatePayload).eq('id', site.id);
+      if (updateErr) throw updateErr;
+
+      setSweetAlert({
+        visible: true,
+        title: 'Issue Submitted',
+        message: 'The technical issue has been submitted to the system.',
+        type: 'success',
+      });
+      setUpdateVisible(false);
+      resetUpdateForm();
+      onSiteUpdated?.();
+    } catch (err: any) {
+      setSweetAlert({
+        visible: true,
+        title: 'Error',
+        message: err?.message || 'Failed to submit issue',
+        type: 'error',
+      });
+    } finally {
+      setUpdateSubmitting(false);
+    }
+  };
+
+  // Updated handleAcceptSite: records acceptance in accepted_sites table, enforces limit of 5, allows leaders
+  const handleAcceptSite = async () => {
+    if (!site?.id) return;
+
+    if (site?.status === 'Finished') {
+      setSweetAlert({
+        visible: true,
+        title: 'Not available',
+        message: 'This site is already finished.',
+        type: 'error',
+      });
+      return;
+    }
+
+    if (!currentUserId) {
+      setSweetAlert({
+        visible: true,
+        title: 'Not signed in',
+        message: 'You need to be signed in to accept a site.',
+        type: 'error',
+      });
+      return;
+    }
+
+    // Check if the user already accepted this specific site (via accepted_sites)
+    const { data: alreadyAccepted, error: checkError } = await supabase
+      .from('accepted_sites')
+      .select('id')
+      .eq('user_id', currentUserId)
+      .eq('site_id', site.id)
+      .maybeSingle();
+
+    if (alreadyAccepted) {
+      setSweetAlert({
+        visible: true,
+        title: 'Already accepted',
+        message: 'You have already joined this site.',
+        type: 'info',
+      });
+      return;
+    }
+
+    // Enforce maximum of 5 accepted active sites
+    const acceptedCount = await getAcceptedSitesCount(currentUserId);
+    if (acceptedCount >= 5) {
+      setSweetAlert({
+        visible: true,
+        title: 'Limit reached',
+        message: 'You can accept at most 5 sites. Please leave another site before accepting a new one.',
+        type: 'error',
+      });
+      return;
+    }
+
+    // Only pending sites with a leader are joinable
+    if (!isPending) {
+      setSweetAlert({
+        visible: true,
+        title: 'Not available',
+        message: 'This site cannot be accepted at this time.',
+        type: 'error',
+      });
+      return;
+    }
+
+    // Ensure a leader is assigned to this site
+    const { data: siteRow, error: siteErr } = await supabase
+      .from('sites')
+      .select('leader_id')
+      .eq('id', site.id)
+      .maybeSingle();
+    if (siteErr) throw siteErr;
+    const existingLeaderId = siteRow?.leader_id ? String(siteRow.leader_id) : null;
+    if (!existingLeaderId) {
+      setSweetAlert({
+        visible: true,
+        title: 'Not available',
+        message: 'This site has no leader assigned yet.',
+        type: 'error',
+      });
+      return;
+    }
+
+    setLeaderId(existingLeaderId);
+    try {
+      const { data: leaderRow } = await supabase
+        .from('users')
+        .select('full_name')
+        .eq('id', existingLeaderId)
+        .maybeSingle();
+      setLeaderName((leaderRow?.full_name as string | null) || null);
+    } catch {
+      // ignore
+    }
+
+    // Check slot availability (using group_members)
+    const slotCheckResult = await joinSiteWithSlotManagement(site.id, currentUserId);
+    if (!slotCheckResult.success) {
+      setSweetAlert({
+        visible: true,
+        title: 'Cannot Join',
+        message: slotCheckResult.message,
+        type: 'error',
+      });
+      const updatedInfo = await getSiteMemberInfo(site.id);
+      setMemberInfo(updatedInfo);
+      return;
+    }
+
+    // --- Record acceptance in accepted_sites table ---
+    const { error: acceptError } = await supabase
+  .from('accepted_sites')
+  .insert([{ user_id: currentUserId, site_id: site.id, archived_sitegroup_id: null }]);
+    if (acceptError) {
+      console.error('Failed to record acceptance:', acceptError);
+      setSweetAlert({
+        visible: true,
+        title: 'Error',
+        message: 'Failed to accept site. Please try again.',
+        type: 'error',
+      });
+      return;
+    }
+
+    // Also add to group_members for chat, member lists, and slot counting
+    try {
+      const { error: gmError } = await supabase
+        .from('group_members')
+        .insert([{ site_id: site.id, user_id: currentUserId }]);
+      if (gmError && (gmError as any).code !== '23505') {
+        console.warn('group_members insert failed:', gmError.message);
+      }
+    } catch (e) {
+      console.warn('Skipping group_members insert:', (e as any)?.message || String(e));
+    }
+
+    // Notify the leader (best effort)
+    try {
+      await notifyLeaderSiteAccepted({
+        leaderId: existingLeaderId,
+        siteName: site?.name || 'Unnamed site',
+        acceptedByUserId: currentUserId,
+      });
+    } catch (e) {
+      console.warn('notifyLeaderSiteAccepted failed:', (e as any)?.message || String(e));
+    }
+
+    // Check if site is now full (based on members_count vs group_members count)
+    const siteNowFull = await checkAndMarkSiteAsFull(site.id);
+    if (siteNowFull) {
+      console.log('Site is now full - status updated to Pending');
+    }
+
+    setHasAccepted(true);
+    const successMessage = slotCheckResult.siteIsFull
+      ? 'Site accepted. This site is now full!'
+      : slotCheckResult.message;
+    setSweetAlert({
+      visible: true,
+      title: 'Site accepted',
+      message: successMessage,
+      type: 'success',
+    });
+    onSiteUpdated?.('Pending');
+    onBack?.();
+  };
+
+  const isNoneSelected = (technicalIssue || '').trim().toLowerCase() === 'none';
 
   return (
     <View className="flex-1 bg-white">
       <StatusBar barStyle="dark-content" />
+
+      <SweetAlert
+        visible={sweetAlert.visible}
+        title={sweetAlert.title}
+        message={sweetAlert.message}
+        type={sweetAlert.type}
+        onClose={() => setSweetAlert((prev) => ({ ...prev, visible: false }))}
+      />
+
+      {/* Update Modal */}
+      <Modal
+        visible={updateVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => {
+          if (updateSubmitting) return;
+          setUpdateVisible(false);
+        }}>
+        <View className="flex-1 items-center justify-center bg-black/50 p-4">
+          <View className="w-full max-w-md rounded-3xl bg-white shadow-2xl">
+            <View className="flex-row items-center justify-between border-b border-gray-100 px-5 py-5">
+              <View>
+                <Text className="text-2xl font-extrabold text-gray-900">Update Site</Text>
+                <Text className="mt-1 text-sm text-gray-500">
+                  Fill the required details to finish this site.
+                </Text>
+              </View>
+              <TouchableOpacity
+                disabled={updateSubmitting}
+                className="h-9 w-9 items-center justify-center rounded-full bg-gray-100"
+                onPress={() => setUpdateVisible(false)}>
+                <Ionicons name="close" size={18} color="#111827" />
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView
+              className="max-h-[70vh] px-5 py-2"
+              showsVerticalScrollIndicator={false}
+              bounces={false}>
+              <View className="mb-5">
+                <Text className="text-sm font-semibold text-gray-700">Starlink Serial</Text>
+                <Text className="mt-0.5 text-xs text-gray-500">Required</Text>
+                <TextInput
+                  value={starlinkSerial}
+                  onChangeText={setStarlinkSerial}
+                  placeholder="Enter starlink serial"
+                  placeholderTextColor="#9ca3af"
+                  autoCapitalize="characters"
+                  className="mt-2 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 font-medium text-gray-900"
+                />
+                {!!updateTriedSubmit && !!validation.serialError && (
+                  <Text className="mt-1 text-xs text-red-600">{validation.serialError}</Text>
+                )}
+              </View>
+
+              <View className="mb-5">
+                <Text className="text-sm font-semibold text-gray-700">Technical Issue</Text>
+                <Text className="mt-0.5 text-xs text-gray-500">
+                  {isNoneSelected ? 'Optional' : 'Required'}
+                </Text>
+                <TouchableOpacity
+                  disabled={updateSubmitting}
+                  onPress={() => setTechnicalIssuePickerVisible(true)}
+                  className="mt-2 flex-row items-center justify-between rounded-xl border border-gray-200 bg-gray-50 px-4 py-3">
+                  <Text
+                    className={`flex-1 font-medium ${
+                      technicalIssue ? 'text-gray-900' : 'text-gray-400'
+                    }`}>
+                    {technicalIssue || 'Select technical issue'}
+                  </Text>
+                  <Ionicons name="chevron-down" size={20} color="#6b7280" />
+                </TouchableOpacity>
+                {!!updateTriedSubmit && !!validation.issueError && (
+                  <Text className="mt-1 text-xs text-red-600">{validation.issueError}</Text>
+                )}
+              </View>
+
+              {!isNoneSelected && (
+                <View className="mb-5">
+                  <Text className="text-sm font-semibold text-gray-700">Issue Description</Text>
+                  <Text className="mt-0.5 text-xs text-gray-500">Required</Text>
+                  <TextInput
+                    value={issueDescription}
+                    onChangeText={setIssueDescription}
+                    placeholder={issueDescriptionPlaceholder}
+                    placeholderTextColor="#9ca3af"
+                    multiline
+                    numberOfLines={4}
+                    className="mt-2 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 font-medium text-gray-900"
+                    style={{ textAlignVertical: 'top', minHeight: 100 }}
+                  />
+                  {!!updateTriedSubmit && !!validation.descError && (
+                    <Text className="mt-1 text-xs text-red-600">{validation.descError}</Text>
+                  )}
+                </View>
+              )}
+
+              <View className="mb-5">
+                <View className="flex-row items-center justify-between">
+                  <View>
+                    <Text className="text-sm font-semibold text-gray-700">Evidence Photos</Text>
+                    <Text className="mt-0.5 text-xs text-gray-500">
+                      {isNoneSelected ? 'Required' : 'Optional'} • {evidenceAssets.length} selected
+                    </Text>
+                  </View>
+                  <TouchableOpacity
+                    disabled={updateSubmitting}
+                    onPress={pickEvidencePhotos}
+                    className="rounded-full border border-green-200 bg-green-50 px-4 py-2 active:scale-95">
+                    <Text className="text-sm font-medium text-green-700">Add Photos</Text>
+                  </TouchableOpacity>
+                </View>
+
+                {evidenceAssets.length > 0 ? (
+                  <View className="mt-3 flex-row flex-wrap gap-2">
+                    {evidenceAssets.map((asset, idx) => (
+                      <View key={asset.uri + idx} className="relative">
+                        <Image
+                          source={{ uri: asset.uri }}
+                          className="h-20 w-20 rounded-xl border border-gray-200 bg-gray-50"
+                        />
+                        <TouchableOpacity
+                          disabled={updateSubmitting}
+                          onPress={() =>
+                            setEvidenceAssets((prev) => prev.filter((a) => a.uri !== asset.uri))
+                          }
+                          className="absolute -right-2 -top-2 h-6 w-6 items-center justify-center rounded-full border border-gray-200 bg-white shadow-sm">
+                          <Ionicons name="close" size={12} color="#111827" />
+                        </TouchableOpacity>
+                      </View>
+                    ))}
+                  </View>
+                ) : (
+                  <View className="mt-3 flex-row items-center justify-center rounded-xl border border-dashed border-gray-300 bg-gray-50 py-6">
+                    <Ionicons name="images-outline" size={20} color="#9ca3af" />
+                    <Text className="ml-2 text-xs text-gray-500">No photos selected</Text>
+                  </View>
+                )}
+
+                {!!updateTriedSubmit && !!validation.evidenceError && (
+                  <Text className="mt-2 text-xs text-red-600">{validation.evidenceError}</Text>
+                )}
+              </View>
+            </ScrollView>
+
+            <View className="border-t border-gray-100 px-5 pb-6 pt-4">
+              <TouchableOpacity
+                disabled={updateSubmitting || !validation.isValid}
+                onPress={isNoneSelected ? uploadEvidenceAndFinish : submitIssueReport}
+                className={`w-full items-center justify-center rounded-xl px-4 py-3 ${
+                  updateSubmitting || !validation.isValid
+                    ? 'bg-gray-300'
+                    : 'bg-green-500 active:scale-95'
+                }`}>
+                {updateSubmitting ? (
+                  <ActivityIndicator color="#ffffff" />
+                ) : (
+                  <Text
+                    className={`text-base font-bold ${
+                      updateSubmitting || !validation.isValid ? 'text-gray-600' : 'text-white'
+                    }`}>
+                    {isNoneSelected ? 'Submit & Finish' : 'Submit Issue'}
+                  </Text>
+                )}
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Technical Issue Picker Modal */}
+      <Modal
+        visible={technicalIssuePickerVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setTechnicalIssuePickerVisible(false)}>
+        <View className="flex-1 items-center justify-center bg-black/40 p-6">
+          <View className="w-full max-w-sm overflow-hidden rounded-3xl border border-gray-200 bg-white">
+            <View className="flex-row items-center justify-between border-b border-gray-100 bg-white px-5 py-4">
+              <Text className="text-base font-extrabold text-gray-900">Select Technical Issue</Text>
+              <TouchableOpacity
+                className="h-9 w-9 items-center justify-center rounded-2xl bg-gray-100"
+                onPress={() => setTechnicalIssuePickerVisible(false)}>
+                <Ionicons name="close" size={16} color="#111827" />
+              </TouchableOpacity>
+            </View>
+            <ScrollView className="max-h-72" showsVerticalScrollIndicator={false}>
+              {technicalIssueOptions.map((opt) => {
+                const selected = technicalIssue === opt;
+                return (
+                  <TouchableOpacity
+                    key={opt}
+                    onPress={() => {
+                      setTechnicalIssue(opt);
+                      setTechnicalIssuePickerVisible(false);
+                    }}
+                    className={`flex-row items-center border-b border-gray-100 px-5 py-4 ${
+                      selected ? 'bg-green-50' : 'bg-white'
+                    }`}>
+                    <Text
+                      className={`flex-1 font-semibold ${
+                        selected ? 'text-green-700' : 'text-gray-900'
+                      }`}>
+                      {opt}
+                    </Text>
+                    {selected ? <Ionicons name="checkmark" size={18} color="#10b981" /> : null}
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Main content */}
       {!site ? (
-        <View className="flex-1 bg-white items-center justify-center">
+        <View className="flex-1 items-center justify-center bg-white">
           <TouchableOpacity
             onPress={onBack}
-            className="mb-4 rounded-full bg-green-50 px-4 py-2 border border-green-100"
-          >
-            <Text className="text-green-600 font-semibold">Back to Sites</Text>
+            className="mb-4 rounded-full border border-green-100 bg-green-50 px-4 py-2">
+            <Text className="font-semibold text-green-600">Back to Sites</Text>
           </TouchableOpacity>
-          <Text className="text-gray-500 font-semibold">No site selected</Text>
+          <Text className="font-semibold text-gray-500">No site selected</Text>
         </View>
       ) : (
         <>
           <ScrollView className="flex-1" showsVerticalScrollIndicator={false}>
-            {/* Top hero section with live map */}
-            <View className="rounded-b-3xl overflow-hidden border-b border-green-100 bg-green-50">
-              <View className="h-64 w-full">
+            {hasValidCoordinates ? (
+              <View className="relative h-64 w-full">
                 <SiteLocationMap
                   latitude={site.latitude}
                   longitude={site.longitude}
@@ -183,129 +1231,221 @@ export default function SiteDetails({ site, onBack, onViewOnMap }: SiteDetailsPr
                   onBack={onBack}
                 />
               </View>
-              <View className="absolute top-12 left-6 right-6 flex-row items-center justify-between">
-                <Text className="text-base font-semibold text-gray-900 bg-white bg-opacity-80 px-3 py-1 rounded-full">
-                  Site Information
-                </Text>
-                <View className="w-10" />
+            ) : (
+              <View className="h-64 w-full items-center justify-center bg-gray-100">
+                <Ionicons name="location-outline" size={48} color="#9ca3af" />
+                <Text className="mt-2 text-sm text-gray-500">Location not available</Text>
+                <Text className="text-xs text-gray-400">No coordinates provided for this site</Text>
               </View>
-              <TouchableOpacity
-                onPress={onViewOnMap}
-                className="absolute bottom-6 right-6 rounded-full bg-white px-4 py-1.5 border border-green-100 shadow-sm"
-              >
-                <Text className="text-xs font-semibold text-green-600 tracking-widest">VIEW ON MAP</Text>
-              </TouchableOpacity>
-            </View>
+            )}
 
-            {/* Site basic info */}
             <View className="px-6 pt-6">
-              {!!onBack && (
-                <TouchableOpacity
-                  onPress={onBack}
-                  className="self-start mb-4 rounded-full bg-green-50 px-4 py-2 border border-green-100"
-                >
-                  <Text className="text-green-600 font-semibold">Back to Sites</Text>
-                </TouchableOpacity>
+              <Text className="text-2xl font-bold text-gray-900">{site.name}</Text>
+              {site.companyName && (
+                <Text className="mt-1 text-sm text-gray-500">{site.companyName}</Text>
               )}
-              <Text className="text-2xl font-extrabold text-gray-900">{site.name}</Text>
-              {site.companyName && <Text className="text-base text-gray-500 mt-1">{site.companyName}</Text>}
             </View>
 
-            {/* Detail cards */}
-            <View className="px-6 pt-6 pb-24">
-              {/* Branch card */}
-              <View className="bg-white rounded-3xl p-4 mb-4 shadow-sm border border-gray-100 flex-row items-center">
-                <View className="w-10 h-10 rounded-2xl bg-green-50 items-center justify-center mr-4">
-                  <Ionicons name="git-branch-outline" size={22} color="#10b981" />
-                </View>
-                <View className="flex-1">
-                  <Text className="text-[10px] font-semibold text-gray-400 tracking-widest">MAIN BRANCH</Text>
-                  <Text className="text-base font-semibold text-gray-900 mt-1">{site.branchName || 'N/A'}</Text>
+            <View className="mx-6 mt-6 rounded-xl border border-gray-100 bg-white">
+              <View className="flex-row items-center border-b border-gray-100 p-4">
+                <Ionicons name="business-outline" size={20} color="#6b7280" />
+                <View className="ml-3 flex-1">
+                  <Text className="text-xs text-gray-500">Branch</Text>
+                  <Text className="text-base font-medium text-gray-900">
+                    {site.branchName || 'Not specified'}
+                  </Text>
                 </View>
               </View>
 
-              {/* Workforce card */}
-              <View className="bg-white rounded-3xl p-4 mb-4 shadow-sm border border-gray-100 flex-row items-center">
-                <View className="w-10 h-10 rounded-2xl bg-green-50 items-center justify-center mr-4">
-                  <Ionicons name="people-outline" size={22} color="#10b981" />
-                </View>
-                <View className="flex-1">
-                  <Text className="text-[10px] font-semibold text-gray-400 tracking-widest">SITE WORKFORCE</Text>
-                  <Text className="text-base font-semibold text-gray-900 mt-1">{workforceLabel}</Text>
+              <View className="flex-row items-center border-b border-gray-100 p-4">
+                <Ionicons name="people-outline" size={20} color="#6b7280" />
+                <View className="ml-3 flex-1">
+                  <Text className="text-xs text-gray-500">Workforce</Text>
+                  <Text className="text-base font-medium text-gray-900">{workforceLabel}</Text>
                 </View>
               </View>
 
-              {/* Leader card */}
-              <View className="bg-white rounded-3xl p-4 mb-4 shadow-sm border border-gray-100 flex-row items-center">
-                <View className="w-10 h-10 rounded-2xl bg-green-50 items-center justify-center mr-4">
-                  <Ionicons name="person-circle-outline" size={22} color="#10b981" />
-                </View>
-                <View className="flex-1">
-                  <Text className="text-[10px] font-semibold text-gray-400 tracking-widest">TEAM LEADER</Text>
-                  {loadingGroupInfo ? (
-                    <View className="flex-row items-center mt-1">
-                      <ActivityIndicator size="small" color="#10b981" />
-                      <Text className="ml-2 text-xs text-gray-500">Loading leader...</Text>
+              {memberInfo && (
+                <View className={`flex-row items-center border-b border-gray-100 p-4 ${memberInfo.isFull ? 'bg-red-50' : 'bg-green-50'}`}>
+                  <Ionicons
+                    name={memberInfo.isFull ? 'close-circle-outline' : 'checkmark-circle-outline'}
+                    size={20}
+                    color={memberInfo.isFull ? '#dc2626' : '#10b981'}
+                  />
+                  <View className="ml-3 flex-1">
+                    <Text className="text-xs text-gray-500">Member Slots</Text>
+                    <View className="flex-row items-center justify-between">
+                      <Text className="text-base font-medium text-gray-900">
+                        {memberInfo.maxMembers !== null
+                          ? `${memberInfo.currentMembers} / ${memberInfo.maxMembers}`
+                          : 'No limit'}
+                      </Text>
+                      {memberInfo.maxMembers !== null && (
+                        <Text className={`text-xs font-semibold ${memberInfo.isFull ? 'text-red-600' : 'text-green-600'}`}>
+                          {memberInfo.isFull
+                            ? 'FULL'
+                            : `${memberInfo.availableSlots} slot${memberInfo.availableSlots !== 1 ? 's' : ''} left`}
+                        </Text>
+                      )}
                     </View>
+                  </View>
+                </View>
+              )}
+
+              {loadingMemberInfo && !memberInfo && (
+                <View className="flex-row items-center border-b border-gray-100 p-4">
+                  <ActivityIndicator size="small" color="#10b981" />
+                  <View className="ml-3 flex-1">
+                    <Text className="text-xs text-gray-500">Member Slots</Text>
+                    <Text className="text-sm text-gray-500">Loading slot information...</Text>
+                  </View>
+                </View>
+              )}
+
+              <View className="flex-row items-center border-b border-gray-100 p-4">
+                <Ionicons name="person-circle-outline" size={20} color="#6b7280" />
+                <View className="ml-3 flex-1">
+                  <Text className="text-xs text-gray-500">Team Leader</Text>
+                  {loadingGroupInfo ? (
+                    <ActivityIndicator size="small" color="#10b981" />
                   ) : (
-                    <Text className="text-base font-semibold text-gray-900 mt-1">
-                      {groupLeaderName || 'No leader assigned'}
+                    <Text className="text-base font-medium text-gray-900">
+                      {leaderName || 'No leader assigned'}
                     </Text>
                   )}
                 </View>
               </View>
 
-              {/* Status card */}
-              <View className="bg-white rounded-3xl p-4 mb-4 shadow-sm border border-gray-100 flex-row items-center">
-                <View className="w-10 h-10 rounded-2xl bg-green-50 items-center justify-center mr-4">
-                  <Ionicons
-                    name={site.status === 'active' ? 'checkmark-circle-outline' : 'alert-circle-outline'}
-                    size={22}
-                    color={site.status === 'active' ? '#22c55e' : '#9ca3af'}
-                  />
-                </View>
-                <View className="flex-1">
-                  <Text className="text-[10px] font-semibold text-gray-400 tracking-widest">SITE STATUS</Text>
-                  <Text
-                    className={`text-base font-semibold mt-1 ${
-                      site.status === 'active' ? 'text-green-600' : 'text-gray-500'
-                    }`}
-                  >
-                    {site.status === 'active' ? 'Active' : 'Inactive'}
+              <View className="flex-row items-center border-b border-gray-100 p-4">
+                <Ionicons
+                  name={isFinished ? 'checkmark-circle-outline' : 'alert-circle-outline'}
+                  size={20}
+                  color={isFinished ? '#9ca3af' : '#10b981'}
+                />
+                <View className="ml-3 flex-1">
+                  <Text className="text-xs text-gray-500">Status</Text>
+                  <Text className={`text-base font-medium ${isFinished ? 'text-gray-500' : 'text-green-600'}`}>
+                    {site.status}
                   </Text>
                 </View>
               </View>
 
-              {/* Coordinates card */}
-              <View className="bg-white rounded-3xl p-4 shadow-sm border border-gray-100 flex-row items-center">
-                <View className="w-10 h-10 rounded-2xl bg-green-50 items-center justify-center mr-4">
-                  <Ionicons name="location-outline" size={22} color="#10b981" />
-                </View>
-                <View className="flex-1">
-                  <Text className="text-[10px] font-semibold text-gray-400 tracking-widest">COORDINATES</Text>
-                  <Text className="text-base font-semibold text-gray-900 mt-1">{coordinateText}</Text>
+              <View className="flex-row items-center p-4">
+                <Ionicons name="location-outline" size={20} color="#6b7280" />
+                <View className="ml-3 flex-1">
+                  <Text className="text-xs text-gray-500">Coordinates</Text>
+                  <Text className="text-base font-medium text-gray-900">{coordinateText}</Text>
                 </View>
               </View>
             </View>
+
+            <View className="mx-6 mt-6 rounded-xl border border-gray-100 bg-white p-4">
+              <View className="mb-3 flex-row items-center">
+                <Ionicons name="people-outline" size={20} color="#3b82f6" />
+                <Text className="ml-2 text-base font-semibold text-gray-900">Site Members</Text>
+                <Text className="ml-auto text-sm text-gray-500">
+                  {siteMembers.length} {siteMembers.length === 1 ? 'Member' : 'Members'}
+                </Text>
+              </View>
+
+              {loadingSiteMembers ? (
+                <View className="items-center justify-center py-4">
+                  <ActivityIndicator size="small" color="#3b82f6" />
+                </View>
+              ) : siteMembers.length === 0 ? (
+                <Text className="py-4 text-center text-sm text-gray-500">No members joined yet</Text>
+              ) : (
+                <View>
+                  {siteMembers.map((member, index) => (
+                    <View
+                      key={member.id}
+                      className={`flex-row items-center py-3 ${index < siteMembers.length - 1 ? 'border-b border-gray-50' : ''}`}>
+                      <View className="h-8 w-8 items-center justify-center rounded-full bg-blue-100">
+                        {member.profilePictureUrl ? (
+                          <Image source={{ uri: member.profilePictureUrl }} className="h-8 w-8 rounded-full" />
+                        ) : (
+                          <Ionicons name="person" size={16} color="#3b82f6" />
+                        )}
+                      </View>
+                      <View className="ml-3 flex-1">
+                        <Text className="font-semibold text-gray-900">{member.fullName}</Text>
+                        <Text className="text-xs text-gray-500">{member.email}</Text>
+                        {member.phoneNumber && (
+                          <Text className="mt-0.5 text-xs text-gray-500">{member.phoneNumber}</Text>
+                        )}
+                      </View>
+                      <View className="rounded-full bg-blue-50 px-2 py-1">
+                        <Text className="text-xs font-semibold text-blue-600 capitalize">
+                          {member.role}
+                        </Text>
+                      </View>
+                    </View>
+                  ))}
+                </View>
+              )}
+            </View>
+
+            <View className="h-24" />
           </ScrollView>
 
-          {/* Accept Site button fixed at bottom */}
-          <View className="absolute bottom-0 left-0 right-0 bg-white border-t border-gray-200 px-6 py-4">
-            <TouchableOpacity
-              onPress={handleAcceptSite}
-              disabled={acceptLoading || hasAccepted}
-              className={`w-full items-center justify-center rounded-2xl px-4 py-3 ${
-                hasAccepted ? 'bg-gray-300' : 'bg-green-500 active:scale-95'
-              }`}
-            >
-              {acceptLoading ? (
-                <ActivityIndicator color="#ffffff" />
-              ) : (
-                <Text className={`text-base font-bold ${hasAccepted ? 'text-gray-600' : 'text-white'}`}>
-                  {hasAccepted ? 'Site Accepted' : 'Accept Site'}
-                </Text>
-              )}
-            </TouchableOpacity>
+          {/* Fixed Action Button */}
+          <View className="absolute bottom-0 left-0 right-0 border-t border-gray-200 bg-white px-6 py-4">
+            {isFinished ? (
+              <TouchableOpacity
+                disabled
+                className="w-full items-center justify-center rounded-xl bg-gray-300 py-3">
+                <Text className="text-base font-bold text-gray-600">Site Finished</Text>
+              </TouchableOpacity>
+            ) : isActive && hasNoLeader ? (
+              <TouchableOpacity
+                onPress={handleBecomeLeaderAndJoin}
+                disabled={acceptLoading}
+                className={`w-full items-center justify-center rounded-xl py-3 ${
+                  acceptLoading ? 'bg-gray-300' : 'bg-green-500 active:scale-95'
+                }`}>
+                {acceptLoading ? (
+                  <ActivityIndicator color="#ffffff" />
+                ) : (
+                  <Text className="text-base font-bold text-white">Become Team Leader & Join Site</Text>
+                )}
+              </TouchableOpacity>
+            ) : isPending && isLeaderForThisSite ? (
+              <TouchableOpacity
+                onPress={() => setUpdateVisible(true)}
+                className="w-full items-center justify-center rounded-xl bg-green-500 py-3 active:scale-95">
+                <Text className="text-base font-bold text-white">Update Site</Text>
+              </TouchableOpacity>
+            ) : isPending ? (
+              <TouchableOpacity
+                onPress={handleAcceptSite}
+                disabled={acceptLoading || hasAccepted || memberInfo?.isFull}
+                className={`w-full items-center justify-center rounded-xl py-3 ${
+                  hasAccepted || memberInfo?.isFull ? 'bg-gray-300' : 'bg-green-500 active:scale-95'
+                }`}>
+                {acceptLoading ? (
+                  <ActivityIndicator color="#ffffff" />
+                ) : (
+                  <Text
+                    className={`text-base font-bold ${
+                      hasAccepted || memberInfo?.isFull ? 'text-gray-600' : 'text-white'
+                    }`}>
+                    {memberInfo?.isFull ? 'Site is Full' : hasAccepted ? 'Joined' : 'Accept & Join'}
+                  </Text>
+                )}
+              </TouchableOpacity>
+            ) : isActive ? (
+              <TouchableOpacity
+                disabled
+                className="w-full items-center justify-center rounded-xl bg-gray-300 py-3">
+                <Text className="text-base font-bold text-gray-600">Waiting for leader assignment</Text>
+              </TouchableOpacity>
+            ) : (
+              <TouchableOpacity
+                disabled
+                className="w-full items-center justify-center rounded-xl bg-gray-300 py-3">
+                <Text className="text-base font-bold text-gray-600">Pending (Leader only)</Text>
+              </TouchableOpacity>
+            )}
           </View>
         </>
       )}

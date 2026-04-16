@@ -1,4 +1,4 @@
-﻿# WalkieTalkie
+# WalkieTalkie
 
 A mobile workforce management platform that enables real-time communication, location tracking, and administrative oversight for distributed employee teams.
 

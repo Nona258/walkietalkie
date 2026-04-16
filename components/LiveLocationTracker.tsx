@@ -13,7 +13,11 @@ type Props = {
 export default function LiveLocationTracker({ enabled, userId }: Props) {
   const locationSubRef = useRef<Location.LocationSubscription | null>(null);
   const webWatchIdRef = useRef<number | null>(null);
-  const lastSentRef = useRef<{ at: number; lat: number | null; lng: number | null }>({ at: 0, lat: null, lng: null });
+  const lastSentRef = useRef<{ at: number; lat: number | null; lng: number | null }>({
+    at: 0,
+    lat: null,
+    lng: null,
+  });
   const lastCoordsRef = useRef<{ lat: number; lng: number } | null>(null);
   const lastConnectivityRef = useRef<boolean | null>(null);
 
@@ -38,7 +42,11 @@ export default function LiveLocationTracker({ enabled, userId }: Props) {
     locationSubRef.current = null;
 
     try {
-      if (webWatchIdRef.current !== null && Platform.OS === 'web' && typeof navigator !== 'undefined') {
+      if (
+        webWatchIdRef.current !== null &&
+        Platform.OS === 'web' &&
+        typeof navigator !== 'undefined'
+      ) {
         // webWatchIdRef may hold either a geolocation.watchPosition id or a setInterval id
         try {
           navigator.geolocation.clearWatch(webWatchIdRef.current as number);
@@ -68,6 +76,7 @@ export default function LiveLocationTracker({ enabled, userId }: Props) {
 
   const syncUserLocation = useCallback(
     async (lat: number, lng: number, opts?: { status?: string; force?: boolean }) => {
+      console.log('[LiveLocationTracker] syncUserLocation called', { lat, lng, opts });
       if (!userId) return;
 
       const status = opts?.status ?? 'online';
@@ -84,7 +93,9 @@ export default function LiveLocationTracker({ enabled, userId }: Props) {
 
       const elapsed = now - last.at;
       const hasLast = typeof last.lat === 'number' && typeof last.lng === 'number';
-      const movedMeters = hasLast ? distanceMeters(last.lat as number, last.lng as number, lat, lng) : Infinity;
+      const movedMeters = hasLast
+        ? distanceMeters(last.lat as number, last.lng as number, lat, lng)
+        : Infinity;
 
       const shouldSend =
         force ||
@@ -92,20 +103,33 @@ export default function LiveLocationTracker({ enabled, userId }: Props) {
         (elapsed >= minIntervalMs && movedMeters >= minDistanceMeters) ||
         elapsed >= maxIntervalMs;
 
-      if (!shouldSend) return;
+      if (!shouldSend) {
+        console.log('[LiveLocationTracker] skipping update (shouldSend=false)', {
+          elapsed,
+          movedMeters,
+          minIntervalMs,
+          minDistanceMeters,
+          maxIntervalMs,
+        });
+        return;
+      }
 
       lastSentRef.current = { at: now, lat, lng };
 
       try {
-        // Update users table for live status.
-        // (DB trigger can log changes into user_location_history automatically.)
-        const { error: userErr } = await supabase
+        console.log('[LiveLocationTracker] attempting supabase update', { userId, lat, lng, status });
+        const { error: userErr, data } = await supabase
           .from('users')
           .update({ latitude: lat, longitude: lng, status })
-          .eq('id', userId);
-        if (userErr) console.error('Failed to update live location (users):', userErr);
+          .eq('id', userId)
+          .select();
+        if (userErr) {
+          console.error('[LiveLocationTracker] Failed to update live location (users):', userErr);
+        } else {
+          console.log('[LiveLocationTracker] update succeeded', data);
+        }
       } catch (e) {
-        console.error('Failed to update live location:', e);
+        console.error('[LiveLocationTracker] Failed to update live location:', e);
       }
     },
     [userId]
@@ -134,9 +158,11 @@ export default function LiveLocationTracker({ enabled, userId }: Props) {
     if (Platform.OS === 'web') {
       if (typeof navigator === 'undefined' || !navigator.geolocation) return;
       try {
+        console.log('[LiveLocationTracker] starting web geolocation.watchPosition');
         // Continuous web tracking (updates as the device reports movement)
         webWatchIdRef.current = navigator.geolocation.watchPosition(
-          pos => {
+          (pos) => {
+            console.log('[LiveLocationTracker] watchPosition callback', pos && pos.coords);
             const lat = pos.coords.latitude;
             const lng = pos.coords.longitude;
             if (typeof lat === 'number' && typeof lng === 'number') {
@@ -144,7 +170,7 @@ export default function LiveLocationTracker({ enabled, userId }: Props) {
               void syncUserLocation(lat, lng);
             }
           },
-          err => console.warn('geolocation watchPosition error:', err),
+          (err) => console.warn('geolocation watchPosition error:', err),
           { enableHighAccuracy: true, maximumAge: 0, timeout: 20000 }
         );
       } catch (e) {
@@ -190,7 +216,7 @@ export default function LiveLocationTracker({ enabled, userId }: Props) {
 
     void startTracking();
 
-    const sub = AppState.addEventListener('change', state => {
+    const sub = AppState.addEventListener('change', (state) => {
       if (state === 'active') void startTracking();
       else stopTracking();
     });

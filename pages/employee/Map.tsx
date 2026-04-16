@@ -1,5 +1,14 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, TouchableOpacity, TextInput, StatusBar, Modal, Platform, ScrollView } from 'react-native';
+import {
+  View,
+  Text,
+  TouchableOpacity,
+  TextInput,
+  StatusBar,
+  Modal,
+  Platform,
+  ScrollView,
+} from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import supabase from '../../utils/supabase';
 import MapIframe from '../../components/MapIframe';
@@ -21,7 +30,6 @@ interface Site {
   branch_id?: string;
   status?: string;
 }
-
 
 export default function Map({ onBack, selectedSite }: { onBack?: () => void; selectedSite?: any }) {
   const [searchText, setSearchText] = useState('');
@@ -48,13 +56,13 @@ export default function Map({ onBack, selectedSite }: { onBack?: () => void; sel
       const { data, error } = await supabase
         .from('sites')
         .select('id, name, latitude, longitude, company_id, branch_id, status')
-        .eq('status', 'Active');
-      
+        .in('status', ['Active', 'Pending']);
+
       if (!error && data) {
         setSitesData(data || []);
       }
     };
-    
+
     fetchSites();
 
     // Only subscribe to real-time updates if not showing a specific site
@@ -76,31 +84,27 @@ export default function Map({ onBack, selectedSite }: { onBack?: () => void; sel
           // Handle INSERT, UPDATE, DELETE events
           if (payload.eventType === 'INSERT' || payload.eventType === 'UPDATE') {
             const newSite = payload.new as Site;
-            // Only add if status is Active
-            if (newSite.status === 'Active') {
+            // Show both Active and Pending sites on the map
+            if (newSite.status === 'Active' || newSite.status === 'Pending') {
               setSitesData((prevSites) => {
                 // Check if site already exists
-                const siteExists = prevSites.some(s => s.id === newSite.id);
+                const siteExists = prevSites.some((s) => s.id === newSite.id);
                 if (siteExists) {
                   // Update existing site
-                  return prevSites.map(s => s.id === newSite.id ? newSite : s);
+                  return prevSites.map((s) => (s.id === newSite.id ? newSite : s));
                 } else {
                   // Add new site
                   return [...prevSites, newSite];
                 }
               });
             } else {
-              // If status is not Active, remove it if it exists
-              setSitesData((prevSites) =>
-                prevSites.filter(s => s.id !== newSite.id)
-              );
+              // If status is not Active/Pending, remove it if it exists
+              setSitesData((prevSites) => prevSites.filter((s) => s.id !== newSite.id));
             }
           } else if (payload.eventType === 'DELETE') {
             const deletedSite = payload.old as Site;
             // Remove deleted site from state
-            setSitesData((prevSites) =>
-              prevSites.filter(s => s.id !== deletedSite.id)
-            );
+            setSitesData((prevSites) => prevSites.filter((s) => s.id !== deletedSite.id));
           }
         }
       )
@@ -115,17 +119,16 @@ export default function Map({ onBack, selectedSite }: { onBack?: () => void; sel
   useEffect(() => {
     if (sitesData.length > 0 && iframeRef.current && isIframeReady) {
       // Check if sites actually changed before sending
-      const sitesChanged = sitesData.length !== lastSitesDataRef.current.length ||
-        sitesData.some((site, idx) => 
-          !lastSitesDataRef.current[idx] || lastSitesDataRef.current[idx].id !== site.id
+      const sitesChanged =
+        sitesData.length !== lastSitesDataRef.current.length ||
+        sitesData.some(
+          (site, idx) =>
+            !lastSitesDataRef.current[idx] || lastSitesDataRef.current[idx].id !== site.id
         );
-      
+
       if (sitesChanged) {
         try {
-          iframeRef.current.contentWindow.postMessage(
-            { type: 'loadSites', sites: sitesData },
-            '*'
-          );
+          iframeRef.current.contentWindow.postMessage({ type: 'loadSites', sites: sitesData }, '*');
           lastSitesDataRef.current = sitesData;
         } catch (e) {
           // Silently handle iframe access errors
@@ -136,10 +139,7 @@ export default function Map({ onBack, selectedSite }: { onBack?: () => void; sel
 
   const handleSearch = React.useCallback((query: string) => {
     if (iframeRef.current && query.trim().length > 0) {
-      iframeRef.current.contentWindow.postMessage(
-        { type: 'search', query: query },
-        '*'
-      );
+      iframeRef.current.contentWindow.postMessage({ type: 'search', query: query }, '*');
     }
   }, []);
 
@@ -194,17 +194,12 @@ export default function Map({ onBack, selectedSite }: { onBack?: () => void; sel
   React.useEffect(() => {
     if (searchText.trim().length === 0 && iframeRef.current) {
       try {
-        iframeRef.current.contentWindow.postMessage(
-          { type: 'returnToUserLocation' },
-          '*'
-        );
+        iframeRef.current.contentWindow.postMessage({ type: 'returnToUserLocation' }, '*');
       } catch (e) {
         // Silently handle iframe access errors
       }
     }
   }, [searchText]);
-
-
 
   const handleIframeLoad = React.useCallback(() => {
     if (iframeRef.current) {
@@ -232,9 +227,11 @@ export default function Map({ onBack, selectedSite }: { onBack?: () => void; sel
     const checkStreetView = () => {
       try {
         if (!iframeRef.current) return;
-        const iframeDoc = iframeRef.current.contentDocument || iframeRef.current.contentWindow.document;
+        const iframeDoc =
+          iframeRef.current.contentDocument || iframeRef.current.contentWindow.document;
         if (!iframeDoc) return;
-        const streetViewActive = iframeDoc.documentElement.getAttribute('data-street-view') === 'true';
+        const streetViewActive =
+          iframeDoc.documentElement.getAttribute('data-street-view') === 'true';
         setIsStreetViewActive(streetViewActive);
       } catch (e) {
         // Silently handle errors from iframe access
@@ -278,16 +275,13 @@ export default function Map({ onBack, selectedSite }: { onBack?: () => void; sel
   return (
     <View className="flex-1 bg-white">
       <StatusBar barStyle="light-content" />
-      
+
       {Platform.OS === 'web' ? (
         <View style={{ flex: 1, width: '100%', height: '100%', position: 'relative' } as any}>
-          <MapIframe 
-            iframeRef={iframeRef}
-            onIframeReady={handleIframeLoad}
-          />
+          <MapIframe iframeRef={iframeRef} onIframeReady={handleIframeLoad} />
           {!isStreetViewActive && (
-            <View className="absolute top-4 left-0 right-0 px-4 py-4 pt-4 z-50">
-              <View className="flex-1 flex-row items-center rounded-2xl bg-white bg-opacity-95 px-4 py-3 border border-gray-300 shadow-lg">
+            <View className="absolute left-0 right-0 top-4 z-50 px-4 py-4 pt-4">
+              <View className="flex-1 flex-row items-center rounded-2xl border border-gray-300 bg-white bg-opacity-95 px-4 py-3 shadow-lg">
                 <TouchableOpacity onPress={onBack}>
                   <Ionicons name="arrow-back" size={20} color="#10b981" />
                 </TouchableOpacity>
@@ -296,30 +290,34 @@ export default function Map({ onBack, selectedSite }: { onBack?: () => void; sel
                   value={searchText}
                   onChangeText={setSearchText}
                   onSubmitEditing={() => handleSearch(searchText)}
-                  className="flex-1 ml-3 text-gray-900 text-base font-medium"
+                  className="ml-3 flex-1 text-base font-medium text-gray-900"
                   placeholderTextColor="#9ca3af"
                   returnKeyType="search"
                 />
                 <Ionicons name="location" size={20} color="#10b981" />
               </View>
               {showResults && searchResults.length > 0 && searchText.trim().length > 0 && (
-                <View className="mt-1 bg-white rounded-2xl border border-gray-300 shadow-lg overflow-hidden">
-                  <ScrollView style={{ maxHeight: searchResults.length > 4 ? 280 : undefined }} scrollEnabled={searchResults.length > 4}>
+                <View className="mt-1 overflow-hidden rounded-2xl border border-gray-300 bg-white shadow-lg">
+                  <ScrollView
+                    style={{ maxHeight: searchResults.length > 4 ? 280 : undefined }}
+                    scrollEnabled={searchResults.length > 4}>
                     {searchResults.map((result, index) => (
                       <TouchableOpacity
                         key={index}
                         onPress={() => handleSelectResult(result.location, result.address)}
-                        className="px-4 py-2 border-b border-gray-200 last:border-b-0"
-                      >
+                        className="border-b border-gray-200 px-4 py-2 last:border-b-0">
                         <View className="flex-row items-start gap-2">
-                          <Ionicons name="location" size={16} color="#6b7280" style={{ marginTop: 1 }} />
+                          <Ionicons
+                            name="location"
+                            size={16}
+                            color="#6b7280"
+                            style={{ marginTop: 1 }}
+                          />
                           <View className="flex-1">
-                            <Text className="text-gray-900 text-sm font-semibold">
+                            <Text className="text-sm font-semibold text-gray-900">
                               {result.placeName}
                             </Text>
-                            <Text className="text-gray-500 text-xs mt-0.5">
-                              {result.city}
-                            </Text>
+                            <Text className="mt-0.5 text-xs text-gray-500">{result.city}</Text>
                           </View>
                         </View>
                       </TouchableOpacity>
@@ -331,26 +329,28 @@ export default function Map({ onBack, selectedSite }: { onBack?: () => void; sel
           )}
           {selectedSite && !isStreetViewActive && (
             <View className="absolute bottom-4 left-4 right-0 px-0">
-              <View className="bg-green-50 bg-opacity-90 rounded-2xl px-4 py-3 border border-green-200 shadow-lg" style={{ maxWidth: '70%' }}>
+              <View
+                className="rounded-2xl border border-green-200 bg-green-50 bg-opacity-90 px-4 py-3 shadow-lg"
+                style={{ maxWidth: '70%' }}>
                 <View>
-                  <Text className="text-gray-600 text-xs font-semibold uppercase">Site Location</Text>
-                  <Text className="text-gray-900 text-lg font-bold mt-1" numberOfLines={2}>{selectedSite.name}</Text>
+                  <Text className="text-xs font-semibold uppercase text-gray-600">
+                    Site Location
+                  </Text>
+                  <Text className="mt-1 text-lg font-bold text-gray-900" numberOfLines={2}>
+                    {selectedSite.name}
+                  </Text>
                 </View>
               </View>
             </View>
           )}
           {isStreetViewActive && (
-            <TouchableOpacity 
+            <TouchableOpacity
               onPress={() => {
                 if (iframeRef.current) {
-                  iframeRef.current.contentWindow.postMessage(
-                    { type: 'exitStreetView' },
-                    '*'
-                  );
+                  iframeRef.current.contentWindow.postMessage({ type: 'exitStreetView' }, '*');
                 }
               }}
-              className="absolute bottom-16 right-3 bg-white rounded-full p-3 shadow-lg z-50 animate-bounce"
-            >
+              className="absolute bottom-16 right-3 z-50 animate-bounce rounded-full bg-white p-3 shadow-lg">
               <Ionicons name="map" size={24} color="#10b981" />
             </TouchableOpacity>
           )}
@@ -358,13 +358,10 @@ export default function Map({ onBack, selectedSite }: { onBack?: () => void; sel
       ) : (
         <View className="flex-1 bg-gray-50">
           {WebView ? (
-            <WebView
-              source={{ html: googleMapHtml }}
-              style={{ flex: 1 }}
-            />
+            <WebView source={{ html: googleMapHtml }} style={{ flex: 1 }} />
           ) : (
             <View className="flex-1 items-center justify-center">
-              <Text className="text-gray-500 text-base font-semibold">Map not available</Text>
+              <Text className="text-base font-semibold text-gray-500">Map not available</Text>
             </View>
           )}
         </View>

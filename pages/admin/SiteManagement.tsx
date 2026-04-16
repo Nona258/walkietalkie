@@ -1,32 +1,62 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, Modal, Pressable, TextInput } from 'react-native';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
+import {
+  View,
+  Text,
+  ScrollView,
+  TouchableOpacity,
+  Modal,
+  Pressable,
+  TextInput,
+  Image,
+  FlatList,
+} from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import SweetAlertModal from '../../components/SweetAlertModal';
 import '../../global.css';
 import supabase from '../../utils/supabase';
+import { notifyNewSiteCreated } from '../../utils/notifications';
 
 interface Site {
   id: string;
   name: string;
-  company_id?: string; // foreign key to company
+  company_id?: string | number | null;
   company?: string; // optional company name (used when attaching display data)
-  branch_id?: string;
-  // Removed members property
+  branch?: string;  // optional branch name (used when attaching display data)
+  branch_id?: string | number | null;
+  members_count?: number | null;
   status: string;
-  latitude?: number;
-  longitude?: number;
+  leader_id?: string | null;
+  latitude?: number | null;
+  longitude?: number | null;
+  created_at?: string | null;
+  updated_at?: string | null;
+  starlink_serial?: string | null;
+  technical_issue?: string | null;
+  issue_description?: string | null;
+  evidence_urls?: string[];
+  finished_by?: string | null;
+  finished_at?: string | null;
 }
 
 interface SiteManagementProps {
-  onNavigate: (page: 'dashboard' | 'siteManagement' | 'walkieTalkie' | 'activityLogs' | 'companyList' | 'employee' | 'settings') => void;
+  onNavigate: (
+    page:
+      | 'dashboard'
+      | 'siteManagement'
+      | 'walkieTalkie'
+      | 'activityLogs'
+      | 'companyList'
+      | 'employee'
+      | 'settings'
+  ) => void;
 }
 
 interface ValidationErrors {
   siteName?: string;
   company?: string;
   branch_id?: string;
-  // Removed members validation
   location?: string;
+  membersCount?: string;
 }
 
 export default function SiteManagement({ onNavigate }: SiteManagementProps) {
@@ -36,8 +66,13 @@ export default function SiteManagement({ onNavigate }: SiteManagementProps) {
   const [isViewLocationOpen, setIsViewLocationOpen] = useState(false);
   const [selectedSite, setSelectedSite] = useState<Site | null>(null);
   const [sites, setSites] = useState<Site[]>([]);
+  const [showArchived, setShowArchived] = useState(false);
   const [isNotificationOpen, setIsNotificationOpen] = useState(false);
-  
+
+  // Image modal state for evidence
+  const [imageModalVisible, setImageModalVisible] = useState(false);
+  const [activeImage, setActiveImage] = useState<string | null>(null);
+
   // Alert state
   const [alertVisible, setAlertVisible] = useState(false);
   const [alertConfig, setAlertConfig] = useState({
@@ -45,30 +80,83 @@ export default function SiteManagement({ onNavigate }: SiteManagementProps) {
     message: '',
     type: 'info' as 'success' | 'error' | 'warning' | 'info',
   });
-  
+
   // Helper function to show alert
-  const showAlert = (title: string, message: string, type: 'success' | 'error' | 'warning' | 'info' = 'info') => {
+  const showAlert = (
+    title: string,
+    message: string,
+    type: 'success' | 'error' | 'warning' | 'info' = 'info'
+  ) => {
     setAlertConfig({ title, message, type });
     setAlertVisible(true);
   };
+
   // Card gradient presets for mobile card styling
-  // Use a single green gradient for all cards
   const CARD_GRADIENTS = [
     ['#059669', '#10b981'], // emerald dark -> emerald light
   ];
-  
+
   // Form state
   const [siteName, setSiteName] = useState('');
   const [company, setCompany] = useState(''); // stores company id
-    const [branch_id, setBranchId] = useState('');
-  // Removed members state
+  const [branch_id, setBranchId] = useState('');
+  const [membersCount, setMembersCount] = useState('');
   const [latitude, setLatitude] = useState<number | null>(null);
   const [longitude, setLongitude] = useState<number | null>(null);
+  const [leaderId, setLeaderId] = useState('');
+  const [lastUpdateSource, setLastUpdateSource] = useState<'map' | 'places' | 'user' | null>(null);
+
   // Branch dropdown state
-  const [branchOptions, setBranchOptions] = useState<{id: string, name: string, company_id?: string}[]>([]);
+  const [branchOptions, setBranchOptions] = useState<
+    { id: string; name: string; company_id?: string }[]
+  >([]);
 
   // Company dropdown state
-  const [companyOptions, setCompanyOptions] = useState<{id: string, name: string, industry: string}[]>([]);
+  const [companyOptions, setCompanyOptions] = useState<
+    { id: string; name: string; industry: string }[]
+  >([]);
+
+  const [leaderOptions, setLeaderOptions] = useState<{ id: string; name: string; email: string }[]>(
+    []
+  );
+
+  // UI: archived details modal
+  const [detailModalVisible, setDetailModalVisible] = useState(false);
+  const [selectedArchivedSite, setSelectedArchivedSite] = useState<any>(null);
+
+  // Helper function to convert a stored path to a public URL
+  const getPublicImageUrl = (path: string): string => {
+    if (path.startsWith('http://') || path.startsWith('https://')) {
+      return path;
+    }
+    const relativePath = path.replace(/^site_evidence\//, '');
+    const { data } = supabase.storage
+      .from('site_evidence')
+      .getPublicUrl(relativePath);
+    return data.publicUrl;
+  };
+
+  // Normalize evidence_urls from any format into an array of public URLs
+  const normalizeEvidenceUrls = (raw: any): string[] => {
+    let urls: string[] = [];
+    if (typeof raw === 'string') {
+      try {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) {
+          urls = parsed;
+        } else {
+          urls = [raw];
+        }
+      } catch {
+        urls = [raw];
+      }
+    } else if (Array.isArray(raw)) {
+      urls = raw;
+    } else {
+      return [];
+    }
+    return urls.map(getPublicImageUrl);
+  };
 
   // Fetch companies for dropdown
   useEffect(() => {
@@ -92,9 +180,7 @@ export default function SiteManagement({ onNavigate }: SiteManagementProps) {
   // Fetch all branches for table display
   useEffect(() => {
     const fetchBranches = async () => {
-      const { data, error } = await supabase
-        .from('branch')
-        .select('id, branch_name, company_id');
+      const { data, error } = await supabase.from('branch').select('id, branch_name, company_id');
       if (!error && data) {
         setBranchOptions(
           data.map((b: any) => ({
@@ -109,288 +195,497 @@ export default function SiteManagement({ onNavigate }: SiteManagementProps) {
     };
     fetchBranches();
   }, []);
-  
+
   // Validation state
   const [errors, setErrors] = useState<ValidationErrors>({});
   const [touched, setTouched] = useState<{ [key: string]: boolean }>({});
 
-  // Map state
+  // Map refs
   const mapRef = useRef<any>(null);
   const markerRef = useRef<any>(null);
   const viewMapRef = useRef<any>(null);
   const viewMarkerRef = useRef<any>(null);
+  const viewTrafficRef = useRef<any>(null);
+  const viewTransitRef = useRef<any>(null);
+  const viewBikeRef = useRef<any>(null);
+  const viewStreetRef = useRef<any>(null);
   const editMapRef = useRef<any>(null);
   const editMarkerRef = useRef<any>(null);
+  
 
-  // Fetch sites from Supabase
+  const GOOGLE_MAPS_API_KEY =
+    process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY ?? 'AIzaSyAq58TD9PputxnK8ZO9jRUX8KW7bTuPTPQ';
+
+  const googleMapsLoadPromiseRef = useRef<Promise<void> | null>(null);
+
+  const ensureGoogleMapsLoaded = useCallback((): Promise<void> => {
+    if (typeof window === 'undefined') {
+      return Promise.reject(new Error('Google Maps requires a browser environment'));
+    }
+
+    const w = window as any;
+    if (w.google && w.google.maps) {
+      return Promise.resolve();
+    }
+
+    if (!GOOGLE_MAPS_API_KEY) {
+      return Promise.reject(new Error('Missing Google Maps API key'));
+    }
+
+    if (googleMapsLoadPromiseRef.current) {
+      return googleMapsLoadPromiseRef.current;
+    }
+
+    googleMapsLoadPromiseRef.current = new Promise<void>((resolve, reject) => {
+      const scriptId = 'gmaps-script';
+      const existing = document.getElementById(scriptId) as HTMLScriptElement | null;
+
+      const finish = () => {
+        const ok = (window as any).google && (window as any).google.maps;
+        if (ok) resolve();
+        else reject(new Error('Google Maps script loaded but google.maps is missing'));
+      };
+
+      const startPollingFallback = () => {
+        const interval = window.setInterval(() => {
+          if ((window as any).google && (window as any).google.maps) {
+            clearInterval(interval);
+            resolve();
+          }
+        }, 100);
+        window.setTimeout(() => clearInterval(interval), 15000);
+      };
+
+      if (existing) {
+        // If load already happened before we attached listeners, polling will catch it.
+        const onLoad = () => finish();
+        const onError = () => reject(new Error('Failed to load Google Maps script'));
+        existing.addEventListener('load', onLoad);
+        existing.addEventListener('error', onError);
+        startPollingFallback();
+        return;
+      }
+
+      const script = document.createElement('script');
+      script.id = scriptId;
+      script.src = `https://maps.googleapis.com/maps/api/js?key=${GOOGLE_MAPS_API_KEY}&libraries=places`;
+      script.async = true;
+      script.defer = true;
+      script.onload = () => finish();
+      script.onerror = () => reject(new Error('Failed to load Google Maps script'));
+      document.head.appendChild(script);
+
+      startPollingFallback();
+    }).catch((err) => {
+      googleMapsLoadPromiseRef.current = null;
+      throw err;
+    });
+
+    return googleMapsLoadPromiseRef.current;
+  }, [GOOGLE_MAPS_API_KEY]);
+
+  // Fetch sites from Supabase (active or archived)
   const fetchSites = async () => {
-    const { data, error } = await supabase
-      .from('sites')
-      .select('*')
-      .order('created_at', { ascending: false });
-    if (error) {
-      showAlert('Error fetching sites', error.message, 'error');
+    if (!showArchived) {
+      const { data, error } = await supabase
+        .from('sites')
+        .select('*')
+        .order('created_at', { ascending: false });
+      if (error) {
+        showAlert('Error fetching sites', error.message, 'error');
+      } else {
+        setSites(data || []);
+      }
     } else {
-      setSites(data || []);
+      const { data, error } = await supabase
+        .from('archived_sitegroup')
+        .select(
+          `*,
+           company:company_id ( company_name ),
+           branch:branch_id ( branch_name ),
+           leader:leader_id ( full_name ),
+           finisher:finished_by ( full_name )`
+        )
+        .order('created_at', { ascending: false });
+      if (error) {
+        showAlert('Error fetching archived sites', error.message, 'error');
+      } else {
+        // Normalize naming and evidence URLs
+        const mapped = (data || []).map((r: any) => ({
+          ...r,
+          company: r?.company?.company_name || undefined,
+          branch: r?.branch?.branch_name || undefined,
+          leaderName: r?.leader?.full_name || (r?.leader_id || null),
+          finishedByName: r?.finisher?.full_name || (r?.finished_by || null),
+          evidence_urls: normalizeEvidenceUrls(r.evidence_urls),
+        }));
+        setSites(mapped as any[]);
+      }
     }
   };
 
-  // Real-time subscription to sites table
   useEffect(() => {
     fetchSites();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showArchived]);
 
-    // Subscribe to real-time changes using modern Supabase API
-    const channel = supabase
-      .channel('public:sites')
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'sites' },
-        (payload: any) => {
-          // Update sites list in real-time
-          if (payload.eventType === 'INSERT') {
-            setSites(prev => [payload.new, ...prev]);
-          } else if (payload.eventType === 'UPDATE') {
-            setSites(prev =>
-              prev.map(site => (site.id === payload.new.id ? payload.new : site))
-            );
-          } else if (payload.eventType === 'DELETE') {
-            setSites(prev => prev.filter(site => site.id !== payload.old.id));
-          }
-        }
-      )
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(channel);
-    };
-  }, []);
-
-  // Initialize Google Maps when add modal opens (replaces Leaflet)
   useEffect(() => {
-    if (isAddModalOpen && typeof window !== 'undefined') {
-      const API_KEY = 'AIzaSyAq58TD9PputxnK8ZO9jRUX8KW7bTuPTPQ';
+    if (!isAddModalOpen) return;
 
-      const loadGoogleMaps = () => {
-        if ((window as any).google && (window as any).google.maps) {
-          initMap();
-          return;
-        }
+    const fetchLeaders = async () => {
+      const { data, error } = await supabase
+        .from('users')
+        .select('id, full_name, email, role, status')
+        .order('full_name', { ascending: true });
 
-        const scriptId = 'gmaps-script';
-        if (document.getElementById(scriptId)) {
-          const check = setInterval(() => {
-            if ((window as any).google && (window as any).google.maps) {
-              clearInterval(check);
-              initMap();
-            }
-          }, 100);
-          return;
-        }
+      if (error) {
+        console.error('Error fetching leaders:', error);
+        setLeaderOptions([]);
+        return;
+      }
 
-        const script = document.createElement('script');
-        script.id = scriptId;
-        script.src = `https://maps.googleapis.com/maps/api/js?key=${API_KEY}&libraries=places`;
-        script.async = true;
-        script.defer = true;
-        script.onload = () => initMap();
-        document.head.appendChild(script);
-      };
+      const mapped = (data || [])
+        .filter((u: any) => {
+          const role = String(u?.role || '').toLowerCase();
+          if (role.includes('admin')) return false;
+          if (String(u?.status || '').toLowerCase() === 'inactive') return false;
+          return true;
+        })
+        .map((u: any) => ({
+          id: String(u.id),
+          name: String(u.full_name || u.email || 'Unnamed'),
+          email: String(u.email || ''),
+        }));
 
-      const initMap = () => {
-        const g = (window as any).google;
-        if (!g || !g.maps) return;
+      setLeaderOptions(mapped);
+    };
 
-        // Clear existing map
-        if (mapRef.current) {
-          mapRef.current = null;
-        }
-        if (markerRef.current) {
-          try { markerRef.current.setMap(null); } catch (e) {}
-          markerRef.current = null;
-        }
+    fetchLeaders();
+  }, [isAddModalOpen]);
 
-        const iliganLat = 8.2280;
-        const iliganLng = 124.2452;
+  // Initialize Google Maps when add modal opens
+  useEffect(() => {
+    if (!isAddModalOpen || typeof window === 'undefined') return;
 
-        const mapEl = document.getElementById('leaflet-map');
-        if (!mapEl) return;
+    let cancelled = false;
 
-        const map = new g.maps.Map(mapEl, {
-          center: { lat: iliganLat, lng: iliganLng },
-          zoom: 13,
-          mapTypeControl: false,
-        });
+    const initMap = (attempt = 0) => {
+      const g = (window as any).google;
+      if (!g || !g.maps || mapRef.current) return;
 
-        const marker = new g.maps.Marker({
-          position: { lat: iliganLat, lng: iliganLng },
-          map,
-          draggable: true,
-        });
+      const mapEl = document.getElementById('leaflet-map');
+      if (!mapEl) {
+        if (attempt < 25 && !cancelled) setTimeout(() => initMap(attempt + 1), 50);
+        return;
+      }
 
-        setLatitude(iliganLat);
-        setLongitude(iliganLng);
+      const iliganLat = 8.228;
+      const iliganLng = 124.2452;
 
-        marker.addListener('dragend', (e: any) => {
-          const pos = e.latLng;
-          setLatitude(pos.lat());
-          setLongitude(pos.lng());
-        });
+      const map = new g.maps.Map(mapEl, {
+        center: { lat: iliganLat, lng: iliganLng },
+        zoom: 13,
+        mapTypeControl: false,
+        zoomControl: true,
+      });
 
-        map.addListener('click', (e: any) => {
-          const pos = e.latLng;
-          marker.setPosition(pos);
-          setLatitude(pos.lat());
-          setLongitude(pos.lng());
-        });
+      const marker = new g.maps.Marker({
+        position: { lat: iliganLat, lng: iliganLng },
+        map,
+        draggable: true,
+      });
 
-        mapRef.current = map;
-        markerRef.current = marker;
-      };
+      setLatitude(iliganLat);
+      setLongitude(iliganLng);
 
-      loadGoogleMaps();
-    }
+      marker.addListener('dragend', (e: any) => {
+        const pos = e.latLng;
+        setLatitude(pos.lat());
+        setLongitude(pos.lng());
+        setErrors((prev) => ({ ...prev, location: undefined }));
+        setLastUpdateSource('map');
+      });
 
-    // Cleanup when modal closes
+      map.addListener('click', (e: any) => {
+        const pos = e.latLng;
+        marker.setPosition(pos);
+        setLatitude(pos.lat());
+        setLongitude(pos.lng());
+        setErrors((prev) => ({ ...prev, location: undefined }));
+        setLastUpdateSource('map');
+      });
+
+      mapRef.current = map;
+      markerRef.current = marker;
+
+      // If the modal is still animating, a resize helps Google Maps render correctly.
+      setTimeout(() => {
+        try {
+          g.maps.event.trigger(map, 'resize');
+          map.setCenter({ lat: iliganLat, lng: iliganLng });
+        } catch {}
+      }, 0);
+    };
+
+    ensureGoogleMapsLoaded()
+      .then(() => {
+        if (!cancelled) setTimeout(() => initMap(0), 50);
+      })
+      .catch((e) => console.error('Failed to load Google Maps:', e));
+
     return () => {
+      cancelled = true;
       if (markerRef.current) {
-        try { markerRef.current.setMap(null); } catch (e) {}
+        try {
+          markerRef.current.setMap(null);
+        } catch {}
         markerRef.current = null;
       }
       if (mapRef.current) {
         mapRef.current = null;
       }
     };
-  }, [isAddModalOpen]);
+  }, [isAddModalOpen, ensureGoogleMapsLoaded]);
+
+  // Attach Google Places Autocomplete to Site Name input when Add modal opens
+  useEffect(() => {
+    if (!isAddModalOpen || typeof window === 'undefined') return;
+
+    let cancelled = false;
+    let autocomplete: any = null;
+
+    ensureGoogleMapsLoaded()
+      .then(() => {
+        if (cancelled) return;
+        const g = (window as any).google;
+        if (!g || !g.maps || !g.maps.places) return;
+
+        const input = document.getElementById('site-name-input');
+        if (!input) return;
+
+        autocomplete = new g.maps.places.Autocomplete(input, {
+          types: ['geocode', 'establishment'],
+        });
+
+        const listener = () => {
+          const place = autocomplete.getPlace();
+          if (!place) return;
+          if (place.formatted_address || place.name) {
+            const name = place.formatted_address || place.name || '';
+            setSiteName(name);
+          }
+          if (place.geometry && place.geometry.location) {
+            const lat = place.geometry.location.lat();
+            const lng = place.geometry.location.lng();
+            setLatitude(lat);
+            setLongitude(lng);
+            setErrors((prev) => ({ ...prev, location: undefined }));
+            setLastUpdateSource('places');
+            try {
+              if (markerRef.current && markerRef.current.setPosition) {
+                markerRef.current.setPosition({ lat, lng });
+              }
+              if (mapRef.current && mapRef.current.setCenter) {
+                mapRef.current.setCenter({ lat, lng });
+              }
+            } catch {}
+          }
+        };
+
+        autocomplete.addListener('place_changed', listener);
+      })
+      .catch((e) => console.error('Failed to init Places autocomplete:', e));
+
+    return () => {
+      cancelled = true;
+      try {
+        const g = (window as any).google;
+        if (g && g.maps && autocomplete) {
+          g.maps.event.clearInstanceListeners(autocomplete);
+        }
+      } catch {}
+    };
+  }, [isAddModalOpen, ensureGoogleMapsLoaded]);
 
   // Initialize edit map using Google Maps
   useEffect(() => {
-    if (isEditModalOpen && selectedSite && typeof window !== 'undefined') {
-      const API_KEY = 'AIzaSyAq58TD9PputxnK8ZO9jRUX8KW7bTuPTPQ';
+    if (!isEditModalOpen || !selectedSite || typeof window === 'undefined') return;
 
-      const loadGoogleMaps = () => {
-        if ((window as any).google && (window as any).google.maps) {
-          initEditMap();
-          return;
-        }
+    let cancelled = false;
 
-        const scriptId = 'gmaps-script';
-        if (document.getElementById(scriptId)) {
-          const check = setInterval(() => {
-            if ((window as any).google && (window as any).google.maps) {
-              clearInterval(check);
-              initEditMap();
-            }
-          }, 100);
-          return;
-        }
+    const initEditMap = (attempt = 0) => {
+      const g = (window as any).google;
+      if (!g || !g.maps || editMapRef.current) return;
 
-        const script = document.createElement('script');
-        script.id = scriptId;
-        script.src = `https://maps.googleapis.com/maps/api/js?key=${API_KEY}&libraries=places`;
-        script.async = true;
-        script.defer = true;
-        script.onload = () => initEditMap();
-        document.head.appendChild(script);
-      };
+      const lat = selectedSite.latitude || 8.228;
+      const lng = selectedSite.longitude || 124.2452;
 
-      const initEditMap = () => {
-        const g = (window as any).google;
-        if (!g || !g.maps) return;
+      const mapEl = document.getElementById('edit-leaflet-map');
+      if (!mapEl) {
+        if (attempt < 25 && !cancelled) setTimeout(() => initEditMap(attempt + 1), 50);
+        return;
+      }
 
-        // Clear existing map
-        if (editMapRef.current) {
-          editMapRef.current = null;
-        }
-        if (editMarkerRef.current) {
-          try { editMarkerRef.current.setMap(null); } catch { }
-          editMarkerRef.current = null;
-        }
+      const map = new g.maps.Map(mapEl, {
+        center: { lat, lng },
+        zoom: 13,
+        mapTypeControl: false,
+        zoomControl: true,
+      });
 
-        const lat = selectedSite.latitude || 8.2280;
-        const lng = selectedSite.longitude || 124.2452;
+      const marker = new g.maps.Marker({
+        position: { lat, lng },
+        map,
+        draggable: true,
+      });
 
-        const mapEl = document.getElementById('edit-leaflet-map');
-        if (!mapEl) return;
+      marker.addListener('dragend', (e: any) => {
+        const pos = e.latLng;
+        setLatitude(pos.lat());
+        setLongitude(pos.lng());
+        setErrors((prev) => ({ ...prev, location: undefined }));
+        setLastUpdateSource('map');
+      });
 
-        const map = new g.maps.Map(mapEl, {
-          center: { lat, lng },
-          zoom: 13,
-          mapTypeControl: false,
-        });
+      map.addListener('click', (e: any) => {
+        const pos = e.latLng;
+        marker.setPosition(pos);
+        setLatitude(pos.lat());
+        setLongitude(pos.lng());
+        setErrors((prev) => ({ ...prev, location: undefined }));
+        setLastUpdateSource('map');
+      });
 
-        const marker = new g.maps.Marker({
-          position: { lat, lng },
-          map,
-          draggable: true,
-        });
+      editMapRef.current = map;
+      editMarkerRef.current = marker;
 
-        marker.addListener('dragend', (e: any) => {
-          const pos = e.latLng;
-          setLatitude(pos.lat());
-          setLongitude(pos.lng());
-        });
+      setTimeout(() => {
+        try {
+          g.maps.event.trigger(map, 'resize');
+          map.setCenter({ lat, lng });
+        } catch {}
+      }, 0);
+    };
 
-        map.addListener('click', (e: any) => {
-          const pos = e.latLng;
-          marker.setPosition(pos);
-          setLatitude(pos.lat());
-          setLongitude(pos.lng());
-        });
-
-        editMapRef.current = map;
-        editMarkerRef.current = marker;
-      };
-
-      loadGoogleMaps();
-    }
+    ensureGoogleMapsLoaded()
+      .then(() => {
+        if (!cancelled) setTimeout(() => initEditMap(0), 50);
+      })
+      .catch((e) => console.error('Failed to load Google Maps:', e));
 
     return () => {
+      cancelled = true;
       if (editMarkerRef.current) {
-        try { editMarkerRef.current.setMap(null); } catch { }
+        try {
+          editMarkerRef.current.setMap(null);
+        } catch {}
         editMarkerRef.current = null;
       }
       if (editMapRef.current) {
         editMapRef.current = null;
       }
     };
-  }, [isEditModalOpen, selectedSite]);
+  }, [isEditModalOpen, selectedSite, ensureGoogleMapsLoaded]);
+
+  // Attach Google Places Autocomplete to Site Name input in Edit modal
+  useEffect(() => {
+    if (!isEditModalOpen || typeof window === 'undefined') return;
+
+    let cancelled = false;
+    let autocomplete: any = null;
+
+    ensureGoogleMapsLoaded()
+      .then(() => {
+        if (cancelled) return;
+        const g = (window as any).google;
+        if (!g || !g.maps || !g.maps.places) return;
+
+        const input = document.getElementById('edit-site-name-input');
+        if (!input) return;
+
+        autocomplete = new g.maps.places.Autocomplete(input, {
+          types: ['geocode', 'establishment'],
+        });
+
+        const listener = () => {
+          const place = autocomplete.getPlace();
+          if (!place) return;
+          if (place.formatted_address || place.name) {
+            const name = place.formatted_address || place.name || '';
+            setSiteName(name);
+          }
+          if (place.geometry && place.geometry.location) {
+            const lat = place.geometry.location.lat();
+            const lng = place.geometry.location.lng();
+            setLatitude(lat);
+            setLongitude(lng);
+            setErrors((prev) => ({ ...prev, location: undefined }));
+            setLastUpdateSource('places');
+            try {
+              if (editMarkerRef.current && editMarkerRef.current.setPosition) {
+                editMarkerRef.current.setPosition({ lat, lng });
+              }
+              if (editMapRef.current && editMapRef.current.setCenter) {
+                editMapRef.current.setCenter({ lat, lng });
+              }
+            } catch {}
+          }
+        };
+
+        autocomplete.addListener('place_changed', listener);
+      })
+      .catch((e) => console.error('Failed to init Places autocomplete:', e));
+
+    return () => {
+      cancelled = true;
+      try {
+        const g = (window as any).google;
+        if (g && g.maps && autocomplete) {
+          g.maps.event.clearInstanceListeners(autocomplete);
+        }
+      } catch {}
+    };
+  }, [isEditModalOpen, ensureGoogleMapsLoaded]);
 
   // Initialize view location map using Google Maps
   useEffect(() => {
-    if (isViewLocationOpen && selectedSite && typeof window !== 'undefined') {
-      const initViewMap = () => {
-        const g = (window as any).google;
-        if (!g || !g.maps) return;
+    if (!isViewLocationOpen || !selectedSite || typeof window === 'undefined') return;
 
-        // Clear existing map
-        if (viewMapRef.current) {
-          viewMapRef.current = null;
-        }
-        if (viewMarkerRef.current) {
-          try { viewMarkerRef.current.setMap(null); } catch { }
-          viewMarkerRef.current = null;
-        }
+    let cancelled = false;
 
-        const lat = selectedSite.latitude || 8.2280;
-        const lng = selectedSite.longitude || 124.2452;
+    const initViewMap = (attempt = 0) => {
+      const g = (window as any).google;
+      if (!g || !g.maps || viewMapRef.current) return;
 
-        const mapEl = document.getElementById('view-leaflet-map');
-        if (!mapEl) return;
+      const lat = selectedSite.latitude || 8.228;
+      const lng = selectedSite.longitude || 124.2452;
 
-        const map = new g.maps.Map(mapEl, {
-          center: { lat, lng },
-          zoom: 15,
-          mapTypeControl: false,
-        });
+      const mapEl = document.getElementById('view-leaflet-map');
+      if (!mapEl) {
+        if (attempt < 25 && !cancelled) setTimeout(() => initViewMap(attempt + 1), 50);
+        return;
+      }
 
-        const marker = new g.maps.Marker({
-          position: { lat, lng },
-          map,
-          draggable: false,
-        });
+      const map = new g.maps.Map(mapEl, {
+        center: { lat, lng },
+        zoom: 15,
+        mapTypeControl: false,
+        zoomControl: false,
+        fullscreenControl: true,
+      });
 
-        const companyName = companyOptions.find(opt => String(opt.id) === String(selectedSite.company_id))?.name || 'No company selected';
-        const branchName = branchOptions.find(opt => opt.id === selectedSite.branch_id)?.name || 'No branch selected';
+      const marker = new g.maps.Marker({
+        position: { lat, lng },
+        map,
+        draggable: false,
+      });
+
+        const companyName = selectedSite.company || 
+          (companyOptions.find((opt) => String(opt.id) === String(selectedSite.company_id))?.name || 
+          'No company selected');
+        const branchName = selectedSite.branch ||
+          (branchOptions.find((opt) => opt.id === selectedSite.branch_id)?.name ||
+          'No branch selected');
 
         const infoContent = `
           <div style="font-family: sans-serif;">
@@ -403,187 +698,344 @@ export default function SiteManagement({ onNavigate }: SiteManagementProps) {
         const infoWindow = new g.maps.InfoWindow({ content: infoContent });
         infoWindow.open(map, marker);
 
-        viewMapRef.current = map;
-        viewMarkerRef.current = marker;
-      };
+      viewMapRef.current = map;
+      viewMarkerRef.current = marker;
+      try {
+        viewTrafficRef.current = new g.maps.TrafficLayer();
+        viewTransitRef.current = new g.maps.TransitLayer();
+        viewBikeRef.current = new g.maps.BicyclingLayer();
+        viewStreetRef.current = map.getStreetView();
+      } catch {}
 
-      if ((window as any).google && (window as any).google.maps) {
-        setTimeout(initViewMap, 100);
-      } else {
-        const check = setInterval(() => {
-          if ((window as any).google && (window as any).google.maps) {
-            clearInterval(check);
-            initViewMap();
-          }
-        }, 100);
-      }
-    }
+      // Fix blank map when opening inside a modal (container sizes settle after animation)
+      setTimeout(() => {
+        try {
+          g.maps.event.trigger(map, 'resize');
+          map.setCenter({ lat, lng });
+        } catch {}
+      }, 0);
+    };
+
+    ensureGoogleMapsLoaded()
+      .then(() => {
+        if (!cancelled) setTimeout(() => initViewMap(0), 50);
+      })
+      .catch((e) => console.error('Failed to load Google Maps:', e));
 
     return () => {
+      cancelled = true;
       if (viewMarkerRef.current) {
-        try { viewMarkerRef.current.setMap(null); } catch { }
+        try {
+          viewMarkerRef.current.setMap(null);
+        } catch {}
         viewMarkerRef.current = null;
       }
       if (viewMapRef.current) {
         viewMapRef.current = null;
       }
     };
-  }, [isViewLocationOpen, selectedSite, branchOptions, companyOptions]);
+  }, [isViewLocationOpen, selectedSite, branchOptions, companyOptions, ensureGoogleMapsLoaded]);
 
   // Validation functions
   const validateField = (fieldName: string, value: string): string | undefined => {
     switch (fieldName) {
       case 'siteName':
-        if (!value.trim()) {
-          return 'Site name is required';
-        }
-        if (value.trim().length < 3) {
-          return 'Site name must be at least 3 characters';
-        }
-        if (value.trim().length > 50) {
-          return 'Site name must not exceed 50 characters';
-        }
-        // Check for duplicate site names (exclude current site when editing)
-        const isDuplicate = sites.some(site => 
-          site.name.toLowerCase() === value.trim().toLowerCase() && 
-          site.id !== selectedSite?.id
-        );
-        if (isDuplicate) {
-          return 'A site with this name already exists';
-        }
         return undefined;
-
       case 'company':
-        // No validation for company name
         return undefined;
-
       case 'branch':
-          // No validation for branch/department
-          return undefined;
-
-      case 'members':
+        return undefined;
+      case 'membersCount':
         if (value && value.trim() !== '') {
           const num = parseInt(value);
           if (isNaN(num)) {
-            return 'Members must be a valid number';
+            return 'Number of employees must be a valid number';
           }
           if (num < 0) {
-            return 'Members cannot be negative';
+            return 'Number of employees cannot be negative';
           }
-          if (num > 1000) {
-            return 'Members cannot exceed 1000';
+          if (num > 10000) {
+            return 'Number of employees seems too large';
           }
         }
         return undefined;
-
       default:
         return undefined;
     }
   };
 
-  const validateForm = (): boolean => {
+  const validateForm = (requireMembers: boolean = false): boolean => {
     const newErrors: ValidationErrors = {
       siteName: validateField('siteName', siteName),
       company: validateField('company', company),
       branch_id: validateField('branch_id', branch_id),
+      membersCount: validateField('membersCount', membersCount),
     };
 
-    // Validate location
+    if (requireMembers) {
+      if (!membersCount || membersCount.trim() === '') {
+        newErrors.membersCount = 'Please specify number of employees to deploy';
+      }
+    }
+
     if (latitude === null || longitude === null) {
       newErrors.location = 'Please select a location on the map';
     }
 
     setErrors(newErrors);
-    
-    // Mark all fields as touched
     setTouched({
       siteName: true,
       company: true,
       branch_id: true,
+      membersCount: true,
       location: true,
     });
 
-    // Return true if no errors
     return !Object.keys(newErrors).some((key: string) => (newErrors as any)[key] !== undefined);
   };
 
   const handleFieldChange = (fieldName: string, value: string) => {
-    // Update the field value
     switch (fieldName) {
       case 'siteName':
         setSiteName(value);
+        setLastUpdateSource('user');
         break;
       case 'company':
         setCompany(value);
-        // Remove error if valid option selected
-        if (value && companyOptions.some(opt => opt.id === value)) {
-          setErrors(prev => ({ ...prev, company: undefined }));
+        if (value && companyOptions.some((opt) => String(opt.id) === String(value))) {
+          setErrors((prev) => ({ ...prev, company: undefined }));
         }
         break;
       case 'branch_id':
         setBranchId(value);
         break;
-      // Removed members field change
+      case 'membersCount':
+        setMembersCount(value);
+        break;
     }
 
-    // Validate the field if it's been touched
     if (touched[fieldName]) {
       const error = validateField(fieldName, value);
-      setErrors(prev => ({ ...prev, [fieldName]: error }));
+      setErrors((prev) => ({ ...prev, [fieldName]: error }));
     }
   };
-  // Auto-fill site name with coordinates when map is clicked or marker is dragged
+
+  // Auto-fill site name with reverse-geocoded place (falls back to coordinates)
   useEffect(() => {
-    if (latitude !== null && longitude !== null) {
-      setSiteName(`Site (${latitude.toFixed(4)}, ${longitude.toFixed(4)})`);
-    }
-  }, [latitude, longitude]);
+    const fillNameWithPlace = async () => {
+      if (latitude === null || longitude === null) return;
+      if (!(lastUpdateSource === 'map' || !siteName || siteName.trim() === '')) return;
+
+      const g = (window as any).google;
+      if (g && g.maps && g.maps.Geocoder) {
+        try {
+          const geocoder = new g.maps.Geocoder();
+          geocoder.geocode(
+            { location: { lat: latitude, lng: longitude } },
+            (results: any, status: string) => {
+              if (status === 'OK' && results && results[0]) {
+                const placeName = results[0].formatted_address || results[0].name || '';
+                const finalName = placeName ? placeName : 'Site';
+                setSiteName(finalName);
+                setLastUpdateSource(null);
+              } else {
+                setSiteName('Site');
+                setLastUpdateSource(null);
+              }
+            }
+          );
+        } catch {
+          setSiteName('Site');
+          setLastUpdateSource(null);
+        }
+      } else {
+        setSiteName('Site');
+        setLastUpdateSource(null);
+      }
+    };
+
+    fillNameWithPlace();
+  }, [latitude, longitude, siteName, lastUpdateSource]);
 
   const handleFieldBlur = (fieldName: string, value: string) => {
-    setTouched(prev => ({ ...prev, [fieldName]: true }));
+    setTouched((prev) => ({ ...prev, [fieldName]: true }));
     const error = validateField(fieldName, value);
-    setErrors(prev => ({ ...prev, [fieldName]: error }));
+    setErrors((prev) => ({ ...prev, [fieldName]: error }));
   };
 
   const resetForm = () => {
     setSiteName('');
     setCompany('');
     setBranchId('');
-    // Removed members reset
+    setMembersCount('');
+    setLeaderId('');
     setLatitude(null);
     setLongitude(null);
+    setLastUpdateSource(null);
     setErrors({});
     setTouched({});
     setSelectedSite(null);
   };
 
+  const sanitizeSiteName = (name: string) => {
+    const trimmed = name.trim();
+    if (trimmed.length <= 50) return trimmed;
+    return `${trimmed.slice(0, 47)}...`;
+  };
+
+  const formatGeocoderResult = (result: any, allResults: any[]): string => {
+    if (!result) return '';
+    let establishment = '';
+    for (const r of allResults || []) {
+      if (
+        r.types &&
+        (r.types.includes('establishment') ||
+          r.types.includes('point_of_interest') ||
+          r.types.includes('premise'))
+      ) {
+        establishment = r.formatted_address || '';
+        break;
+      }
+    }
+    const comp = (type: string) => {
+      const c = (result.address_components || []).find(
+        (ac: any) => ac.types && ac.types.includes(type)
+      );
+      return c ? c.long_name : '';
+    };
+    const streetNumber = comp('street_number');
+    const route = comp('route');
+    const street = [streetNumber, route].filter(Boolean).join(' ').trim();
+    const sublocality =
+      comp('sublocality_level_1') || comp('neighborhood') || comp('sublocality') || '';
+    const locality = comp('locality') || comp('administrative_area_level_2') || '';
+    const region = comp('administrative_area_level_1') || '';
+    const postal = comp('postal_code') || '';
+    const addressParts = [] as string[];
+    if (street) addressParts.push(street);
+    if (sublocality) addressParts.push(sublocality);
+    if (locality) addressParts.push(locality);
+    if (region) addressParts.push(region + (postal ? ` ${postal}` : ''));
+    const address = addressParts.join(', ');
+    if (establishment) {
+      return `${establishment}${address ? ' — ' + address : ''}`;
+    }
+    if (result.formatted_address) return result.formatted_address;
+    return address || 'Site';
+  };
+
+  const geocodeSiteNameToLocation = (mode: 'add' | 'edit') => {
+    if (typeof window === 'undefined') return;
+    const query = (siteName || '').trim();
+    if (!query) return;
+    if (lastUpdateSource !== 'user') return;
+    const g = (window as any).google;
+    if (!g || !g.maps || !g.maps.Geocoder) return;
+    try {
+      const geocoder = new g.maps.Geocoder();
+      geocoder.geocode({ address: query }, (results: any, status: string) => {
+        if (
+          status !== 'OK' ||
+          !results ||
+          !results[0] ||
+          !results[0].geometry ||
+          !results[0].geometry.location
+        ) {
+          return;
+        }
+        const loc = results[0].geometry.location;
+        const lat = typeof loc.lat === 'function' ? loc.lat() : null;
+        const lng = typeof loc.lng === 'function' ? loc.lng() : null;
+        if (typeof lat !== 'number' || typeof lng !== 'number') return;
+        const newName = formatGeocoderResult(results[0], results);
+        if (newName) setSiteName(sanitizeSiteName(newName));
+        setLatitude(lat);
+        setLongitude(lng);
+        setErrors((prev) => ({ ...prev, location: undefined }));
+        setLastUpdateSource('places');
+        try {
+          if (mode === 'edit') {
+            if (editMarkerRef.current && editMarkerRef.current.setPosition) {
+              editMarkerRef.current.setPosition({ lat, lng });
+            }
+            if (editMapRef.current && editMapRef.current.setCenter) {
+              editMapRef.current.setCenter({ lat, lng });
+            }
+          } else {
+            if (markerRef.current && markerRef.current.setPosition) {
+              markerRef.current.setPosition({ lat, lng });
+            }
+            if (mapRef.current && mapRef.current.setCenter) {
+              mapRef.current.setCenter({ lat, lng });
+            }
+          }
+        } catch {}
+      });
+    } catch {}
+  };
+
   const handleAddSite = async () => {
-    if (!validateForm()) {
+    if (!validateForm(true)) {
       showAlert('Validation Error', 'Please fix the errors before submitting', 'error');
       return;
     }
+    const safeName = sanitizeSiteName(siteName);
+    const selectedLeaderId = leaderId && leaderId.trim() ? leaderId.trim() : null;
+    
+    // REMOVED: The restriction that prevented a user from being assigned as a leader
+    // if they already lead another non-finished site. Now any user can be leader
+    // of multiple sites.
 
-    const { error } = await supabase
+    const { data: insertedSite, error } = await supabase
       .from('sites')
       .insert([
         {
-          name: siteName.trim(),
+          name: safeName,
           company_id: company || null,
           branch_id: branch_id || null,
-          status: 'Active',
+          members_count: membersCount ? parseInt(membersCount) : null,
+          leader_id: selectedLeaderId,
+          status: selectedLeaderId ? 'Pending' : 'Active',
           latitude: latitude,
           longitude: longitude,
         },
-      ]);
+      ])
+      .select('id, name')
+      .single();
     if (error) {
       showAlert('Error', error.message, 'error');
     } else {
-      // Insert activity log
+      // Best-effort: notify users about the newly created site.
+      try {
+        await notifyNewSiteCreated({
+          siteName: safeName,
+          leaderId: selectedLeaderId,
+          siteStatus: selectedLeaderId ? 'Pending' : 'Active',
+        });
+      } catch (e) {
+        console.warn('notifyNewSiteCreated failed:', (e as any)?.message || String(e));
+      }
+
+      if (selectedLeaderId && insertedSite?.id) {
+        const { error: leaderAssignError } = await supabase
+          .from('users')
+          .update({ site_id: insertedSite.id, updated_at: new Date().toISOString() })
+          .eq('id', selectedLeaderId);
+        if (leaderAssignError) {
+          console.error('Error assigning leader to site:', leaderAssignError);
+        }
+        const { error: memberInsertError } = await supabase
+          .from('group_members')
+          .insert([{ site_id: insertedSite.id, user_id: selectedLeaderId }]);
+        if (memberInsertError) {
+          console.error('Error inserting leader into group_members:', memberInsertError);
+        }
+      }
       await supabase.from('activity_logs').insert([
         {
-          user_name: 'Admin User', // Replace with actual user if available
+          user_name: 'Admin User',
           initials: 'AD',
-          action: `Added New Site: ${siteName.trim()}`,
+          action: `Added New Site: ${safeName}`,
           description: 'New site location has been added to the system',
           location: 'System',
           type: 'system',
@@ -591,19 +1043,19 @@ export default function SiteManagement({ onNavigate }: SiteManagementProps) {
           icon: 'add-circle-outline',
         },
       ]);
-      showAlert('Success!', `${siteName.trim()} has been added successfully`, 'success');
+      showAlert('Success!', `${safeName} has been added successfully`, 'success');
       resetForm();
       setIsAddModalOpen(false);
-      // Real-time subscription will handle the update automatically
+      fetchSites();
     }
   };
 
   const handleEditSite = (site: Site) => {
     setSelectedSite(site);
     setSiteName(site.name);
-    setCompany(site.company_id || '');
-    setBranchId(site.branch_id || '');
-    // Removed members edit
+    setCompany((site as any).company_id ? String((site as any).company_id) : '');
+    setBranchId(site.branch_id ? String(site.branch_id) : '');
+    setMembersCount(site.members_count ? String(site.members_count) : '');
     setLatitude(site.latitude || null);
     setLongitude(site.longitude || null);
     setIsEditModalOpen(true);
@@ -614,32 +1066,31 @@ export default function SiteManagement({ onNavigate }: SiteManagementProps) {
       showAlert('Error', 'No site selected', 'error');
       return;
     }
-
     if (!validateForm()) {
       showAlert('Validation Error', 'Please fix the errors before submitting', 'error');
       return;
     }
-
+    const safeName = sanitizeSiteName(siteName);
     const { error } = await supabase
       .from('sites')
       .update({
-        name: siteName.trim(),
+        name: safeName,
         company_id: company || null,
         branch_id: branch_id || null,
+        members_count: membersCount ? parseInt(membersCount) : null,
         latitude: latitude,
         longitude: longitude,
         updated_at: new Date().toISOString(),
       })
       .eq('id', selectedSite.id)
       .select();
-
     if (error) {
       showAlert('Update Error', error.message, 'error');
     } else {
-      showAlert('Updated!', `${siteName.trim()} has been updated successfully`, 'success');
+      showAlert('Updated!', `${safeName} has been updated successfully`, 'success');
       resetForm();
       setIsEditModalOpen(false);
-      // Real-time subscription will handle the update automatically
+      fetchSites();
     }
   };
 
@@ -648,196 +1099,210 @@ export default function SiteManagement({ onNavigate }: SiteManagementProps) {
       showAlert('No Location', 'This site does not have location coordinates', 'error');
       return;
     }
-    // Attach company name to site for modal
-    const companyObj = companyOptions.find(opt => String(opt.id) === String(site.company));
+
+    // Prepare display names – archived sites already have strings, active need lookup
+    let companyDisplay = site.company as string;
+    let branchDisplay = site.branch as string;
+
+    if (!companyDisplay && site.company_id) {
+      const companyObj = companyOptions.find((opt) => String(opt.id) === String(site.company_id));
+      companyDisplay = companyObj ? companyObj.name : 'No company selected';
+    }
+
+    if (!branchDisplay && site.branch_id) {
+      const branchObj = branchOptions.find((opt) => opt.id === site.branch_id);
+      branchDisplay = branchObj ? branchObj.name : 'No branch selected';
+    }
+
     setSelectedSite({
       ...site,
-      company: companyObj ? companyObj.name : site.company // fallback to id if not found
+      company: companyDisplay,
+      branch: branchDisplay,
     });
     setIsViewLocationOpen(true);
   };
 
   const handleDeleteSite = async (site: Site) => {
-    // Use window.confirm for web compatibility instead of Alert.alert
     const confirmed = window.confirm(
       `Are you sure you want to delete "${site.name}"? This action cannot be undone.`
     );
-
     if (!confirmed) return;
-
-    const { error } = await supabase
-      .from('sites')
-      .delete()
-      .eq('id', site.id);
-    
+    const { error } = await supabase.from('sites').delete().eq('id', site.id);
     if (error) {
       showAlert('Delete Error', error.message, 'error');
     } else {
       showAlert('Deleted', `${site.name} has been removed successfully`, 'success');
-      // Real-time subscription will handle the update automatically
+      fetchSites();
     }
+  };
+
+  const openArchivedDetail = (site: any) => {
+    setSelectedArchivedSite(site);
+    setDetailModalVisible(true);
   };
 
   return (
     <View className="flex-1 bg-stone-50">
       {/* Main Content Area */}
-      <ScrollView className="flex-1 bg-stone-50" showsVerticalScrollIndicator={false}>
+      <ScrollView className="flex-1 bg-stone-50">
         {/* Header */}
-        <View className="bg-white px-6 pt-5 pb-4 border-b border-stone-100">
+        <View className="border-b border-stone-200 bg-white px-5 pb-3 pt-4">
           <View className="flex-row items-center justify-between">
-            <View className="flex-row items-center flex-1">
+            <View className="flex-1 flex-row items-center">
               <TouchableOpacity
-                className="lg:hidden w-9 h-9 items-center justify-center mr-3"
-                onPress={() => setIsDrawerOpen(true)}
-              >
-                <Ionicons name="menu" size={22} color="#44403c" />
+                className="mr-3 h-9 w-9 items-center justify-center lg:hidden"
+                onPress={() => setIsDrawerOpen(true)}>
+                <Ionicons name="menu" size={24} color="#44403c" />
               </TouchableOpacity>
               <View className="flex-1">
-                <Text className="text-xl font-bold text-stone-900 tracking-tight">Site Management</Text>
-                <Text className="text-stone-400 text-xs mt-0.5 font-medium">Manage and monitor your sites</Text>
+                <Text className="text-lg font-bold text-stone-900 lg:text-2xl">
+                  Site Management
+                </Text>
+                <Text className="mt-0.5 text-xs text-stone-500 lg:text-sm">
+                  Welcome back, Administrator
+                </Text>
               </View>
             </View>
-            <View className="flex-row items-center gap-2">
+            {/* Right-side header (notifications + profile) removed per user request */}
+          </View>
+        </View>
+
+        {/* Page Title & Add Button */}
+        <View className="px-5 pb-3 pt-4 lg:px-8 lg:pt-6">
+          <View className="flex-row items-center justify-between">
+            <View className="flex-1 flex-row items-center gap-3">
+              <Text className="mb-0.5 text-lg font-bold text-stone-900 lg:text-xl">
+                {showArchived ? 'Archived Sites' : 'Site Management'}
+              </Text>
               <TouchableOpacity
-                className="w-9 h-9 bg-stone-50 border border-stone-100 rounded-lg items-center justify-center"
-                onPress={() => setIsNotificationOpen(true)}
-                activeOpacity={0.7}
+                className={`ml-2 px-2 py-1 rounded transition-colors duration-150 ${!showArchived ? 'bg-emerald-600' : 'bg-stone-200'} ${!showArchived ? 'shadow-md' : ''}`}
+                style={{ minWidth: 70, alignItems: 'center' }}
+                onPress={() => setShowArchived(false)}
+                activeOpacity={0.85}
               >
-                <View className="w-2 h-2 bg-red-400 rounded-full absolute top-1.5 right-1.5" />
-                <Ionicons name="notifications-outline" size={17} color="#78716c" />
+                <Text className={`text-xs font-semibold ${!showArchived ? 'text-white' : 'text-emerald-700'}`}>Active</Text>
               </TouchableOpacity>
-              {/* Notification Modal */}
-              <Modal
-                visible={isNotificationOpen}
-                transparent
-                animationType="fade"
-                onRequestClose={() => setIsNotificationOpen(false)}
+              <TouchableOpacity
+                className={`ml-1 px-2 py-1 rounded transition-colors duration-150 ${showArchived ? 'bg-emerald-600' : 'bg-stone-200'} ${showArchived ? 'shadow-md' : ''}`}
+                style={{ minWidth: 70, alignItems: 'center' }}
+                onPress={() => setShowArchived(true)}
+                activeOpacity={0.85}
               >
-                <Pressable className="flex-1 bg-black/30 justify-center items-center px-5" onPress={() => setIsNotificationOpen(false)}>
-                  <View className="bg-white w-full max-w-xs rounded-2xl overflow-hidden" style={{ shadowColor: '#000', shadowOffset: { width: 0, height: 20 }, shadowOpacity: 0.15, shadowRadius: 40 }}>
-                    <View className="px-6 pt-6 pb-4 items-center border-b border-stone-100">
-                      <View className="w-12 h-12 bg-emerald-50 rounded-xl items-center justify-center mb-3">
-                        <Ionicons name="notifications" size={22} color="#10b981" />
-                      </View>
-                      <Text className="font-bold text-stone-900 text-base">Notifications</Text>
-                    </View>
-                    <View className="px-6 py-5 items-center">
-                      <Text className="text-stone-400 text-sm text-center">You have no new notifications.</Text>
-                    </View>
-                    <View className="px-6 pb-6">
-                      <TouchableOpacity className="bg-emerald-500 w-full py-3 rounded-lg items-center" onPress={() => setIsNotificationOpen(false)}>
-                        <Text className="text-white font-semibold text-sm">Dismiss</Text>
-                      </TouchableOpacity>
-                    </View>
-                  </View>
-                </Pressable>
-              </Modal>
-              <View className="flex-row items-center gap-2 bg-stone-50 border border-stone-100 rounded-lg px-2.5 py-1.5">
-                <View className="w-6 h-6 bg-emerald-500 rounded-md items-center justify-center">
-                  <Text className="text-white font-bold text-xs">AD</Text>
-                </View>
-                <View className="hidden lg:flex">
-                  <Text className="text-xs font-semibold text-stone-800">Admin User</Text>
-                </View>
-              </View>
+                <Text className={`text-xs font-semibold ${showArchived ? 'text-white' : 'text-emerald-700'}`}>Archived</Text>
+              </TouchableOpacity>
             </View>
+            {!showArchived && (
+              <TouchableOpacity
+                className="ml-2 flex-row items-center rounded-xl bg-emerald-600 px-3 py-2 lg:px-4 lg:py-2.5"
+                onPress={() => setIsAddModalOpen(true)}>
+                <Ionicons name="add" size={18} color="white" />
+                <Text className="ml-1 text-xs font-semibold text-white lg:text-sm">Add Site</Text>
+              </TouchableOpacity>
+            )}
           </View>
         </View>
 
-        {/* Action Row */}
-        <View className="px-6 pt-4 pb-3 flex-row items-center justify-between">
-          <View className="flex-row items-center gap-2">
-            <View className="bg-emerald-50 border border-emerald-100 rounded-lg px-3 py-1.5 flex-row items-center gap-1.5">
-              <View className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
-              <Text className="text-xs font-semibold text-emerald-700">{sites.length} Sites</Text>
-            </View>
-          </View>
-          <TouchableOpacity
-            className="flex-row items-center gap-1.5 bg-emerald-500 px-3.5 py-2 rounded-lg"
-            style={{ shadowColor: '#10b981', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.25, shadowRadius: 4 }}
-            onPress={() => setIsAddModalOpen(true)}
-          >
-            <Ionicons name="add" size={16} color="white" />
-            <Text className="text-white font-semibold text-sm">Add Site</Text>
-          </TouchableOpacity>
-        </View>
-
-        {/* Desktop Table View */}
-        <View className="hidden lg:flex px-6 pb-6">
-          <View
-            className="bg-white rounded-xl border border-stone-100 overflow-hidden"
-            style={{ shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.05, shadowRadius: 4 }}
-          >
+        {/* Desktop Table View - Hidden on mobile */}
+        <View className="hidden px-8 pb-6 lg:flex">
+          <View className="overflow-hidden rounded-2xl border border-stone-200 bg-white">
             {/* Table Header */}
-            <View className="flex-row items-center px-6 py-3 bg-stone-50 border-b border-stone-100">
-              <Text className="flex-1 text-xs font-semibold text-stone-400 uppercase tracking-widest">Site Name</Text>
-              <Text className="flex-1 text-xs font-semibold text-stone-400 uppercase tracking-widest">Company</Text>
-              <Text className="flex-1 text-xs font-semibold text-stone-400 uppercase tracking-widest">Branch</Text>
-              <Text className="w-24 text-xs font-semibold text-stone-400 uppercase tracking-widest">Status</Text>
-              <Text className="w-28 text-xs font-semibold text-stone-400 uppercase tracking-widest text-center">Actions</Text>
+            <View className="flex-row items-center border-b border-stone-200 bg-stone-50 px-6 py-4">
+              <Text className="flex-1 text-xs font-semibold uppercase tracking-wide text-stone-600">
+                Site Name
+              </Text>
+              <Text className="flex-1 text-xs font-semibold uppercase tracking-wide text-stone-600">
+                Company
+              </Text>
+              <Text className="flex-1 text-xs font-semibold uppercase tracking-wide text-stone-600">
+                Branch
+              </Text>
+              <Text className="w-28 text-xs font-semibold uppercase tracking-wide text-stone-600">
+                Status
+              </Text>
+              <Text className="w-32 text-center text-xs font-semibold uppercase tracking-wide text-stone-600">
+                Actions
+              </Text>
             </View>
 
             {/* Table Rows */}
             {sites.length === 0 ? (
-              <View className="px-6 py-12 items-center">
-                <View className="w-12 h-12 bg-stone-50 rounded-xl items-center justify-center mb-3">
-                  <Ionicons name="location-outline" size={22} color="#d6d3d1" />
-                </View>
-                <Text className="text-stone-500 text-sm font-medium">No sites found</Text>
-                <Text className="text-stone-400 text-xs mt-1">Click "Add Site" to create your first site</Text>
+              <View className="items-center px-6 py-12">
+                <Ionicons name="location-outline" size={48} color="#d6d3d1" />
+                <Text className="mt-4 text-sm text-stone-500">No sites found</Text>
+                {!showArchived && (
+                  <Text className="mt-1 text-xs text-stone-400">
+                    Click &quot;Add Site&quot; to create your first site
+                  </Text>
+                )}
               </View>
             ) : (
               sites.map((site, index) => (
                 <View
                   key={site.id}
-                  className={`flex-row items-center px-6 py-3.5 ${index !== sites.length - 1 ? 'border-b border-stone-50' : ''}`}
-                >
-                  {/* Site Name with icon */}
-                  <View className="flex-1 flex-row items-center gap-2.5">
-                    <View className="w-8 h-8 bg-emerald-50 rounded-lg items-center justify-center">
-                      <Ionicons name="location" size={14} color="#10b981" />
+                  className={`flex-row items-center px-8 py-6 ${index !== sites.length - 1 ? 'border-b border-stone-100' : ''} ${index % 2 === 0 ? 'bg-white' : 'bg-stone-50'}`}>
+                  {/* Site Name */}
+                  <View className="flex-1 flex-row items-center">
+                    <View className="mr-3 h-10 w-10 items-center justify-center rounded-xl bg-emerald-100">
+                      <Ionicons name="location" size={18} color="#10b981" />
                     </View>
-                    <Text className="text-sm font-semibold text-stone-900" numberOfLines={1}>{site.name}</Text>
+                    <Text className="text-sm font-semibold text-stone-900">{site.name}</Text>
                   </View>
 
                   {/* Company */}
-                  <Text className="flex-1 text-sm text-stone-500" numberOfLines={1}>
-                    {companyOptions.find(opt => String(opt.id) === String(site.company_id))?.name || '—'}
+                  <Text className="flex-1 text-sm text-stone-600">
+                    {companyOptions.find((opt) => String(opt.id) === String(site.company_id))
+                      ?.name || (site.company || 'No company selected')}
                   </Text>
 
                   {/* Branch */}
-                  <Text className="flex-1 text-sm text-stone-500" numberOfLines={1}>
-                    {branchOptions.find(opt => String(opt.id) === String(site.branch_id))?.name || '—'}
+                  <Text className="flex-1 text-sm text-stone-600">
+                    {branchOptions.find((opt) => String(opt.id) === String(site.branch_id))?.name ||
+                      (site.branch || 'No branch selected')}
                   </Text>
 
                   {/* Status */}
-                  <View className="w-24">
-                    <View className="flex-row items-center gap-1.5 bg-emerald-50 border border-emerald-100 px-2.5 py-1 rounded-full self-start">
-                      <View className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
-                      <Text className="text-emerald-700 text-xs font-semibold">{site.status || 'Active'}</Text>
+                  <View className="w-28">
+                    <View className="inline-flex self-start rounded-lg bg-emerald-50 px-3 py-1.5">
+                      <Text className="text-xs font-semibold text-emerald-700">{site.status}</Text>
                     </View>
                   </View>
 
                   {/* Actions */}
-                  <View className="w-28 flex-row items-center justify-center gap-1.5">
-                    <TouchableOpacity
-                      className="w-7 h-7 bg-stone-50 border border-stone-100 items-center justify-center rounded-lg"
-                      onPress={() => handleEditSite(site)}
-                    >
-                      <Ionicons name="create-outline" size={14} color="#78716c" />
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                      className="w-7 h-7 bg-stone-50 border border-stone-100 items-center justify-center rounded-lg"
-                      onPress={() => handleViewLocation(site)}
-                    >
-                      <Ionicons name="eye-outline" size={14} color="#78716c" />
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                      className="w-7 h-7 bg-red-50 border border-red-100 items-center justify-center rounded-lg"
-                      onPress={() => handleDeleteSite(site)}
-                    >
-                      <Ionicons name="trash-outline" size={14} color="#ef4444" />
-                    </TouchableOpacity>
+                  <View className="w-32 flex-row items-center justify-center gap-2">
+                    {!showArchived ? (
+                      // Active site actions
+                      <>
+                        <TouchableOpacity
+                          className="h-8 w-8 items-center justify-center rounded-lg hover:bg-stone-100"
+                          onPress={() => handleEditSite(site)}>
+                          <Ionicons name="create-outline" size={18} color="#78716c" />
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                          className="h-8 w-8 items-center justify-center rounded-lg hover:bg-red-50"
+                          onPress={() => handleDeleteSite(site)}>
+                          <Ionicons name="trash-outline" size={18} color="#dc2626" />
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                          className="h-8 w-8 items-center justify-center rounded-lg hover:bg-stone-100"
+                          onPress={() => handleViewLocation(site)}>
+                          <Ionicons name="eye-outline" size={18} color="#78716c" />
+                        </TouchableOpacity>
+                      </>
+                    ) : (
+                      // Archived site actions
+                      <>
+                        <TouchableOpacity
+                          className="h-8 w-8 items-center justify-center rounded-lg hover:bg-stone-100"
+                          onPress={() => handleViewLocation(site)}>
+                          <Ionicons name="location-outline" size={18} color="#78716c" />
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                          className="h-8 w-8 items-center justify-center rounded-lg hover:bg-stone-100"
+                          onPress={() => openArchivedDetail(site)}>
+                          <Ionicons name="eye-outline" size={18} color="#78716c" />
+                        </TouchableOpacity>
+                      </>
+                    )}
                   </View>
                 </View>
               ))
@@ -846,22 +1311,34 @@ export default function SiteManagement({ onNavigate }: SiteManagementProps) {
         </View>
 
         {/* Mobile Card View - Hidden on desktop */}
-        <View className="lg:hidden px-5 pb-6">
+        <View className="px-5 pb-6 lg:hidden">
           {sites.length === 0 ? (
-            <View className="py-12 items-center">
-              <View className="w-12 h-12 bg-stone-50 rounded-xl items-center justify-center mb-3">
-                <Ionicons name="location-outline" size={22} color="#d6d3d1" />
-              </View>
-              <Text className="text-stone-500 text-sm font-medium">No sites found</Text>
-              <Text className="text-stone-400 text-xs mt-1 text-center">Tap "Add Site" to create your first site</Text>
+            <View className="items-center px-6 py-12">
+              <Ionicons name="location-outline" size={48} color="#d6d3d1" />
+              <Text className="mt-4 text-sm text-stone-500">No sites found</Text>
+              {!showArchived && (
+                <Text className="mt-1 text-center text-xs text-stone-400">
+                  Click &quot;Add Site&quot; to create your first site
+                </Text>
+              )}
             </View>
           ) : (
             sites.map((site, index) => {
               const gradient = CARD_GRADIENTS[index % CARD_GRADIENTS.length];
-              const companyName = companyOptions.find(opt => String(opt.id) === String(site.company_id))?.name || String(site.company || '');
-              const branchName = branchOptions.find(opt => String(opt.id) === String(site.branch_id))?.name || 'No branch selected';
+              const companyName =
+                companyOptions.find((opt) => String(opt.id) === String(site.company_id))?.name ||
+                site.company ||
+                '';
+              const branchName =
+                branchOptions.find((opt) => String(opt.id) === String(site.branch_id))?.name ||
+                site.branch ||
+                'No branch selected';
               const code = site.id ? String(site.id).slice(0, 5).toUpperCase() : `#${index + 1}`;
-              const hasCoords = site.latitude !== null && site.latitude !== undefined && site.longitude !== null && site.longitude !== undefined;
+              const hasCoords =
+                site.latitude !== null &&
+                site.latitude !== undefined &&
+                site.longitude !== null &&
+                site.longitude !== undefined;
               const lat = hasCoords ? Number(site.latitude).toFixed(4) : '';
               const lng = hasCoords ? Number(site.longitude).toFixed(4) : '';
               return (
@@ -869,28 +1346,87 @@ export default function SiteManagement({ onNavigate }: SiteManagementProps) {
                   <TouchableOpacity
                     onPress={() => handleViewLocation(site)}
                     activeOpacity={0.9}
-                    style={{ borderRadius: 16, overflow: 'hidden' }}
-                  >
+                    style={{ borderRadius: 16, overflow: 'hidden' }}>
                     <View
                       style={{
                         borderRadius: 16,
                         padding: 16,
                         overflow: 'hidden',
                         backgroundColor: gradient[0],
-                      }}
-                    >
-                    {/* Decorative circle */}
-                    <View style={{ position: 'absolute', top: -18, right: -18, width: 96, height: 96, borderRadius: 48, backgroundColor: 'rgba(255,255,255,0.08)' }} />
+                      }}>
+                      <View
+                        style={{
+                          position: 'absolute',
+                          top: -18,
+                          right: -18,
+                          width: 96,
+                          height: 96,
+                          borderRadius: 48,
+                          backgroundColor: 'rgba(255,255,255,0.08)',
+                        }}
+                      />
 
-                    {/* Menu dots */}
-                    <TouchableOpacity style={{ position: 'absolute', top: 10, right: 10 }} onPress={() => {}}>
-                      <Ionicons name="ellipsis-vertical" size={20} color="rgba(255,255,255,0.95)" />
-                    </TouchableOpacity>
+                      {!showArchived && (
+                        <TouchableOpacity
+                          style={{ position: 'absolute', top: 10, right: 10 }}
+                          onPress={() => {}}>
+                          <Ionicons
+                            name="ellipsis-vertical"
+                            size={20}
+                            color="rgba(255,255,255,0.95)"
+                          />
+                        </TouchableOpacity>
+                      )}
 
-                    {/* Desired order: Company name, Branch name, Coordinates */}
-                    <Text className="text-white text-sm font-semibold" numberOfLines={2} ellipsizeMode="tail">{companyName}</Text>
-                    <Text className="text-white text-xs opacity-90 mt-1">{branchName}</Text>
-                    <Text className="text-white text-xs opacity-90 mt-1">{hasCoords ? `${lat}, ${lng}` : code}</Text>
+                      {/* Icons row for archived sites */}
+                      {showArchived ? (
+                        <View style={{ position: 'absolute', top: 10, right: 10, flexDirection: 'row', gap: 12 }}>
+                          <TouchableOpacity onPress={() => handleViewLocation(site)}>
+                            <Ionicons name="location-outline" size={18} color="rgba(255,255,255,0.95)" />
+                          </TouchableOpacity>
+                          <TouchableOpacity onPress={() => openArchivedDetail(site)}>
+                            <Ionicons name="eye-outline" size={18} color="rgba(255,255,255,0.95)" />
+                          </TouchableOpacity>
+                        </View>
+                      ) : (
+                        // Active site: only one eye icon (positioned to leave space for the menu)
+                        <TouchableOpacity
+                          style={{ position: 'absolute', top: 10, right: 50 }}
+                          onPress={() => handleViewLocation(site)}>
+                          <Ionicons name="eye-outline" size={18} color="rgba(255,255,255,0.95)" />
+                        </TouchableOpacity>
+                      )}
+
+                      <Text
+                        className="text-sm font-semibold text-white"
+                        numberOfLines={2}
+                        ellipsizeMode="tail">
+                        {companyName}
+                      </Text>
+                      <Text className="mt-1 text-xs text-white opacity-90">{branchName}</Text>
+                      <Text className="mt-1 text-xs text-white opacity-90">
+                        {hasCoords ? `${lat}, ${lng}` : code}
+                      </Text>
+
+                      {showArchived && (
+                        <View className="mt-3 rounded-md bg-white/10 px-3 py-2">
+                          <Text className="text-xs font-semibold text-white">
+                            Members: {site.members_count ?? '—'}
+                          </Text>
+                          <Text className="mt-1 text-xs text-white">
+                            Starlink: {site.starlink_serial || '—'}
+                          </Text>
+                          <Text className="mt-1 text-xs text-white line-clamp-2">
+                            Issue: {site.technical_issue || site.issue_description || '—'}
+                          </Text>
+                          <Text className="mt-1 text-xs text-white">
+                            Leader: {(site as any).leaderName || '—'}
+                          </Text>
+                          <Text className="mt-1 text-xs text-white">
+                            Finished: {site.finished_at ? new Date(site.finished_at).toLocaleString() : '—'}
+                          </Text>
+                        </View>
+                      )}
                     </View>
                   </TouchableOpacity>
                 </View>
@@ -905,107 +1441,176 @@ export default function SiteManagement({ onNavigate }: SiteManagementProps) {
         visible={isDrawerOpen}
         transparent
         animationType="fade"
-        onRequestClose={() => setIsDrawerOpen(false)}
-      >
+        onRequestClose={() => setIsDrawerOpen(false)}>
         <View className="flex-1 flex-row">
-          {/* Drawer Content */}
-          <View className="w-72 bg-white h-full shadow-2xl">
-            {/* Drawer Header */}
-            <View className="bg-white px-6 pt-12 pb-5 border-b border-stone-100">
-              <View className="flex-row items-center gap-3">
-                <View className="w-10 h-10 bg-emerald-500 rounded-xl items-center justify-center">
-                  <Ionicons name="radio" size={18} color="white" />
+          <View className="h-full w-72 bg-white shadow-2xl">
+            <View className="border-b border-emerald-100 bg-emerald-50 px-6 pb-6 pt-12">
+              <View className="mb-3 flex-row items-center gap-3">
+                <View className="h-14 w-14 items-center justify-center rounded-2xl bg-emerald-100">
+                  <Ionicons name="chatbubble" size={24} color="#10b981" />
                 </View>
                 <View>
-                  <Text className="text-base font-bold text-stone-900 tracking-tight">Admin Portal</Text>
-                  <Text className="text-xs text-stone-400 font-medium">Monitoring System</Text>
+                  <Text className="text-base font-bold text-stone-900">Admin Portal</Text>
+                  <Text className="text-xs text-stone-500">Monitoring System</Text>
                 </View>
               </View>
             </View>
-
-            {/* Menu Items */}
-            <ScrollView className="flex-1 px-3 py-4">
-              <Text className="text-xs font-semibold text-stone-400 uppercase tracking-widest px-3 mb-2">Navigation</Text>
-              {/* Dashboard */}
+            <ScrollView className="flex-1 px-4 py-4">
               <TouchableOpacity
-                className="flex-row items-center px-3 py-2.5 mb-1 rounded-lg"
-                onPress={() => { setIsDrawerOpen(false); onNavigate('dashboard'); }}
-              >
-                <Ionicons name="grid-outline" size={18} color="#78716c" />
-                <Text className="ml-3 text-stone-600 font-medium text-sm">Dashboard</Text>
+                className="mb-1 flex-row items-center rounded-xl px-4 py-3 hover:bg-stone-50"
+                onPress={() => {
+                  setIsDrawerOpen(false);
+                  onNavigate('dashboard');
+                }}>
+                <Ionicons name="grid-outline" size={20} color="#78716c" />
+                <Text className="ml-3 font-medium text-stone-700">Dashboard</Text>
               </TouchableOpacity>
-
-              {/* Site Management */}
               <TouchableOpacity
-                className="flex-row items-center px-3 py-2.5 mb-1 rounded-lg bg-emerald-50 relative overflow-hidden"
-                onPress={() => { setIsDrawerOpen(false); onNavigate('siteManagement'); }}
-              >
-                <View className="absolute left-0 top-2 bottom-2 w-0.5 bg-emerald-500 rounded-full" />
-                <View className="w-7 h-7 bg-emerald-100 rounded-md items-center justify-center mr-3">
-                  <Ionicons name="location" size={16} color="#10b981" />
-                </View>
-                <Text className="text-emerald-700 font-semibold text-sm">Site Management</Text>
+                className="mb-1 flex-row items-center rounded-xl bg-emerald-50 px-4 py-3"
+                onPress={() => {
+                  setIsDrawerOpen(false);
+                  onNavigate('siteManagement');
+                }}>
+                <Ionicons name="location-outline" size={20} color="#10b981" />
+                <Text className="ml-3 font-medium text-emerald-700">Site Management</Text>
               </TouchableOpacity>
-
-              {/* Walkie Talkie */}
               <TouchableOpacity
-                className="flex-row items-center px-3 py-2.5 mb-1 rounded-lg"
-                onPress={() => { setIsDrawerOpen(false); onNavigate('walkieTalkie'); }}
-              >
-                <Ionicons name="mic-outline" size={18} color="#78716c" />
-                <Text className="ml-3 text-stone-600 font-medium text-sm">Walkie Talkie</Text>
+                className="mb-1 flex-row items-center rounded-xl px-4 py-3 hover:bg-stone-50"
+                onPress={() => {
+                  setIsDrawerOpen(false);
+                  onNavigate('walkieTalkie');
+                }}>
+                <Ionicons name="mic-outline" size={20} color="#78716c" />
+                <Text className="ml-3 font-medium text-stone-700">Walkie Talkie</Text>
               </TouchableOpacity>
-
-              {/* Activity Logs */}
               <TouchableOpacity
-                className="flex-row items-center px-3 py-2.5 mb-1 rounded-lg"
-                onPress={() => { setIsDrawerOpen(false); onNavigate('activityLogs'); }}
-              >
-                <Ionicons name="clipboard-outline" size={18} color="#78716c" />
-                <Text className="ml-3 text-stone-600 font-medium text-sm">Activity Logs</Text>
+                className="mb-1 flex-row items-center rounded-xl px-4 py-3 hover:bg-stone-50"
+                onPress={() => {
+                  setIsDrawerOpen(false);
+                  onNavigate('activityLogs');
+                }}>
+                <Ionicons name="clipboard-outline" size={20} color="#78716c" />
+                <Text className="ml-3 font-medium text-stone-700">Activity Logs</Text>
               </TouchableOpacity>
-
-              {/* Company Lists */}
               <TouchableOpacity
-                className="flex-row items-center px-3 py-2.5 mb-1 rounded-lg"
-                onPress={() => { setIsDrawerOpen(false); onNavigate('companyList'); }}
-              >
-                <Ionicons name="business-outline" size={18} color="#78716c" />
-                <Text className="ml-3 text-stone-600 font-medium text-sm">Company Lists</Text>
+                className="mb-1 flex-row items-center rounded-xl px-4 py-3 hover:bg-stone-50"
+                onPress={() => {
+                  setIsDrawerOpen(false);
+                  onNavigate('companyList');
+                }}>
+                <Ionicons name="business-outline" size={20} color="#78716c" />
+                <Text className="ml-3 font-medium text-stone-700">Company Lists</Text>
               </TouchableOpacity>
-
-              {/* Employees */}
               <TouchableOpacity
-                className="flex-row items-center px-3 py-2.5 mb-1 rounded-lg"
-                onPress={() => { setIsDrawerOpen(false); onNavigate('employee'); }}
-              >
-                <Ionicons name="people-outline" size={18} color="#78716c" />
-                <Text className="ml-3 text-stone-600 font-medium text-sm">Employees</Text>
+                className="mb-1 flex-row items-center rounded-xl px-4 py-3 hover:bg-stone-50"
+                onPress={() => {
+                  setIsDrawerOpen(false);
+                  onNavigate('employee');
+                }}>
+                <Ionicons name="people-outline" size={20} color="#78716c" />
+                <Text className="ml-3 font-medium text-stone-700">Employees</Text>
               </TouchableOpacity>
-
-              <View className="border-t border-stone-100 my-3" />
-
-              {/* Settings */}
-              <TouchableOpacity className="flex-row items-center px-3 py-2.5 mb-1 rounded-lg" onPress={() => onNavigate('settings')}>
-                <Ionicons name="settings-outline" size={18} color="#78716c" />
-                <Text className="ml-3 text-stone-600 font-medium text-sm">Settings</Text>
+              <View className="my-4 border-t border-stone-200" />
+              <TouchableOpacity
+                className="mb-1 flex-row items-center rounded-xl px-4 py-3 hover:bg-stone-50"
+                onPress={() => onNavigate('settings')}>
+                <Ionicons name="settings-outline" size={20} color="#78716c" />
+                <Text className="ml-3 font-medium text-stone-700">Settings</Text>
               </TouchableOpacity>
             </ScrollView>
-
-            {/* Sign Out */}
-            <View className="px-3 pb-6 pt-3 border-t border-stone-100">
-              <TouchableOpacity className="flex-row items-center px-3 py-2.5 rounded-lg bg-red-50">
-                <Ionicons name="log-out-outline" size={18} color="#ef4444" />
-                <Text className="ml-3 text-red-500 font-semibold text-sm">Sign Out</Text>
+            <View className="border-t border-stone-200 px-4 pb-6 pt-4">
+              <TouchableOpacity className="flex-row items-center rounded-xl px-4 py-3">
+                <Ionicons name="log-out-outline" size={20} color="#dc2626" />
+                <Text className="ml-3 font-medium text-red-600">Sign Out</Text>
               </TouchableOpacity>
             </View>
           </View>
+          <Pressable className="flex-1 bg-black/40" onPress={() => setIsDrawerOpen(false)} />
+        </View>
+      </Modal>
 
-          {/* Overlay - Close drawer when tapped */}
-          <Pressable 
-            className="flex-1 bg-black/40" 
-            onPress={() => setIsDrawerOpen(false)}
-          />
+      {/* Detail Modal for Archived Sites */}
+      <Modal visible={detailModalVisible} animationType="slide" transparent={true}>
+        <View className="flex-1 items-center justify-center bg-black/40 px-6">
+          <View className="w-full max-w-2xl rounded-2xl bg-white p-6">
+            <View className="flex-row items-start justify-between">
+              <View className="flex-1">
+                <Text className="text-lg font-extrabold text-gray-900">
+                  {selectedArchivedSite?.name || 'Archived Site Detail'}
+                </Text>
+                <Text className="mt-2 text-sm text-gray-600">Full details and evidence</Text>
+              </View>
+              <Pressable onPress={() => setDetailModalVisible(false)} className="ml-4">
+                <Ionicons name="close" size={20} color="#111827" />
+              </Pressable>
+            </View>
+            <ScrollView className="mt-4 max-h-80">
+              <View className="mb-4">
+                <View className="flex-row justify-between py-2 border-b border-stone-100">
+                  <Text className="font-semibold text-stone-700">Company:</Text>
+                  <Text className="text-stone-600">{selectedArchivedSite?.company || '—'}</Text>
+                </View>
+                <View className="flex-row justify-between py-2 border-b border-stone-100">
+                  <Text className="font-semibold text-stone-700">Branch:</Text>
+                  <Text className="text-stone-600">{selectedArchivedSite?.branch || '—'}</Text>
+                </View>
+                <View className="flex-row justify-between py-2 border-b border-stone-100">
+                  <Text className="font-semibold text-stone-700">Members:</Text>
+                  <Text className="text-stone-600">{selectedArchivedSite?.members_count ?? '—'}</Text>
+                </View>
+                <View className="flex-row justify-between py-2 border-b border-stone-100">
+                  <Text className="font-semibold text-stone-700">Starlink Serial:</Text>
+                  <Text className="text-stone-600">{selectedArchivedSite?.starlink_serial || '—'}</Text>
+                </View>
+                <View className="flex-row justify-between py-2 border-b border-stone-100">
+                  <Text className="font-semibold text-stone-700">Technical Issue:</Text>
+                  <Text className="text-stone-600">{selectedArchivedSite?.technical_issue || selectedArchivedSite?.issue_description || '—'}</Text>
+                </View>
+                <View className="flex-row justify-between py-2 border-b border-stone-100">
+                  <Text className="font-semibold text-stone-700">Leader:</Text>
+                  <Text className="text-stone-600">{selectedArchivedSite?.leaderName || selectedArchivedSite?.leader_id || '—'}</Text>
+                </View>
+                <View className="flex-row justify-between py-2 border-b border-stone-100">
+                  <Text className="font-semibold text-stone-700">Finished At:</Text>
+                  <Text className="text-stone-600">
+                    {selectedArchivedSite?.finished_at ? new Date(selectedArchivedSite.finished_at).toLocaleString() : '—'}
+                  </Text>
+                </View>
+              </View>
+
+              {/* Evidence Images */}
+              {selectedArchivedSite?.evidence_urls && selectedArchivedSite.evidence_urls.length > 0 && (
+                <View className="mt-2">
+                  <Text className="mb-2 font-semibold text-stone-700">Evidence Images:</Text>
+                  <FlatList
+                    data={selectedArchivedSite.evidence_urls}
+                    horizontal
+                    showsHorizontalScrollIndicator={false}
+                    keyExtractor={(item, idx) => idx.toString()}
+                    renderItem={({ item }) => (
+                      <TouchableOpacity
+                        className="mr-2 h-24 w-24 rounded-md overflow-hidden border border-stone-200"
+                        onPress={() => {
+                          setActiveImage(item);
+                          setImageModalVisible(true);
+                        }}>
+                        <Image
+                          source={{ uri: item }}
+                          className="h-full w-full"
+                          resizeMode="cover"
+                          onError={(e) => console.warn('Failed to load evidence', e.nativeEvent.error)}
+                        />
+                      </TouchableOpacity>
+                    )}
+                  />
+                </View>
+              )}
+
+              {(!selectedArchivedSite?.evidence_urls || selectedArchivedSite.evidence_urls.length === 0) && (
+                <Text className="text-sm text-stone-500 mt-2">No evidence images.</Text>
+              )}
+            </ScrollView>
+          </View>
         </View>
       </Modal>
 
@@ -1017,75 +1622,96 @@ export default function SiteManagement({ onNavigate }: SiteManagementProps) {
         onRequestClose={() => {
           setIsAddModalOpen(false);
           resetForm();
-        }}
-      >
-        <Pressable 
-          className="flex-1 bg-black/50 justify-center items-center px-6"
+        }}>
+        <Pressable
+          className="flex-1 items-center justify-center bg-black/50 px-6"
           onPress={() => {
             setIsAddModalOpen(false);
             resetForm();
-          }}
-        >
-          <Pressable className="bg-white rounded-2xl w-full max-w-md" onPress={(e) => e.stopPropagation()}>
-            {/* Modal Header */}
-            <View className="px-6 pt-6 pb-4 border-b border-stone-100">
+          }}>
+          <Pressable
+            className="w-full max-w-md rounded-2xl bg-white"
+            onPress={(e) => e.stopPropagation()}>
+            <View className="border-b border-stone-100 px-6 pb-4 pt-6">
               <View className="flex-row items-center justify-between">
                 <View>
                   <Text className="text-xl font-bold text-stone-900">Add New Site</Text>
-                  <Text className="text-xs text-stone-500 mt-1">Fill in the site details below</Text>
+                  <Text className="mt-1 text-xs text-stone-500">
+                    Fill in the site details below
+                  </Text>
                 </View>
-                <TouchableOpacity 
-                  className="w-8 h-8 items-center justify-center"
+                <TouchableOpacity
+                  className="h-8 w-8 items-center justify-center"
                   onPress={() => {
                     setIsAddModalOpen(false);
                     resetForm();
-                  }}
-                >
+                  }}>
                   <Ionicons name="close" size={24} color="#78716c" />
                 </TouchableOpacity>
               </View>
             </View>
 
-            {/* Form Content */}
-            <ScrollView className="px-6 py-5 max-h-96">
-              {/* Site Name */}
+            <ScrollView className="max-h-96 px-6 py-5">
               <View className="mb-4">
-                <Text className="text-xs font-semibold text-stone-500 uppercase tracking-wide mb-2">
+                <Text className="mb-2 text-sm font-medium text-stone-700">
                   Site Name <Text className="text-red-500">*</Text>
                 </Text>
                 <TextInput
-                  className={`bg-stone-50 border ${
-                    touched.siteName && errors.siteName ? 'border-red-400' : 'border-stone-100'
-                  } rounded-lg px-4 py-3 text-stone-900 text-sm`}
+                  className={`border bg-white ${
+                    touched.siteName && errors.siteName ? 'border-red-500' : 'border-stone-300'
+                  } rounded-xl px-4 py-3 text-sm text-stone-900`}
+                  id="site-name-input"
+                  nativeID="site-name-input"
                   value={siteName}
-                  editable={false}
-                  selectTextOnFocus={false}
+                  editable={true}
+                  selectTextOnFocus={true}
+                  onChangeText={(value) => handleFieldChange('siteName', value)}
+                  onBlur={() => {
+                    handleFieldBlur('siteName', siteName);
+                    geocodeSiteNameToLocation('add');
+                  }}
+                  onSubmitEditing={() => geocodeSiteNameToLocation('add')}
                 />
                 {touched.siteName && errors.siteName && (
-                  <View className="flex-row items-center mt-1.5">
+                  <View className="mt-1.5 flex-row items-center">
                     <Ionicons name="alert-circle" size={14} color="#dc2626" />
-                    <Text className="text-xs text-red-600 ml-1">{errors.siteName}</Text>
+                    <Text className="ml-1 text-xs text-red-600">{errors.siteName}</Text>
                   </View>
                 )}
-                <Text className="text-xs text-stone-400 mt-1">Auto-filled from map coordinates</Text>
+                {latitude !== null && longitude !== null && (
+                  <View className="mt-2">
+                    <Text className="text-xs text-stone-500">
+                      <Text className="font-semibold">Coordinates:</Text> {latitude.toFixed(6)},{' '}
+                      {longitude.toFixed(6)}
+                    </Text>
+                  </View>
+                )}
+                <Text className="mt-1 text-xs text-stone-400">
+                  Auto-filled from map place (coordinates shown above)
+                </Text>
               </View>
 
-              {/* Company */}
               <View className="mb-4">
-                <Text className="text-xs font-semibold text-stone-500 uppercase tracking-wide mb-2">
+                <Text className="mb-2 text-sm font-medium text-stone-700">
                   Company Name <Text className="text-red-500">*</Text>
                 </Text>
-                <View className={`bg-stone-50 border ${
-                  touched.company && errors.company ? 'border-red-400' : 'border-stone-100'
-                } rounded-lg px-4 py-3`}>
+                <View
+                  className={`border bg-white ${
+                    touched.company && errors.company ? 'border-red-500' : 'border-stone-300'
+                  } rounded-xl px-4 py-3`}>
                   <select
-                    style={{ width: '100%', background: 'transparent', border: 'none', fontSize: 14, color: '#44403c' }}
+                    style={{
+                      width: '100%',
+                      background: 'transparent',
+                      border: 'none',
+                      fontSize: 16,
+                      color: '#44403c',
+                    }}
                     value={company}
-                    onChange={e => handleFieldChange('company', e.target.value)}
-                    onBlur={() => handleFieldBlur('company', company)}
-                  >
+                    onChange={(e) => handleFieldChange('company', e.target.value)}
+                    onBlur={() => handleFieldBlur('company', company)}>
                     <option value="">Select a company</option>
-                    {companyOptions.map(opt => (
+                    {companyOptions.map((opt) => (
                       <option key={opt.id} value={opt.id}>
                         {opt.name} {opt.industry ? `(${opt.industry})` : ''}
                       </option>
@@ -1093,31 +1719,34 @@ export default function SiteManagement({ onNavigate }: SiteManagementProps) {
                   </select>
                 </View>
                 {touched.company && errors.company && (
-                  <View className="flex-row items-center mt-1.5">
-                    <Ionicons name="alert-circle" size={14} color="#ef4444" />
-                    <Text className="text-xs text-red-500 ml-1">{errors.company}</Text>
+                  <View className="mt-1.5 flex-row items-center">
+                    <Ionicons name="alert-circle" size={14} color="#dc2626" />
+                    <Text className="ml-1 text-xs text-red-600">{errors.company}</Text>
                   </View>
                 )}
               </View>
 
-              {/* Branch */}
               <View className="mb-4">
-                <Text className="text-xs font-semibold text-stone-500 uppercase tracking-wide mb-2">
-                  Branch/Department
-                </Text>
-                <View className={`bg-stone-50 border ${
-                  touched.branch_id && errors.branch_id ? 'border-red-400' : 'border-stone-100'
-                } rounded-lg px-4 py-3`}>
+                <Text className="mb-2 text-sm font-medium text-stone-700">Branch/Department</Text>
+                <View
+                  className={`border bg-white ${
+                    touched.branch_id && errors.branch_id ? 'border-red-500' : 'border-stone-300'
+                  } rounded-xl px-4 py-3`}>
                   <select
-                    style={{ width: '100%', background: 'transparent', border: 'none', fontSize: 14, color: '#44403c' }}
+                    style={{
+                      width: '100%',
+                      background: 'transparent',
+                      border: 'none',
+                      fontSize: 16,
+                      color: '#44403c',
+                    }}
                     value={branch_id}
-                    onChange={e => handleFieldChange('branch_id', e.target.value)}
-                    onBlur={() => handleFieldBlur('branch_id', branch_id)}
-                  >
+                    onChange={(e) => handleFieldChange('branch_id', e.target.value)}
+                    onBlur={() => handleFieldBlur('branch_id', branch_id)}>
                     <option value="">Select a branch</option>
                     {branchOptions
-                      .filter(opt => !company || String(opt.company_id) === String(company))
-                      .map(opt => (
+                      .filter((opt) => !company || String(opt.company_id) === String(company))
+                      .map((opt) => (
                         <option key={opt.id} value={opt.id}>
                           {opt.name}
                         </option>
@@ -1125,22 +1754,93 @@ export default function SiteManagement({ onNavigate }: SiteManagementProps) {
                   </select>
                 </View>
                 {touched.branch_id && errors.branch_id && (
-                  <View className="flex-row items-center mt-1.5">
-                    <Ionicons name="alert-circle" size={14} color="#ef4444" />
-                    <Text className="text-xs text-red-500 ml-1">{errors.branch_id}</Text>
+                  <View className="mt-1.5 flex-row items-center">
+                    <Ionicons name="alert-circle" size={14} color="#dc2626" />
+                    <Text className="ml-1 text-xs text-red-600">{errors.branch_id}</Text>
                   </View>
                 )}
               </View>
 
-              {/* Location Map */}
+              <View className="-mx-2 flex-row flex-wrap">
+                <View className="mb-4 w-full px-2">
+                  <Text className="mb-2 text-sm font-medium text-stone-700">
+                    Employees to Deploy <Text className="text-red-500">*</Text>
+                  </Text>
+                  <div
+                    className={`border bg-white ${
+                      touched.membersCount && errors.membersCount
+                        ? 'border-red-500'
+                        : 'border-stone-300'
+                    } rounded-xl px-4 py-3`}>
+                    <input
+                      list="members-list"
+                      type="number"
+                      min={0}
+                      style={{
+                        width: '100%',
+                        background: 'transparent',
+                        border: 'none',
+                        fontSize: 16,
+                        color: '#44403c',
+                      }}
+                      value={membersCount}
+                      onChange={(e) => handleFieldChange('membersCount', e.target.value)}
+                      onBlur={() => handleFieldBlur('membersCount', membersCount)}
+                    />
+                    <datalist id="members-list">
+                      {Array.from({ length: 10 }, (_, i) => i + 1).map((n) => (
+                        <option key={n} value={n}>
+                          {n}
+                        </option>
+                      ))}
+                    </datalist>
+                  </div>
+                  {touched.membersCount && errors.membersCount && (
+                    <View className="mt-1.5 flex-row items-center">
+                      <Ionicons name="alert-circle" size={14} color="#dc2626" />
+                      <Text className="ml-1 text-xs text-red-600">{errors.membersCount}</Text>
+                    </View>
+                  )}
+                </View>
+              </View>
+
+              <View className="mb-4">
+                <Text className="mb-2 text-sm font-medium text-stone-700">
+                  Group Leader (Optional)
+                </Text>
+                <View className="rounded-xl border border-stone-300 bg-white px-4 py-3">
+                  <select
+                    style={{
+                      width: '100%',
+                      background: 'transparent',
+                      border: 'none',
+                      fontSize: 16,
+                      color: '#44403c',
+                    }}
+                    value={leaderId}
+                    onChange={(e) => setLeaderId(e.target.value)}>
+                    <option value="">No leader assigned</option>
+                    {leaderOptions.map((opt) => (
+                      <option key={opt.id} value={opt.id}>
+                        {opt.name}
+                        {opt.email ? ` — ${opt.email}` : ''}
+                      </option>
+                    ))}
+                  </select>
+                </View>
+                <Text className="mt-1 text-xs text-stone-400">
+                  If a leader is selected, the site will be created as Pending.
+                </Text>
+              </View>
+
               <View className="mb-1">
-                <Text className="text-xs font-semibold text-stone-500 uppercase tracking-wide mb-2">
+                <Text className="mb-2 text-sm font-medium text-stone-700">
                   Location <Text className="text-red-500">*</Text>
                 </Text>
-                <View 
-                  id="leaflet-map" 
-                  style={{ 
-                    height: 200, 
+                <View
+                  id="leaflet-map"
+                  style={{
+                    height: 200,
                     width: '100%',
                     borderRadius: 12,
                     overflow: 'hidden',
@@ -1150,46 +1850,43 @@ export default function SiteManagement({ onNavigate }: SiteManagementProps) {
                   }}
                 />
                 {touched.location && errors.location && (
-                  <View className="flex-row items-center mt-1.5">
+                  <View className="mt-1.5 flex-row items-center">
                     <Ionicons name="alert-circle" size={14} color="#dc2626" />
-                    <Text className="text-xs text-red-600 ml-1">{errors.location}</Text>
+                    <Text className="ml-1 text-xs text-red-600">{errors.location}</Text>
                   </View>
                 )}
                 {latitude !== null && longitude !== null && (
-                  <View className="mt-2 bg-stone-50 px-3 py-2 rounded-lg">
+                  <View className="mt-2 rounded-lg bg-stone-50 px-3 py-2">
                     <Text className="text-xs text-stone-600">
-                      <Text className="font-semibold">Coordinates:</Text> {latitude.toFixed(6)}, {longitude.toFixed(6)}
+                      <Text className="font-semibold">Coordinates:</Text> {latitude.toFixed(6)},{' '}
+                      {longitude.toFixed(6)}
                     </Text>
                   </View>
                 )}
-                <Text className="text-xs text-stone-400 mt-1">
+                <Text className="mt-1 text-xs text-stone-400">
                   Click on the map or drag the marker to set the location
                 </Text>
               </View>
 
-              <Text className="text-xs text-stone-400 mt-3">
+              <Text className="mt-3 text-xs text-stone-400">
                 <Text className="text-red-500">*</Text> Required fields
               </Text>
             </ScrollView>
 
-            {/* Action Buttons */}
-            <View className="px-6 pb-6 pt-4 border-t border-stone-100">
+            <View className="border-t border-stone-100 px-6 pb-6 pt-4">
               <View className="flex-row gap-3">
                 <TouchableOpacity
-                  className="flex-1 bg-stone-50 border border-stone-100 py-3 rounded-lg active:opacity-70"
+                  className="flex-1 rounded-xl bg-stone-100 py-3 active:opacity-70"
                   onPress={() => {
                     setIsAddModalOpen(false);
                     resetForm();
-                  }}
-                >
-                  <Text className="text-center text-stone-600 font-semibold text-sm">Cancel</Text>
+                  }}>
+                  <Text className="text-center font-semibold text-stone-700">Cancel</Text>
                 </TouchableOpacity>
                 <TouchableOpacity
-                  className="flex-1 bg-emerald-500 py-3 rounded-lg active:opacity-80"
-                  style={{ shadowColor: '#10b981', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.25, shadowRadius: 4 }}
-                  onPress={handleAddSite}
-                >
-                  <Text className="text-center text-white font-semibold text-sm">Add Site</Text>
+                  className="flex-1 rounded-xl bg-emerald-600 py-3 active:opacity-80"
+                  onPress={handleAddSite}>
+                  <Text className="text-center font-semibold text-white">Add Site</Text>
                 </TouchableOpacity>
               </View>
             </View>
@@ -1205,78 +1902,93 @@ export default function SiteManagement({ onNavigate }: SiteManagementProps) {
         onRequestClose={() => {
           setIsEditModalOpen(false);
           resetForm();
-        }}
-      >
-        <Pressable 
-          className="flex-1 bg-black/50 justify-center items-center px-6"
+        }}>
+        <Pressable
+          className="flex-1 items-center justify-center bg-black/50 px-6"
           onPress={() => {
             setIsEditModalOpen(false);
             resetForm();
-          }}
-        >
-          <Pressable className="bg-white rounded-2xl w-full max-w-md" onPress={(e) => e.stopPropagation()}>
-            {/* Modal Header */}
-            <View className="px-6 pt-6 pb-4 border-b border-stone-100">
+          }}>
+          <Pressable
+            className="w-full max-w-md rounded-2xl bg-white"
+            onPress={(e) => e.stopPropagation()}>
+            <View className="border-b border-stone-100 px-6 pb-4 pt-6">
               <View className="flex-row items-center justify-between">
                 <View>
                   <Text className="text-xl font-bold text-stone-900">Edit Site</Text>
-                  <Text className="text-xs text-stone-500 mt-1">Update the site details below</Text>
+                  <Text className="mt-1 text-xs text-stone-500">Update the site details below</Text>
                 </View>
-                <TouchableOpacity 
-                  className="w-8 h-8 items-center justify-center"
+                <TouchableOpacity
+                  className="h-8 w-8 items-center justify-center"
                   onPress={() => {
                     setIsEditModalOpen(false);
                     resetForm();
-                  }}
-                >
+                  }}>
                   <Ionicons name="close" size={24} color="#78716c" />
                 </TouchableOpacity>
               </View>
             </View>
 
-            {/* Form Content */}
-            <ScrollView className="px-6 py-5 max-h-96">
-              {/* Site Name */}
+            <ScrollView className="max-h-96 px-6 py-5">
               <View className="mb-4">
-                <Text className="text-xs font-semibold text-stone-500 uppercase tracking-wide mb-2">
+                <Text className="mb-2 text-sm font-medium text-stone-700">
                   Site Name <Text className="text-red-500">*</Text>
                 </Text>
                 <TextInput
-                  className={`bg-stone-50 border ${
-                    touched.siteName && errors.siteName ? 'border-red-400' : 'border-stone-100'
-                  } rounded-lg px-4 py-3 text-stone-900 text-sm`}
+                  className={`border bg-white ${
+                    touched.siteName && errors.siteName ? 'border-red-500' : 'border-stone-300'
+                  } rounded-xl px-4 py-3 text-sm text-stone-900`}
                   placeholder="e.g., Downtown Office"
                   placeholderTextColor="#a8a29e"
                   value={siteName}
+                  id="edit-site-name-input"
+                  nativeID="edit-site-name-input"
                   onChangeText={(value) => handleFieldChange('siteName', value)}
-                  onBlur={() => handleFieldBlur('siteName', siteName)}
+                  onBlur={() => {
+                    handleFieldBlur('siteName', siteName);
+                    geocodeSiteNameToLocation('edit');
+                  }}
+                  onSubmitEditing={() => geocodeSiteNameToLocation('edit')}
                   maxLength={50}
                 />
                 {touched.siteName && errors.siteName && (
-                  <View className="flex-row items-center mt-1.5">
+                  <View className="mt-1.5 flex-row items-center">
                     <Ionicons name="alert-circle" size={14} color="#dc2626" />
-                    <Text className="text-xs text-red-600 ml-1">{errors.siteName}</Text>
+                    <Text className="ml-1 text-xs text-red-600">{errors.siteName}</Text>
                   </View>
                 )}
-                <Text className="text-xs text-stone-400 mt-1">{siteName.length}/50 characters</Text>
+                {latitude !== null && longitude !== null && (
+                  <View className="mt-2">
+                    <Text className="text-xs text-stone-500">
+                      <Text className="font-semibold">Coordinates:</Text> {latitude.toFixed(6)},{' '}
+                      {longitude.toFixed(6)}
+                    </Text>
+                  </View>
+                )}
+                <Text className="mt-1 text-xs text-stone-400">{siteName.length}/50 characters</Text>
               </View>
 
-              {/* Company */}
               <View className="mb-4">
-                <Text className="text-xs font-semibold text-stone-500 uppercase tracking-wide mb-2">
+                <Text className="mb-2 text-sm font-medium text-stone-700">
                   Company Name <Text className="text-red-500">*</Text>
                 </Text>
-                <View className={`bg-stone-50 border ${
-                  touched.company && errors.company ? 'border-red-400' : 'border-stone-100'
-                } rounded-lg px-4 py-3`}>
+                <View
+                  className={`border bg-white ${
+                    touched.company && errors.company ? 'border-red-500' : 'border-stone-300'
+                  } rounded-xl px-4 py-3`}>
                   <select
-                    style={{ width: '100%', background: 'transparent', border: 'none', fontSize: 14, color: '#44403c' }}
+                    style={{
+                      width: '100%',
+                      background: 'transparent',
+                      border: 'none',
+                      fontSize: 16,
+                      color: '#44403c',
+                    }}
                     value={company}
-                    onChange={e => handleFieldChange('company', e.target.value)}
-                    onBlur={() => handleFieldBlur('company', company)}
-                  >
+                    onChange={(e) => handleFieldChange('company', e.target.value)}
+                    onBlur={() => handleFieldBlur('company', company)}>
                     <option value="">Select a company</option>
-                    {companyOptions.map(opt => (
+                    {companyOptions.map((opt) => (
                       <option key={opt.id} value={opt.id}>
                         {opt.name} {opt.industry ? `(${opt.industry})` : ''}
                       </option>
@@ -1284,54 +1996,99 @@ export default function SiteManagement({ onNavigate }: SiteManagementProps) {
                   </select>
                 </View>
                 {touched.company && errors.company && (
-                  <View className="flex-row items-center mt-1.5">
-                    <Ionicons name="alert-circle" size={14} color="#ef4444" />
-                    <Text className="text-xs text-red-500 ml-1">{errors.company}</Text>
+                  <View className="mt-1.5 flex-row items-center">
+                    <Ionicons name="alert-circle" size={14} color="#dc2626" />
+                    <Text className="ml-1 text-xs text-red-600">{errors.company}</Text>
                   </View>
                 )}
               </View>
 
-              {/* Branch */}
               <View className="mb-4">
-                <Text className="text-xs font-semibold text-stone-500 uppercase tracking-wide mb-2">
+                <Text className="mb-2 text-sm font-medium text-stone-700">
                   Branch/Department <Text className="text-red-500">*</Text>
                 </Text>
-                <View className={`bg-stone-50 border ${
-                  touched.branch_id && errors.branch_id ? 'border-red-400' : 'border-stone-100'
-                } rounded-lg px-4 py-3`}>
+                <View
+                  className={`border bg-white ${
+                    touched.branch_id && errors.branch_id ? 'border-red-500' : 'border-stone-300'
+                  } rounded-xl px-4 py-3`}>
                   <select
-                    style={{ width: '100%', background: 'transparent', border: 'none', fontSize: 14, color: '#44403c' }}
+                    style={{
+                      width: '100%',
+                      background: 'transparent',
+                      border: 'none',
+                      fontSize: 16,
+                      color: '#44403c',
+                    }}
                     value={branch_id}
-                    onChange={e => handleFieldChange('branch_id', e.target.value)}
-                    onBlur={() => handleFieldBlur('branch_id', branch_id)}
-                  >
+                    onChange={(e) => handleFieldChange('branch_id', e.target.value)}
+                    onBlur={() => handleFieldBlur('branch_id', branch_id)}>
                     <option value="">Select a branch</option>
-                    {branchOptions
-                      .filter(opt => !company || String(opt.company_id) === String(company))
-                      .map(opt => (
-                        <option key={opt.id} value={opt.id}>
-                          {opt.name}
-                        </option>
-                      ))}
+                    {branchOptions.map((opt) => (
+                      <option key={opt.id} value={opt.id}>
+                        {opt.name}
+                      </option>
+                    ))}
                   </select>
                 </View>
                 {touched.branch_id && errors.branch_id && (
-                  <View className="flex-row items-center mt-1.5">
-                    <Ionicons name="alert-circle" size={14} color="#ef4444" />
-                    <Text className="text-xs text-red-500 ml-1">{errors.branch_id}</Text>
+                  <View className="mt-1.5 flex-row items-center">
+                    <Ionicons name="alert-circle" size={14} color="#dc2626" />
+                    <Text className="ml-1 text-xs text-red-600">{errors.branch_id}</Text>
                   </View>
                 )}
               </View>
 
-              {/* Location Map */}
+              <View className="-mx-2 flex-row flex-wrap">
+                <View className="mb-4 w-full px-2">
+                  <Text className="mb-2 text-sm font-medium text-stone-700">
+                    Employees to Deploy
+                  </Text>
+                  <div
+                    className={`border bg-white ${
+                      touched.membersCount && errors.membersCount
+                        ? 'border-red-500'
+                        : 'border-stone-300'
+                    } rounded-xl px-4 py-3`}>
+                    <input
+                      list="members-list"
+                      type="number"
+                      min={0}
+                      style={{
+                        width: '100%',
+                        background: 'transparent',
+                        border: 'none',
+                        fontSize: 16,
+                        color: '#44403c',
+                      }}
+                      value={membersCount}
+                      onChange={(e) => handleFieldChange('membersCount', e.target.value)}
+                      onBlur={() => handleFieldBlur('membersCount', membersCount)}
+                    />
+                    <datalist id="members-list">
+                      {Array.from({ length: 50 }, (_, i) => i + 1).map((n) => (
+                        <option key={n} value={n}>
+                          {n}
+                        </option>
+                      ))}
+                    </datalist>
+                  </div>
+                  {touched.membersCount && errors.membersCount && (
+                    <View className="mt-1.5 flex-row items-center">
+                      <Ionicons name="alert-circle" size={14} color="#dc2626" />
+                      <Text className="ml-1 text-xs text-red-600">{errors.membersCount}</Text>
+                    </View>
+                  )}
+                </View>
+              </View>
+
               <View className="mb-1">
-                <Text className="text-xs font-semibold text-stone-500 uppercase tracking-wide mb-2">
+                <Text className="mb-2 text-sm font-medium text-stone-700">
                   Location <Text className="text-red-500">*</Text>
                 </Text>
-                <View 
-                  id="edit-leaflet-map" 
-                  style={{ 
-                    height: 200, 
+                <View
+                  id="edit-leaflet-map"
+                  style={{
+                    height: 200,
                     width: '100%',
                     borderRadius: 12,
                     overflow: 'hidden',
@@ -1341,46 +2098,43 @@ export default function SiteManagement({ onNavigate }: SiteManagementProps) {
                   }}
                 />
                 {touched.location && errors.location && (
-                  <View className="flex-row items-center mt-1.5">
+                  <View className="mt-1.5 flex-row items-center">
                     <Ionicons name="alert-circle" size={14} color="#dc2626" />
-                    <Text className="text-xs text-red-600 ml-1">{errors.location}</Text>
+                    <Text className="ml-1 text-xs text-red-600">{errors.location}</Text>
                   </View>
                 )}
                 {latitude !== null && longitude !== null && (
-                  <View className="mt-2 bg-stone-50 px-3 py-2 rounded-lg">
+                  <View className="mt-2 rounded-lg bg-stone-50 px-3 py-2">
                     <Text className="text-xs text-stone-600">
-                      <Text className="font-semibold">Coordinates:</Text> {latitude.toFixed(6)}, {longitude.toFixed(6)}
+                      <Text className="font-semibold">Coordinates:</Text> {latitude.toFixed(6)},{' '}
+                      {longitude.toFixed(6)}
                     </Text>
                   </View>
                 )}
-                <Text className="text-xs text-stone-400 mt-1">
+                <Text className="mt-1 text-xs text-stone-400">
                   Click on the map or drag the marker to update the location
                 </Text>
               </View>
 
-              <Text className="text-xs text-stone-400 mt-3">
+              <Text className="mt-3 text-xs text-stone-400">
                 <Text className="text-red-500">*</Text> Required fields
               </Text>
             </ScrollView>
 
-            {/* Action Buttons */}
-            <View className="px-6 pb-6 pt-4 border-t border-stone-100">
+            <View className="border-t border-stone-100 px-6 pb-6 pt-4">
               <View className="flex-row gap-3">
                 <TouchableOpacity
-                  className="flex-1 bg-stone-50 border border-stone-100 py-3 rounded-lg active:opacity-70"
+                  className="flex-1 rounded-xl bg-stone-100 py-3 active:opacity-70"
                   onPress={() => {
                     setIsEditModalOpen(false);
                     resetForm();
-                  }}
-                >
-                  <Text className="text-center text-stone-600 font-semibold text-sm">Cancel</Text>
+                  }}>
+                  <Text className="text-center font-semibold text-stone-700">Cancel</Text>
                 </TouchableOpacity>
                 <TouchableOpacity
-                  className="flex-1 bg-emerald-500 py-3 rounded-lg active:opacity-80"
-                  style={{ shadowColor: '#10b981', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.25, shadowRadius: 4 }}
-                  onPress={handleUpdateSite}
-                >
-                  <Text className="text-center text-white font-semibold text-sm">Update Site</Text>
+                  className="flex-1 rounded-xl bg-emerald-600 py-3 active:opacity-80"
+                  onPress={handleUpdateSite}>
+                  <Text className="text-center font-semibold text-white">Update Site</Text>
                 </TouchableOpacity>
               </View>
             </View>
@@ -1396,42 +2150,39 @@ export default function SiteManagement({ onNavigate }: SiteManagementProps) {
         onRequestClose={() => {
           setIsViewLocationOpen(false);
           setSelectedSite(null);
-        }}
-      >
-        <Pressable 
-          className="flex-1 bg-black/50 justify-center items-center px-6"
+        }}>
+        <Pressable
+          className="flex-1 items-center justify-center bg-black/50 px-6"
           onPress={() => {
             setIsViewLocationOpen(false);
             setSelectedSite(null);
-          }}
-        >
-          <Pressable className="bg-white rounded-2xl w-full max-w-2xl" onPress={(e) => e.stopPropagation()}>
-            {/* Modal Header */}
-            <View className="px-6 pt-6 pb-4 border-b border-stone-100">
+          }}>
+          <Pressable
+            className="w-full max-w-2xl rounded-2xl bg-white"
+            onPress={(e) => e.stopPropagation()}>
+            <View className="border-b border-stone-100 px-6 pb-4 pt-6">
               <View className="flex-row items-center justify-between">
                 <View>
                   <Text className="text-xl font-bold text-stone-900">{selectedSite?.name}</Text>
-                  <Text className="text-xs text-stone-500 mt-1">Location on Map</Text>
+                  <Text className="mt-1 text-xs text-stone-500">Location on Map</Text>
                 </View>
-                <TouchableOpacity 
-                  className="w-8 h-8 items-center justify-center"
+                <TouchableOpacity
+                  className="h-8 w-8 items-center justify-center"
                   onPress={() => {
                     setIsViewLocationOpen(false);
                     setSelectedSite(null);
-                  }}
-                >
+                  }}>
                   <Ionicons name="close" size={24} color="#78716c" />
                 </TouchableOpacity>
               </View>
             </View>
 
-            {/* Map Content with overlay info card */}
             <View className="px-6 py-5">
               <View style={{ position: 'relative' }}>
-                <View 
-                  id="view-leaflet-map" 
-                  style={{ 
-                    height: 400, 
+                <View
+                  id="view-leaflet-map"
+                  style={{
+                    height: 400,
                     width: '100%',
                     borderRadius: 12,
                     overflow: 'hidden',
@@ -1442,41 +2193,79 @@ export default function SiteManagement({ onNavigate }: SiteManagementProps) {
                 />
 
                 {selectedSite && selectedSite.latitude && selectedSite.longitude && (
-                  <View style={{
-                    position: 'absolute',
-                    left: 16,
-                    right: 16,
-                    bottom: 16,
-                    backgroundColor: '#ffffff',
-                    borderRadius: 12,
-                    padding: 12,
-                    boxShadow: '0 6px 18px rgba(0,0,0,0.12)'
-                  }}>
-                    <View style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <View
+                    style={{
+                      position: 'absolute',
+                      left: 16,
+                      right: 16,
+                      bottom: 16,
+                      backgroundColor: '#ffffff',
+                      borderRadius: 12,
+                      padding: 12,
+                      boxShadow: '0 6px 18px rgba(0,0,0,0.12)',
+                    }}>
+                    <View
+                      style={{
+                        display: 'flex',
+                        flexDirection: 'row',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                      }}>
                       <View style={{ flex: 1, paddingRight: 8 }}>
-                        <Text style={{ fontSize: 16, fontWeight: '700', color: '#111827' }}>{selectedSite.name}</Text>
-                        <Text style={{ fontSize: 13, color: '#4b5563', marginTop: 4 }}>{selectedSite.company}</Text>
-                        <Text style={{ fontSize: 13, color: '#6b7280', marginTop: 2 }}>{branchOptions.find(opt => opt.id === selectedSite.branch_id)?.name || 'No branch selected'}</Text>
+                        <Text style={{ fontSize: 16, fontWeight: '700', color: '#111827' }}>
+                          {selectedSite.name}
+                        </Text>
+                        <Text style={{ fontSize: 13, color: '#4b5563', marginTop: 4 }}>
+                          {selectedSite.company || 'No company selected'}
+                        </Text>
+                        <Text style={{ fontSize: 13, color: '#6b7280', marginTop: 2 }}>
+                          {selectedSite.branch || 'No branch selected'}
+                        </Text>
+                        {(selectedSite as any).members_count !== undefined && (
+                          <Text
+                            style={{
+                              fontSize: 13,
+                              color: '#6b7280',
+                              marginTop: 2,
+                            }}>{`Employees: ${(selectedSite as any).members_count}`}</Text>
+                        )}
                       </View>
 
-                      <View style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end' }}>
+                      <View
+                        style={{
+                          display: 'flex',
+                          flexDirection: 'column',
+                          alignItems: 'flex-end',
+                        }}>
                         <TouchableOpacity
                           onPress={() => {
-                            if (typeof window !== 'undefined' && selectedSite && selectedSite.latitude && selectedSite.longitude) {
+                            if (
+                              typeof window !== 'undefined' &&
+                              selectedSite &&
+                              selectedSite.latitude &&
+                              selectedSite.longitude
+                            ) {
                               const url = `https://www.google.com/maps/dir/?api=1&destination=${selectedSite.latitude},${selectedSite.longitude}`;
                               window.open(url, '_blank');
                             }
                           }}
-                          style={{ backgroundColor: '#0369a1', paddingVertical: 8, paddingHorizontal: 14, borderRadius: 8, marginBottom: 8 }}
-                        >
+                          style={{
+                            backgroundColor: '#0369a1',
+                            paddingVertical: 8,
+                            paddingHorizontal: 14,
+                            borderRadius: 8,
+                            marginBottom: 8,
+                          }}>
                           <Text style={{ color: '#fff', fontWeight: '700' }}>Directions</Text>
                         </TouchableOpacity>
                         <TouchableOpacity
-                          onPress={() => {
-                            // Placeholder: Save or Start action
-                          }}
-                          style={{ backgroundColor: '#f3f4f6', paddingVertical: 8, paddingHorizontal: 14, borderRadius: 8 }}
-                        >
+                          onPress={() => {}}
+                          style={{
+                            backgroundColor: '#f3f4f6',
+                            paddingVertical: 8,
+                            paddingHorizontal: 14,
+                            borderRadius: 8,
+                          }}>
                           <Text style={{ color: '#111827', fontWeight: '600' }}>Save</Text>
                         </TouchableOpacity>
                       </View>
@@ -1486,21 +2275,37 @@ export default function SiteManagement({ onNavigate }: SiteManagementProps) {
               </View>
             </View>
 
-            {/* Close Button */}
-            <View className="px-6 pb-6 pt-4 border-t border-stone-100">
+            <View className="border-t border-stone-100 px-6 pb-6 pt-4">
               <TouchableOpacity
-                className="bg-emerald-500 py-3 rounded-lg active:opacity-80"
-                style={{ shadowColor: '#10b981', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.25, shadowRadius: 4 }}
+                className="rounded-xl bg-emerald-600 py-3 active:opacity-80"
                 onPress={() => {
                   setIsViewLocationOpen(false);
                   setSelectedSite(null);
-                }}
-              >
-                <Text className="text-center text-white font-semibold text-sm">Close</Text>
+                }}>
+                <Text className="text-center font-semibold text-white">Close</Text>
               </TouchableOpacity>
             </View>
           </Pressable>
         </Pressable>
+      </Modal>
+
+      {/* Image Modal for Evidence */}
+      <Modal visible={imageModalVisible} transparent animationType="fade">
+        <View className="flex-1 items-center justify-center bg-black/60 p-6">
+          <View className="w-full max-w-3xl rounded-2xl bg-white p-4">
+            <View className="flex-row items-center justify-between">
+              <Text className="text-base font-bold text-stone-900">Evidence Photo</Text>
+              <Pressable onPress={() => setImageModalVisible(false)}>
+                <Ionicons name="close" size={20} color="#111827" />
+              </Pressable>
+            </View>
+            {activeImage ? (
+              <Image source={{ uri: activeImage }} className="mt-4 h-96 w-full rounded-md" resizeMode="contain" />
+            ) : (
+              <Text className="mt-4 text-sm text-stone-500">No image</Text>
+            )}
+          </View>
+        </View>
       </Modal>
 
       {/* Sweet Alert Modal */}
