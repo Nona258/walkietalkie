@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   View,
   Text,
@@ -21,7 +21,7 @@ import {
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Ionicons } from '@expo/vector-icons';
 import supabase, { searchUsers } from '../../utils/supabase';
-import { sendContactRequest, respondToContactRequest, getPendingContactRequests } from '../../utils/FriendRequests';
+import { sendContactRequest,  } from '../../utils/FriendRequests';
 import Chat from './Chat';
 
 interface Contact {
@@ -76,7 +76,6 @@ export default function Contacts({ onContactSelected, currentUserId }: ContactsP
   const [filterType, setFilterType] = useState<FilterType>('all');
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  // Modal/search states
   const [addModalVisible, setAddModalVisible] = useState(false);
   const [modalQuery, setModalQuery] = useState('');
   const [searching, setSearching] = useState(false);
@@ -145,39 +144,22 @@ export default function Contacts({ onContactSelected, currentUserId }: ContactsP
     })
   ).current;
 
-  // Load persisted lastReadMap from AsyncStorage on mount
-  useEffect(() => {
-    AsyncStorage.getItem(LAST_READ_STORAGE_KEY)
-      .then((stored) => {
-        if (stored) {
-          try {
-            setLastReadMap(JSON.parse(stored));
-          } catch (_) {}
-        }
-      })
-      .catch(() => {})
-      .finally(() => setLastReadMapLoaded(true));
-  }, []);
-
   // Fetch contacts from Supabase
   // silent=true: skip loading spinner (used by background/subscription-triggered calls)
-  const fetchContacts = async (silent = false) => {
+  const fetchContacts = useCallback(async (silent = false) => {
     try {
       if (!silent) setLoading(true);
-
       if (!activeChatUserId) {
-        console.log('No active chat user ID');
         setContacts([]);
         if (!silent) setLoading(false);
         if (!silent) setRefreshing(false);
         return;
       }
 
-      console.log('Fetching contacts for user:', activeChatUserId);
-
-      // Load the current user's site (team chat), if any.
-      // This is shown as a special contact and will open a site chat.
       let mySiteContact: Contact | null = null;
+      let acceptedSiteContacts: Contact[] = [];
+
+      // 1. Get the user's own site (leader assignment)
       try {
         const { data: meRow, error: meErr } = await supabase
           .from('users')
@@ -213,35 +195,19 @@ export default function Contacts({ onContactSelected, currentUserId }: ContactsP
             };
           }
         }
-      } catch (e) {
-        console.warn('Failed to load my site/team chat:', (e as any)?.message || String(e));
-      }
-
-      // 1. Fetch contacts from the `contacts` table (only friends)
-      const { data: contactRows, error: contactsError } = await supabase
-        .from('contacts')
-        .select('contact_id, status')
-        .eq('user_id', activeChatUserId)
-        .eq('status', 'friends');
-
-      if (contactsError) console.warn('Error fetching contacts table:', contactsError);
-
-      const explicitContactIds = new Set<string>(
-        (contactRows || []).map((r: any) => r.contact_id).filter(Boolean)
-      );
+      } catch (e) {}
 
       // 2. Fetch accepted sites (from accepted_sites table) – store in ref
-      let acceptedSiteContacts: Contact[] = [];
+      const newAcceptedSet = new Set<string>();
       try {
-        const newAcceptedSet = new Set<string>();
         const { data: acceptedRows, error: acceptedError } = await supabase
           .from('accepted_sites')
           .select('site_id')
           .eq('user_id', activeChatUserId)
           .not('site_id', 'is', null);
         if (!acceptedError && acceptedRows) {
-          const acceptedSiteIdsRaw = acceptedRows.map((row: any) => String(row.site_id)).filter(Boolean);
-          acceptedSiteIdsRaw.forEach((id: string) => newAcceptedSet.add(id));
+          const acceptedSiteIdsRaw = acceptedRows.map(row => String(row.site_id)).filter(Boolean);
+          acceptedSiteIdsRaw.forEach(id => newAcceptedSet.add(id));
           acceptedSiteIdsRef.current = newAcceptedSet;
           if (acceptedSiteIdsRaw.length > 0) {
             const { data: sitesData, error: sitesError } = await supabase
@@ -250,7 +216,7 @@ export default function Contacts({ onContactSelected, currentUserId }: ContactsP
               .in('id', acceptedSiteIdsRaw);
             if (!sitesError && sitesData) {
               acceptedSiteContacts = sitesData
-                .map((site: any) => {
+                .map(site => {
                   const siteName = site.name || 'Team';
                   const contactId = `site:${String(site.id)}`;
                   if (mySiteContact && mySiteContact.siteId === String(site.id)) return null;
@@ -279,23 +245,27 @@ export default function Contacts({ onContactSelected, currentUserId }: ContactsP
         console.warn('Error fetching accepted sites:', e);
       }
 
-      // 2. Fetch all conversations involving the current user
+      // 3. Fetch contacts from contacts table and conversations
+      const { data: contactRows, error: contactsError } = await supabase
+        .from('contacts')
+        .select('contact_id, status')
+        .eq('user_id', activeChatUserId)
+        .eq('status', 'friends');
+      if (contactsError) console.warn('Error fetching contacts table:', contactsError);
+
+      const explicitContactIds = new Set<string>(
+        (contactRows || []).map((r: any) => r.contact_id).filter(Boolean)
+      );
+
       const { data: conversations, error: conversationError } = await supabase
         .from('conversations')
         .select('id,user_one,user_two');
-
       if (conversationError) throw conversationError;
 
-      console.log('All conversations fetched:', conversations);
-
-      // Filter conversations where current user is involved
       const myConversations = (conversations || []).filter(
         (conv: any) => conv.user_one === activeChatUserId || conv.user_two === activeChatUserId
       );
 
-      console.log('My conversations (filtered):', myConversations);
-
-      // Extract unique user IDs from conversations (get the other user in each conversation)
       const contactUserIds = new Set<string>(explicitContactIds);
       (myConversations || []).forEach((conv: any) => {
         const otherUserId = conv.user_one === activeChatUserId ? conv.user_two : conv.user_one;
@@ -304,279 +274,171 @@ export default function Contacts({ onContactSelected, currentUserId }: ContactsP
         }
       });
 
-      console.log('Contact user IDs (contacts + conversations):', Array.from(contactUserIds));
+      let formattedContacts: Contact[] = [];
+      if (contactUserIds.size > 0) {
+        const { data: usersData, error: usersError } = await supabase
+          .from('users')
+          .select('id, email, full_name, phone_number, role, profile_picture_url, status')
+          .in('id', Array.from(contactUserIds))
+          .order('full_name');
+        if (usersError) throw usersError;
 
-      // If no contacts or conversations, show at least site/accepted site contacts
-      if (contactUserIds.size === 0) {
-        console.log('No contacts or conversations found');
-        const emptyBase = mySiteContact ? [mySiteContact, ...acceptedSiteContacts] : acceptedSiteContacts;
-        setContacts(emptyBase);
-        setLoading(false);
-        setRefreshing(false);
-        return;
-      }
-
-      // Fetch details for users in conversations
-      const { data: usersData, error: usersError } = await supabase
-        .from('users')
-        .select('id, email, full_name, phone_number, role, profile_picture_url, status')
-        .in('id', Array.from(contactUserIds))
-        .order('full_name');
-
-      if (usersError) throw usersError;
-
-      console.log('Users data fetched:', usersData);
-
-      // Transform to Contact interface
-      const now = new Date();
-      const onlineThreshold = 5 * 60 * 1000; // 5 minutes in ms
-
-      const formattedContacts: Contact[] = (usersData || []).map((user) => {
-        // Determine online status: prefer explicit `status` column if present
-        let status: 'online' | 'offline' | 'busy' = 'offline';
-        if (user.status === 'online') {
-          status = 'online';
-        } else if (user.status === 'busy') {
-          status = 'busy';
-        }
-
-        return {
-          id: user.id,
-          name: user.full_name || 'Unknown',
-          role: user.role || 'Employee',
-          initials: getInitials(user.full_name || 'Unknown'),
-          status,
-          avatar_color: getAvatarColor(user.id),
-          profile_picture_url: user.profile_picture_url || null,
-          email: user.email,
-          phone_number: user.phone_number,
-          // Placeholder for message data (to be replaced with real messages later)
-          lastMessage: undefined,
-          lastMessageTime: undefined,
-          unreadCount: 0,
-        };
-      });
-
-      // Fetch last messages for each contact
-      if (activeChatUserId) {
-        // Store ALL conversation IDs per contact (handles duplicate conversations
-        // created by admin with sorted UUIDs vs employee with unsorted UUIDs)
-        const conversationMap = new Map<string, string[]>();
-        (myConversations || []).forEach((conv: any) => {
-          const otherUserId = conv.user_one === activeChatUserId ? conv.user_two : conv.user_one;
-          if (!conversationMap.has(otherUserId)) {
-            conversationMap.set(otherUserId, []);
-          }
-          conversationMap.get(otherUserId)!.push(conv.id);
+        formattedContacts = (usersData || []).map((user) => {
+          let status: 'online' | 'offline' | 'busy' = 'offline';
+          if (user.status === 'online') status = 'online';
+          else if (user.status === 'busy') status = 'busy';
+          return {
+            id: user.id,
+            name: user.full_name || 'Unknown',
+            role: user.role || 'Employee',
+            initials: getInitials(user.full_name || 'Unknown'),
+            status,
+            avatar_color: getAvatarColor(user.id),
+            profile_picture_url: user.profile_picture_url || null,
+            email: user.email,
+            phone_number: user.phone_number,
+            lastMessage: undefined,
+            lastMessageTime: undefined,
+            unreadCount: 0,
+          };
         });
 
-        const contactsWithMessages = await Promise.all(
-          formattedContacts.map(async (contact) => {
-            try {
-              const conversationIds = conversationMap.get(contact.id);
-              if (!conversationIds || conversationIds.length === 0) {
-                console.log(`No conversation for contact ${contact.name} (ID: ${contact.id})`);
-                return contact;
-              }
-
-              console.log(
-                `Fetching messages for contact ${contact.name}, conversationIds:`,
-                conversationIds
-              );
-
-              // Fetch latest message across ALL conversations for this contact
-              // (handles the case where admin and employee created different conversation records)
-              const allMessageResults = await Promise.all(
-                conversationIds.map((cid) =>
-                  supabase
-                    .from('messages')
-                    .select('*')
-                    .eq('conversation_id', cid)
-                    .order('created_at', { ascending: false })
-                    .limit(1)
-                )
-              );
-
-              // Collect all latest messages and pick the most recent one
-              const latestMessages = allMessageResults
-                .flatMap((r) => r.data || [])
-                .sort(
-                  (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
-                );
-
-              console.log(`Messages for ${contact.name}:`, latestMessages);
-
-              if (latestMessages.length > 0) {
-                const lastMsg = latestMessages[0];
-                const msgText = lastMsg.transcription || lastMsg.content || 'Message';
-                const created = lastMsg.created_at ? new Date(lastMsg.created_at) : new Date();
-
-                // Count unread messages across ALL conversations for this contact.
-                // Only count if this chat was opened before (lastRead exists);
-                // this prevents historical messages appearing unread on first load.
-                let unreadCount = 0;
-                try {
-                  const lastRead = lastReadMap[contact.id] || null;
-                  if (lastRead) {
-                    const unreadResults = await Promise.all(
-                      conversationIds.map((cid) =>
-                        supabase
-                          .from('messages')
-                          .select('id')
-                          .eq('conversation_id', cid)
-                          .neq('sender_id', activeChatUserId)
-                          .gt('created_at', lastRead)
-                      )
-                    );
-                    unreadCount = unreadResults.reduce(
-                      (sum, r) => sum + (r.data ? r.data.length : 0),
-                      0
-                    );
-                  }
-                  // If lastRead is null (chat never opened), unreadCount stays 0.
-                  // New unread messages accumulate via the real-time subscription.
-                } catch (unreadErr) {
-                  console.warn('Could not fetch unread count:', unreadErr);
-                }
-
-                console.log(
-                  `Showing message for ${contact.name}: ${msgText}, unread: ${unreadCount}`
-                );
-                return {
-                  ...contact,
-                  lastMessage: msgText,
-                  lastMessageTime: created.toLocaleTimeString([], {
-                    hour: '2-digit',
-                    minute: '2-digit',
-                  }),
-                  lastMessageTimestamp: lastMsg.created_at,
-                  unreadCount,
-                };
-              }
-
-              console.log(`No messages at all for contact ${contact.name}`);
-              return { ...contact, lastMessage: undefined };
-            } catch (e) {
-              console.error(`Error processing contact ${contact.name}:`, e);
-              return contact;
+        // Attach last messages for individual chats
+        if (activeChatUserId) {
+          const conversationMap = new Map<string, string[]>();
+          (myConversations || []).forEach((conv: any) => {
+            const otherUserId = conv.user_one === activeChatUserId ? conv.user_two : conv.user_one;
+            if (!conversationMap.has(otherUserId)) {
+              conversationMap.set(otherUserId, []);
             }
-          })
-        );
-        // Combine base contacts and include archived-sitegroup-based contacts
-        const baseContacts = mySiteContact
-          ? [mySiteContact, ...acceptedSiteContacts, ...contactsWithMessages]
-          : [...acceptedSiteContacts, ...contactsWithMessages];
+            conversationMap.get(otherUserId)!.push(conv.id);
+          });
 
-        // --- Archived sitegroup contacts ---
-        const archivedIds = new Set<string>();
-        try {
-          // 1) messages where user involved and archived_sitegroup_id is set
-          const { data: msgs, error: msgsErr } = await supabase
-            .from('messages')
-            .select('archived_sitegroup_id')
-            .or(`sender_id.eq.${activeChatUserId},receiver_id.eq.${activeChatUserId}`)
-            .not('archived_sitegroup_id', 'is', null);
-          if (!msgsErr && msgs) {
-            (msgs || []).forEach((r: any) => {
-              if (r?.archived_sitegroup_id) archivedIds.add(String(r.archived_sitegroup_id));
-            });
-          }
-
-          // 2) group_members entries for this user
-          const { data: gmRows, error: gmErr } = await supabase
-            .from('group_members')
-            .select('archived_sitegroup_id')
-            .eq('user_id', activeChatUserId)
-            .not('archived_sitegroup_id', 'is', null);
-          if (!gmErr && gmRows) {
-            (gmRows || []).forEach((r: any) => {
-              if (r?.archived_sitegroup_id) archivedIds.add(String(r.archived_sitegroup_id));
-            });
-          }
-
-          // 3) users.archived_sitegroup_id for current user
-          const { data: meRow2, error: meErr2 } = await supabase
-            .from('users')
-            .select('archived_sitegroup_id')
-            .eq('id', activeChatUserId)
-            .maybeSingle();
-          if (!meErr2 && meRow2?.archived_sitegroup_id) archivedIds.add(String(meRow2.archived_sitegroup_id));
-        } catch (e) {
-          console.warn('Failed to collect archived sitegroup IDs:', (e as any)?.message || String(e));
-        }
-
-        let archivedContacts: Contact[] = [];
-        if (archivedIds.size > 0) {
-          try {
-            const ids = Array.from(archivedIds);
-            const { data: groups, error: groupsErr } = await supabase
-              .from('archived_sitegroup')
-              .select('id, name')
-              .in('id', ids);
-            if (!groupsErr && groups) {
-              archivedContacts = await Promise.all(
-                (groups || []).map(async (g: any) => {
-                  const contactId = `archived:${g.id}`;
-
-                  // fetch latest message for this archived group
-                  let lastMsg: any = null;
-                  try {
-                    const { data: lastMsgs, error: lastErr } = await supabase
+          formattedContacts = await Promise.all(
+            formattedContacts.map(async (contact) => {
+              try {
+                const conversationIds = conversationMap.get(contact.id);
+                if (!conversationIds || conversationIds.length === 0) return contact;
+                const allMessageResults = await Promise.all(
+                  conversationIds.map((cid) =>
+                    supabase
                       .from('messages')
                       .select('*')
-                      .eq('archived_sitegroup_id', g.id)
+                      .eq('conversation_id', cid)
                       .order('created_at', { ascending: false })
-                      .limit(1);
-                    if (!lastErr && lastMsgs && lastMsgs.length > 0) lastMsg = lastMsgs[0];
-                  } catch {
-                    // ignore
-                  }
-
-                  let unreadCount = 0;
-                  try {
-                    const lastRead = lastReadMap[contactId] || null;
-                    if (lastRead) {
-                      const { data: unreadRows } = await supabase
-                        .from('messages')
-                        .select('id')
-                        .eq('archived_sitegroup_id', g.id)
-                        .neq('sender_id', activeChatUserId)
-                        .gt('created_at', lastRead);
-                      unreadCount = (unreadRows || []).length;
-                    }
-                  } catch (e) {
-                    // ignore
-                  }
-
+                      .limit(1)
+                  )
+                );
+                const latestMessages = allMessageResults
+                  .flatMap((r) => r.data || [])
+                  .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+                if (latestMessages.length > 0) {
+                  const lastMsg = latestMessages[0];
+                  const msgText = lastMsg.transcription || lastMsg.content || 'Message';
+                  const created = lastMsg.created_at ? new Date(lastMsg.created_at) : new Date();
                   return {
-                    id: contactId,
-                    name: g.name || 'Archived Group',
-                    role: 'Archived',
-                    initials: getInitials(g.name || 'AG'),
-                    status: 'offline',
-                    avatar_color: getAvatarColor(g.id),
-                    email: '',
-                    phone_number: undefined,
-                    isGroup: true,
-                    siteId: g.id,
-                    lastMessage: lastMsg ? (lastMsg.transcription || lastMsg.content || '') : undefined,
-                    lastMessageTime: lastMsg && lastMsg.created_at ? new Date(lastMsg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : undefined,
-                    lastMessageTimestamp: lastMsg?.created_at,
-                    unreadCount,
-                  } as Contact;
-                })
-              );
-            }
-          } catch (e) {
-            console.warn('Failed to build archived contacts:', (e as any)?.message || String(e));
-          }
+                    ...contact,
+                    lastMessage: msgText,
+                    lastMessageTime: created.toLocaleTimeString([], {
+                      hour: '2-digit',
+                      minute: '2-digit',
+                    }),
+                    lastMessageTimestamp: lastMsg.created_at,
+                    unreadCount: 0,
+                  };
+                }
+                return contact;
+              } catch (e) {
+                return contact;
+              }
+            })
+          );
         }
-
-        // Put archived groups first, then base contacts
-        setContacts([...archivedContacts, ...baseContacts]);
-      } else {
-        setContacts(mySiteContact ? [mySiteContact, ...formattedContacts] : formattedContacts);
       }
+
+      // 4. Archived sitegroup contacts
+      const archivedIds = new Set<string>();
+      try {
+        const { data: msgs, error: msgsErr } = await supabase
+          .from('messages')
+          .select('archived_sitegroup_id')
+          .or(`sender_id.eq.${activeChatUserId},receiver_id.eq.${activeChatUserId}`)
+          .not('archived_sitegroup_id', 'is', null);
+        if (!msgsErr && msgs) {
+          (msgs || []).forEach((r: any) => {
+            if (r?.archived_sitegroup_id) archivedIds.add(String(r.archived_sitegroup_id));
+          });
+        }
+        const { data: gmRows, error: gmErr } = await supabase
+          .from('group_members')
+          .select('archived_sitegroup_id')
+          .eq('user_id', activeChatUserId)
+          .not('archived_sitegroup_id', 'is', null);
+        if (!gmErr && gmRows) {
+          (gmRows || []).forEach((r: any) => {
+            if (r?.archived_sitegroup_id) archivedIds.add(String(r.archived_sitegroup_id));
+          });
+        }
+        const { data: meRow2, error: meErr2 } = await supabase
+          .from('users')
+          .select('archived_sitegroup_id')
+          .eq('id', activeChatUserId)
+          .maybeSingle();
+        if (!meErr2 && meRow2?.archived_sitegroup_id) archivedIds.add(String(meRow2.archived_sitegroup_id));
+      } catch (e) {}
+
+      let archivedContacts: Contact[] = [];
+      if (archivedIds.size > 0) {
+        try {
+          const ids = Array.from(archivedIds);
+          const { data: groups, error: groupsErr } = await supabase
+            .from('archived_sitegroup')
+            .select('id, name')
+            .in('id', ids);
+          if (!groupsErr && groups) {
+            archivedContacts = await Promise.all(
+              (groups || []).map(async (g: any) => {
+                const contactId = `archived:${g.id}`;
+                let lastMsg: any = null;
+                try {
+                  const { data: lastMsgs, error: lastErr } = await supabase
+                    .from('messages')
+                    .select('*')
+                    .eq('archived_sitegroup_id', g.id)
+                    .order('created_at', { ascending: false })
+                    .limit(1);
+                  if (!lastErr && lastMsgs && lastMsgs.length > 0) lastMsg = lastMsgs[0];
+                } catch {}
+                return {
+                  id: contactId,
+                  name: g.name || 'Archived Group',
+                  role: 'Archived',
+                  initials: getInitials(g.name || 'AG'),
+                  status: 'offline',
+                  avatar_color: getAvatarColor(g.id),
+                  email: '',
+                  phone_number: undefined,
+                  isGroup: true,
+                  siteId: g.id,
+                  lastMessage: lastMsg ? (lastMsg.transcription || lastMsg.content || '') : undefined,
+                  lastMessageTime: lastMsg && lastMsg.created_at ? new Date(lastMsg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : undefined,
+                  lastMessageTimestamp: lastMsg?.created_at,
+                  unreadCount: 0,
+                } as Contact;
+              })
+            );
+          }
+        } catch {}
+      }
+
+      // Combine all contacts
+      const allContacts: Contact[] = [
+        ...archivedContacts,
+        ...(mySiteContact ? [mySiteContact] : []),
+        ...acceptedSiteContacts,
+        ...formattedContacts,
+      ];
+      setContacts(allContacts);
     } catch (error) {
       console.error('Error fetching contacts:', error);
       if (!silent) Alert.alert('Error', 'Failed to load contacts');
@@ -586,7 +448,7 @@ export default function Contacts({ onContactSelected, currentUserId }: ContactsP
         setRefreshing(false);
       }
     }
-  };
+  }, [activeChatUserId]);
 
   useEffect(() => {
     // Fetch current user if not provided

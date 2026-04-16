@@ -77,6 +77,20 @@ const SweetAlert: React.FC<SweetAlertProps> = ({
   );
 };
 
+// Helper: count how many active sites the user has accepted (accepted_sites with site_id not null)
+async function getAcceptedSitesCount(userId: string): Promise<number> {
+  const { count, error } = await supabase
+    .from('accepted_sites')
+    .select('*', { count: 'exact', head: true })
+    .eq('user_id', userId)
+    .not('site_id', 'is', null);
+  if (error) {
+    console.error('Error counting accepted sites:', error);
+    return 0;
+  }
+  return count || 0;
+}
+
 // ------------------------------------------------------------
 // Main SiteDetails component
 // ------------------------------------------------------------
@@ -226,6 +240,18 @@ export default function SiteDetails({
         .update({ site_id: site.id })
         .eq('id', currentUserId);
       if (userUpdateError) throw userUpdateError;
+
+      // Also record acceptance in accepted_sites so both sources stay in sync.
+      try {
+        const { error: accError } = await supabase
+          .from('accepted_sites')
+          .insert([{ user_id: currentUserId, site_id: site.id, archived_sitegroup_id: null }]);
+        if (accError && (accError as any).code !== '23505') {
+          console.warn('accepted_sites insert failed:', accError.message);
+        }
+      } catch (e) {
+        console.warn('Skipping accepted_sites insert:', (e as any)?.message || String(e));
+      }
 
       // Insert into group_members
       try {
@@ -385,6 +411,24 @@ export default function SiteDetails({
             }
             const { data: memberRow, error: memberErr } = await gmQuery;
             if (!memberErr && (memberRow || []).length > 0) {
+              setHasAccepted(true);
+              return;
+            }
+          } catch {
+            // ignore
+          }
+        }
+
+        // 4) Check accepted_sites (for active sites only)
+        if (userId && !isFinished) {
+          try {
+            const { data: acceptedRow, error: acceptErr } = await supabase
+              .from('accepted_sites')
+              .select('id')
+              .eq('user_id', userId)
+              .eq('site_id', site.id)
+              .maybeSingle();
+            if (!acceptErr && acceptedRow) {
               setHasAccepted(true);
               return;
             }
@@ -873,6 +917,40 @@ export default function SiteDetails({
       // ignore; accept flow will try to continue
     }
 
+    // Check accepted_sites first to avoid double-accept and enforce limits
+    try {
+      const { data: alreadyAccepted, error: checkError } = await supabase
+        .from('accepted_sites')
+        .select('id')
+        .eq('user_id', currentUserId)
+        .eq('site_id', site.id)
+        .maybeSingle();
+
+      if (alreadyAccepted) {
+        setSweetAlert({
+          visible: true,
+          title: 'Already accepted',
+          message: 'You have already joined this site.',
+          type: 'info',
+        });
+        return;
+      }
+
+      // Enforce maximum of 5 accepted active sites
+      const acceptedCount = await getAcceptedSitesCount(currentUserId);
+      if (acceptedCount >= 5) {
+        setSweetAlert({
+          visible: true,
+          title: 'Limit reached',
+          message: 'You can accept at most 5 sites. Please leave another site before accepting a new one.',
+          type: 'error',
+        });
+        return;
+      }
+    } catch (e) {
+      // ignore and let the flow continue; we'll still attempt accept
+    }
+
     try {
       setAcceptLoading(true);
 
@@ -945,12 +1023,35 @@ export default function SiteDetails({
         return;
       }
 
-      // Persist membership: link the current user to the site
-      const { error: updateUserError } = await supabase
-        .from('users')
-        .update({ site_id: site.id })
-        .eq('id', currentUserId);
-      if (updateUserError) throw updateUserError;
+      // Record acceptance in accepted_sites table
+      const { error: acceptError } = await supabase
+        .from('accepted_sites')
+        .insert([{ user_id: currentUserId, site_id: site.id, archived_sitegroup_id: null }]);
+      if (acceptError) {
+        console.error('Failed to record acceptance:', acceptError);
+        setSweetAlert({
+          visible: true,
+          title: 'Error',
+          message: 'Failed to accept site. Please try again.',
+          type: 'error',
+        });
+        return;
+      }
+
+      // Keep users.site_id in sync with accepted_sites (best-effort).
+      try {
+        const { error: userAssignErr } = await supabase
+          .from('users')
+          .update({ site_id: site.id })
+          .eq('id', currentUserId);
+        if (userAssignErr) {
+          console.warn('Failed to update users.site_id:', userAssignErr.message);
+        } else {
+          setCurrentUserSiteId(site.id);
+        }
+      } catch (e) {
+        console.warn('Skipping users.site_id update:', (e as any)?.message || String(e));
+      }
 
       // Best-effort: notify the site leader that someone accepted/joined.
       try {
