@@ -633,7 +633,7 @@ export default function CompanyList({ onNavigate, isMobileMenuOpen, setIsMobileM
           <View className="flex-row items-center justify-between">
             <View className="flex-row items-center flex-1">
               <TouchableOpacity
-                className="items-center justify-center mr-2 h-8 w-8 lg:hidden"
+                className="items-center justify-center w-8 h-8 mr-2 lg:hidden"
                 onPress={() => setIsMobileMenuOpen?.(true)}>
                 <Ionicons name="menu" size={24} color="#237227" />
               </TouchableOpacity>
@@ -706,7 +706,7 @@ export default function CompanyList({ onNavigate, isMobileMenuOpen, setIsMobileM
                       </View>
 
                       {/* Details */}
-                      <View className="ml-14 gap-1 mb-3">
+                      <View className="gap-1 mb-3 ml-14">
                         <View className="flex-row items-center gap-2">
                           <Ionicons name="briefcase-outline" size={14} color="#8fa88f" />
                           <Text className="text-[12px] text-[#44403c]" numberOfLines={1}>
@@ -1209,7 +1209,7 @@ export default function CompanyList({ onNavigate, isMobileMenuOpen, setIsMobileM
 
             <View className="flex-row gap-[10px] border-t border-[#f0f4f0] px-6 pb-6 pt-4">
               <TouchableOpacity
-                className="flex-1 h-[42px] items-center justify-center rounded-[8px] border border-[#e5e7eb] bg-[#f8fafb]"
+                className="flex-1 h-[42px] items-center justify-center rounded-[8px] border border-[#237227] bg-[#f8fafb]"
                 onPress={() => {
                   setIsAddModalOpen(false);
                   resetForm();

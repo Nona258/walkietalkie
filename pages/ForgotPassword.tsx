@@ -429,11 +429,11 @@ export default function ForgotPassword({ onBackToSignIn }: ForgotPasswordProps) 
               {!fieldErrors.confirmNewPassword && <View className="mb-6" />}
 
               <TouchableOpacity
-                className="h-12 items-center justify-center rounded-lg bg-[#10b981] mb-8 mt-4"
+                className="h-12 items-center justify-center rounded-lg bg-[#237227] mb-8 mt-4"
                 onPress={handleUpdatePassword}
                 disabled={loading}>
                 {loading ? (
-                  <ActivityIndicator color="#fff" />
+                  <ActivityIndicator color="#f8f4fb" />
                 ) : (
                   <Text className="text-base font-semibold text-white">Update password</Text>
                 )}
