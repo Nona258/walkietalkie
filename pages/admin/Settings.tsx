@@ -1,7 +1,10 @@
 import React, { useMemo, useState } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, Modal, Pressable, TextInput, Dimensions, Alert } from 'react-native';
+import { View, Text, ScrollView, TouchableOpacity, Modal, Pressable, TextInput, Dimensions, Alert, Image, ActivityIndicator } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import supabase, { getCurrentUser } from '../../utils/supabase';
+import * as ImagePicker from 'expo-image-picker';
+import * as ImageManipulator from 'expo-image-manipulator';
+import supabase, { getCurrentUser, uploadProfilePictureFromUri, updateUserProfile } from '../../utils/supabase';
+
 import '../../global.css';
 
 // ─── Design Tokens ─────────────────────────────────────────────────────────────
@@ -88,6 +91,10 @@ export default function Settings({ onNavigate, isMobileMenuOpen, setIsMobileMenu
 
   const [fullName, setFullName] = useState('Admin User');
   const [email, setEmail] = useState('admin@company.com');
+  const [profilePicture, setProfilePicture] = useState<string | null>(null);
+  const [newImageUri, setNewImageUri] = useState<string | null>(null);
+  const [newImageSelected, setNewImageSelected] = useState(false);
+  const [imageFileName, setImageFileName] = useState<string | null>(null);
   const [phone, setPhone] = useState('+1 555-0100');
   const [role] = useState('Super Administrator');
   const [currentPassword, setCurrentPassword] = useState('');
@@ -100,23 +107,39 @@ export default function Settings({ onNavigate, isMobileMenuOpen, setIsMobileMenu
     const loadProfile = async () => {
       try {
         const user = await getCurrentUser();
-        if (user) {
-          setFullName(user.user_metadata?.full_name || 'Admin User');
-          setEmail(user.email || '');
+        if (!user) {
+          const {
+            data: { user: authUser },
+          } = await supabase.auth.getUser();
+          if (authUser) {
+            setFullName(authUser.user_metadata?.full_name || 'Admin User');
+            setEmail(authUser.email || '');
+          }
           return;
+        }
+
+        setEmail(user.email || '');
+
+        // Try to load full profile from users table
+        const { data: dbUser, error: dbError } = await supabase
+          .from('users')
+          .select('full_name, profile_picture_url')
+          .eq('id', user.id)
+          .single();
+
+        if (!dbError && dbUser) {
+          const full = dbUser.full_name || 'Admin User';
+          setFullName(full);
+          if (dbUser.profile_picture_url) setProfilePicture(`${dbUser.profile_picture_url}?t=${Date.now()}`);
+        } else {
+          // fallback to auth metadata
+          setFullName(user.user_metadata?.full_name || 'Admin User');
+          if (user.user_metadata?.profile_picture_url) {
+            setProfilePicture(`${user.user_metadata.profile_picture_url}?t=${Date.now()}`);
+          }
         }
       } catch (err) {
         console.error('Failed to load admin profile:', err);
-      }
-
-      try {
-        const {
-          data: { user },
-        } = await supabase.auth.getUser();
-        setFullName(user?.user_metadata?.full_name || 'Admin User');
-        setEmail(user?.email || '');
-      } catch (err) {
-        console.error('Fallback load profile failed:', err);
       }
     };
 
@@ -134,6 +157,72 @@ export default function Settings({ onNavigate, isMobileMenuOpen, setIsMobileMenu
         .slice(0, 2) || 'AD',
     [fullName]
   );
+  const requestImagePickerPermission = async () => {
+    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (status !== 'granted') {
+      Alert.alert('Permission needed', 'Please allow access to your photo library to upload a profile picture');
+    }
+  };
+
+  const pickImage = async () => {
+    try {
+      await requestImagePickerPermission();
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: true,
+        quality: 0.8,
+      });
+
+      if (!result.canceled && result.assets && result.assets[0]) {
+        const asset = result.assets[0] as any;
+        const { width, height, uri } = asset;
+        const actions: any[] = [];
+        if (width > 1200 || height > 1200) {
+          const scale = Math.min(1200 / width, 1200 / height);
+          actions.push({ resize: { width: Math.round(width * scale), height: Math.round(height * scale) } });
+        }
+
+        const manipulated = actions.length > 0
+          ? await ImageManipulator.manipulateAsync(uri, actions, { compress: 0.85, format: ImageManipulator.SaveFormat.JPEG })
+          : { uri };
+
+        const fileName = `admin_${Date.now()}.jpg`;
+        setImageFileName(fileName);
+        setNewImageUri(manipulated.uri);
+        setProfilePicture(manipulated.uri);
+        setNewImageSelected(true);
+      }
+    } catch (err) {
+      console.error('Image pick error:', err);
+      Alert.alert('Error', 'Failed to pick image');
+    }
+  };
+
+  // Emit a small cross-platform notification that the profile changed.
+  // Other parts of the app can listen for the `profileUpdated` event.
+  const emitProfileUpdate = (payload: Record<string, any>) => {
+    try {
+      if (typeof window !== 'undefined' && (window as any).dispatchEvent) {
+        try {
+          const ev = new CustomEvent('profileUpdated', { detail: payload });
+          window.dispatchEvent(ev);
+        } catch (e) {
+          // Some environments may not support CustomEvent constructor
+          const ev = document.createEvent('CustomEvent');
+          ev.initCustomEvent('profileUpdated', false, false, payload);
+          document.dispatchEvent(ev);
+        }
+      }
+    } catch {}
+
+    try {
+      // emit on React Native DeviceEventEmitter if available
+      // use require to avoid SSR/import issues
+      // eslint-disable-next-line @typescript-eslint/no-var-requires
+      const { DeviceEventEmitter } = require('react-native');
+      DeviceEventEmitter?.emit?.('profileUpdated', payload);
+    } catch {}
+  };
 
   const handleSave = async () => {
     setPasswordError(null);
@@ -166,8 +255,8 @@ export default function Settings({ onNavigate, isMobileMenuOpen, setIsMobileMenu
     if (wantsPasswordChange) {
       setChangingPassword(true);
     }
-
     try {
+      // Save password change first (if requested)
       if (wantsPasswordChange) {
         const { error: signInError } = await supabase.auth.signInWithPassword({
           email,
@@ -198,6 +287,38 @@ export default function Settings({ onNavigate, isMobileMenuOpen, setIsMobileMenu
         setPasswordError(null);
       }
 
+      // Profile updates: check if name or picture changed
+      const user = await getCurrentUser();
+      const userId = user?.id;
+      if (userId) {
+        const nameChanged = fullName.trim() && fullName.trim() !== (user.user_metadata?.full_name || '');
+        let publicUrl: string | null = null;
+
+        if (newImageSelected && newImageUri && imageFileName) {
+          publicUrl = await uploadProfilePictureFromUri(userId, newImageUri, imageFileName);
+          if (!publicUrl) {
+            // upload failed; stop profile save
+            Alert.alert('Error', 'Failed to upload profile picture.');
+            return;
+          }
+        }
+
+        const updateData: any = {};
+        if (nameChanged) updateData.full_name = fullName;
+        if (publicUrl) updateData.profile_picture_url = publicUrl;
+
+        if (Object.keys(updateData).length > 0) {
+          await updateUserProfile(userId, updateData);
+          if (updateData.profile_picture_url) {
+            const newUrl = `${updateData.profile_picture_url}?t=${Date.now()}`;
+            setProfilePicture(newUrl);
+            emitProfileUpdate({ profile_picture_url: updateData.profile_picture_url, full_name: updateData.full_name });
+          } else if (updateData.full_name) {
+            emitProfileUpdate({ full_name: updateData.full_name });
+          }
+        }
+      }
+
       setIsEditMode(false);
       setIsSaved(true);
       setTimeout(() => setIsSaved(false), 2500);
@@ -208,6 +329,10 @@ export default function Settings({ onNavigate, isMobileMenuOpen, setIsMobileMenu
       if (wantsPasswordChange) {
         setChangingPassword(false);
       }
+      // reset image selection flags after attempting save
+      setNewImageSelected(false);
+      setNewImageUri(null);
+      setImageFileName(null);
     }
   };
 
@@ -258,9 +383,16 @@ export default function Settings({ onNavigate, isMobileMenuOpen, setIsMobileMenu
                   <View
                     className={`${isWebView ? 'w-20 h-20' : 'w-16 h-16'} rounded-full items-center justify-center border-2 mb-3.5 bg-[#f8fafb] border-[#237227]`}
                   >
-                    <Text className={`${isWebView ? 'text-2xl' : 'text-xl'} font-extrabold text-[#237227]`}>
-                      {initials}
-                    </Text>
+                    {profilePicture ? (
+                      <Image
+                        source={{ uri: profilePicture }}
+                        style={{ width: isWebView ? 80 : 64, height: isWebView ? 80 : 64, borderRadius: 999 }}
+                      />
+                    ) : (
+                      <Text className={`${isWebView ? 'text-2xl' : 'text-xl'} font-extrabold text-[#237227]`}>
+                        {initials}
+                      </Text>
+                    )}
                   </View>
 
                   <Text
@@ -377,6 +509,16 @@ export default function Settings({ onNavigate, isMobileMenuOpen, setIsMobileMenu
                     icon="person-outline"
                     placeholder="Enter full name"
                   />
+                  {/* Change Photo button */}
+                  {isEditMode && (
+                    <TouchableOpacity
+                      className="mt-2 flex-row items-center gap-2 px-3 h-10 rounded-[9px] border bg-white border-[#237227]"
+                      onPress={() => pickImage()}
+                    >
+                      <Ionicons name="camera-outline" size={14} color={COLORS.textMuted} />
+                      <Text className="text-sm text-[#8fa88f]">Change Photo</Text>
+                    </TouchableOpacity>
+                  )}
                   <LabeledInput
                     label="Email Address"
                     value={email}

@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, Animated, Modal, Pressable, Dimensions } from 'react-native';
+import { View, Text, ScrollView, TouchableOpacity, Animated, Modal, Pressable, Dimensions, Image } from 'react-native';
 import { Ionicons, Feather } from '@expo/vector-icons';
+import supabase, { getCurrentUser, initialsFromName } from '../utils/supabase';
 
 interface AdminNavbarProps {
   activeTab:
@@ -76,6 +77,10 @@ export default function AdminNavbar({
   const sidebarWidth = useRef(new Animated.Value(EXPANDED_WIDTH)).current;
   const isDesktop = Dimensions.get('window').width >= 900;
 
+  const [profilePicture, setProfilePicture] = useState<string | null>(null);
+  const [displayName, setDisplayName] = useState<string>('Admin User');
+  const [initials, setInitials] = useState<string>('AD');
+
   // Determine the actual mobile-open state and a unified close handler
   const mobileOpen = typeof isMobileMenuOpen === 'boolean' ? isMobileMenuOpen : isMobileOpen;
   const handleMobileClose = () => {
@@ -90,6 +95,70 @@ export default function AdminNavbar({
       useNativeDriver: false,
     }).start();
   }, [isExpanded, sidebarWidth]);
+
+  // Load current user profile for footer display
+  useEffect(() => {
+    let mounted = true;
+    (async () => {
+      try {
+        const user = await getCurrentUser();
+        if (!user || !mounted) return;
+
+        // Try to load profile fields from users table
+        const { data: dbUser } = await supabase
+          .from('users')
+          .select('full_name, profile_picture_url')
+          .eq('id', user.id)
+          .maybeSingle();
+
+        const name = dbUser?.full_name || user.user_metadata?.full_name || 'Admin User';
+        const pic = dbUser?.profile_picture_url || user.user_metadata?.profile_picture_url || null;
+
+        if (!mounted) return;
+        setDisplayName(name);
+        setInitials(initialsFromName(name));
+        setProfilePicture(pic ? `${pic}?t=${Date.now()}` : null);
+      } catch (e) {
+        // ignore
+      }
+    })();
+
+    // Listen for profile updates emitted from Settings
+    const handleWindow = (ev: any) => {
+      const payload = ev?.detail ?? ev;
+      if (!payload) return;
+      if (payload.full_name) {
+        setDisplayName(payload.full_name);
+        setInitials(initialsFromName(payload.full_name));
+      }
+      if (payload.profile_picture_url) {
+        setProfilePicture(`${payload.profile_picture_url}?t=${Date.now()}`);
+      }
+    };
+
+    if (typeof window !== 'undefined' && (window as any).addEventListener) {
+      (window as any).addEventListener('profileUpdated', handleWindow);
+    }
+
+    // DeviceEventEmitter for RN
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-var-requires
+      const { DeviceEventEmitter } = require('react-native');
+      DeviceEventEmitter?.addListener?.('profileUpdated', handleWindow);
+    } catch (e) {}
+
+    return () => {
+      mounted = false;
+      if (typeof window !== 'undefined' && (window as any).removeEventListener) {
+        (window as any).removeEventListener('profileUpdated', handleWindow);
+      }
+      try {
+        // eslint-disable-next-line @typescript-eslint/no-var-requires
+        const { DeviceEventEmitter } = require('react-native');
+        DeviceEventEmitter?.removeListener?.('profileUpdated', handleWindow);
+      } catch (e) {}
+    };
+  }, []);
 
   const handleNavPress = (key: any) => {
     setActiveTab(key);
@@ -243,15 +312,19 @@ export default function AdminNavbar({
             }`}
           >
             <View
-              className={`w-8 h-8 rounded-full items-center justify-center bg-[#237227] ${
+              className={`w-8 h-8 rounded-full items-center justify-center bg-[#237227] overflow-hidden ${
                 isExpanded ? 'mr-3' : ''
               }`}
             >
-              <Text className="text-xs font-bold text-[#f8fafb]">AD</Text>
+              {profilePicture ? (
+                <Image source={{ uri: profilePicture }} style={{ width: 32, height: 32, borderRadius: 999 }} />
+              ) : (
+                <Text className="text-xs font-bold text-[#f8fafb]">{initials}</Text>
+              )}
             </View>
             {isExpanded && (
               <View className="flex-1">
-                <Text className="text-xs font-semibold text-stone-800">Admin User</Text>
+                <Text className="text-xs font-semibold text-stone-800">{displayName}</Text>
                 <Text className="text-xs text-stone-400">Super Admin</Text>
               </View>
             )}
@@ -381,11 +454,15 @@ export default function AdminNavbar({
               {/* Mobile Footer */}
               <View className="px-3 pt-3 pb-5 border-t border-stone-200">
                 <View className="flex-row items-center px-3 py-3 mb-2 bg-stone-100 rounded-xl">
-                  <View className="w-8 h-8 rounded-full bg-[#237227] items-center justify-center mr-3">
-                    <Text className="text-xs font-bold text-[#f8fafb]">AD</Text>
+                  <View className="w-8 h-8 rounded-full bg-[#237227] items-center justify-center mr-3 overflow-hidden">
+                    {profilePicture ? (
+                      <Image source={{ uri: profilePicture }} style={{ width: 32, height: 32, borderRadius: 999 }} />
+                    ) : (
+                      <Text className="text-xs font-bold text-[#f8fafb]">{initials}</Text>
+                    )}
                   </View>
                   <View className="flex-1">
-                    <Text className="text-xs font-semibold text-stone-900">Admin User</Text>
+                    <Text className="text-xs font-semibold text-stone-900">{displayName}</Text>
                     <Text className="text-xs text-stone-400">Super Admin</Text>
                   </View>
                 </View>

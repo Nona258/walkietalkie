@@ -7,6 +7,7 @@ import {
   Modal,
   Pressable,
   TextInput,
+  Image,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import '../../global.css';
@@ -39,6 +40,7 @@ interface Contact {
   isGroup?: boolean;
   siteId?: string;
   userId?: string; // linked user id
+  avatarUrl?: string | null;
 }
 
 interface Message {
@@ -61,6 +63,7 @@ interface User {
   is_active: boolean;
   initials: string;
   color: string;
+  avatarUrl?: string | null;
 }
 
 // Helper function to generate initials
@@ -533,7 +536,7 @@ export default function ContactManagement({ onNavigate, isMobileMenuOpen, setIsM
 
       const { data: usersData, error: usersError } = await supabase
         .from('users')
-        .select('id, email, full_name, role, status')
+        .select('id, email, full_name, role, status, profile_picture_url')
         .in('id', userIds.length > 0 ? userIds : ['']);
 
       if (usersError) {
@@ -592,7 +595,31 @@ export default function ContactManagement({ onNavigate, isMobileMenuOpen, setIsM
       }
 
       const allContacts = [...dbContacts, ...siteContacts];
-      setContacts(allContacts);
+
+      // Enrich contacts with avatar public URLs when available
+      const enriched = await Promise.all(
+        allContacts.map(async (c) => {
+          if (!c.userId) return c;
+          const user = usersMap.get(c.userId);
+          if (!user) return c;
+          const profilePath = user.profile_picture_url as string | undefined | null;
+          if (!profilePath) return c;
+          try {
+            if (profilePath.startsWith('http://') || profilePath.startsWith('https://')) {
+              return { ...c, avatarUrl: profilePath } as Contact;
+            }
+            const relativePath = profilePath.replace(/^profile_picture\//, '');
+            const { data } = await supabase.storage.from('profile_picture').getPublicUrl(relativePath);
+            const publicUrl = data?.publicUrl || null;
+            return { ...c, avatarUrl: publicUrl } as Contact;
+          } catch (e) {
+            console.warn('Failed to resolve avatar for user', c.userId, e);
+            return c;
+          }
+        })
+      );
+
+      setContacts(enriched);
       // Fetch last messages for direct contacts
       fetchLastMessagesForContacts(dbContacts);
     } catch (e) {
@@ -607,12 +634,12 @@ export default function ContactManagement({ onNavigate, isMobileMenuOpen, setIsM
     try {
       const { data, error } = await supabase
         .from('users')
-        .select('id, email, full_name, role, status');
+        .select('id, email, full_name, role, status, profile_picture_url');
       if (error) {
         console.error('Error fetching users from Supabase:', error);
         return;
       }
-      const transformed: User[] = (data || []).map((user: any) => ({
+      const base: User[] = (data || []).map((user: any) => ({
         id: user.id,
         email: user.email,
         full_name: user.full_name,
@@ -620,8 +647,27 @@ export default function ContactManagement({ onNavigate, isMobileMenuOpen, setIsM
         is_active: user.status !== 'inactive',
         initials: getInitials(user.full_name),
         color: getRandomColor(),
+        avatarUrl: null,
       }));
-      setUsers(transformed);
+
+      const enriched = await Promise.all(
+        base.map(async (u) => {
+          try {
+            const raw = (data || []).find((x: any) => x.id === u.id)?.profile_picture_url;
+            if (!raw) return u;
+            if (raw.startsWith('http://') || raw.startsWith('https://')) {
+              return { ...u, avatarUrl: raw } as User;
+            }
+            const relativePath = String(raw).replace(/^profile_picture\//, '');
+            const { data: d } = await supabase.storage.from('profile_picture').getPublicUrl(relativePath);
+            return { ...u, avatarUrl: d?.publicUrl || null } as User;
+          } catch (err) {
+            console.warn('Failed to resolve user avatar', u.id, err);
+            return u;
+          }
+        })
+      );
+      setUsers(enriched);
     } catch (e) {
       console.error('Error fetching users:', e);
     }
@@ -1495,13 +1541,20 @@ export default function ContactManagement({ onNavigate, isMobileMenuOpen, setIsM
                               });
                             }}>
                             <View className="relative mr-3 shrink-0">
-                              <View
-                                className="items-center justify-center rounded-full h-11 w-11"
-                                style={{ backgroundColor: contact.color }}>
-                                <Text className="text-sm font-bold text-gray-800">
-                                  {contact.initials}
-                                </Text>
-                              </View>
+                              {contact.avatarUrl ? (
+                                <Image
+                                  source={{ uri: contact.avatarUrl }}
+                                  style={{ width: 44, height: 44, borderRadius: 999 }}
+                                />
+                              ) : (
+                                <View
+                                  className="items-center justify-center rounded-full h-11 w-11"
+                                  style={{ backgroundColor: contact.color }}>
+                                  <Text className="text-sm font-bold text-gray-800">
+                                    {contact.initials}
+                                  </Text>
+                                </View>
+                              )}
                               {contact.online && (
                                 <View className="absolute bottom-0 right-0 w-3 h-3 border-2 border-white rounded-full" style={{ backgroundColor: '#237227' }} />
                               )}
@@ -1563,15 +1616,26 @@ export default function ContactManagement({ onNavigate, isMobileMenuOpen, setIsM
                   onPress={() => setShowContactList(true)}>
                   <Ionicons name="chevron-back" size={18} color="#374151" />
                 </TouchableOpacity>
-                <View
-                  className="items-center justify-center w-10 h-10 mr-3 rounded-full shrink-0"
-                  style={{ backgroundColor: selectedContact.color }}>
+                <View className="w-10 h-10 mr-3 shrink-0">
                   {selectedContact.isGroup ? (
-                    <Ionicons name="people" size={18} color="#1f2937" />
+                    <View
+                      className="items-center justify-center w-10 h-10 rounded-full"
+                      style={{ backgroundColor: selectedContact.color }}>
+                      <Ionicons name="people" size={18} color="#1f2937" />
+                    </View>
+                  ) : selectedContact.avatarUrl ? (
+                    <Image
+                      source={{ uri: selectedContact.avatarUrl }}
+                      style={{ width: 40, height: 40, borderRadius: 999 }}
+                    />
                   ) : (
-                    <Text className="text-sm font-bold text-gray-800">
-                      {selectedContact.initials}
-                    </Text>
+                    <View
+                      className="items-center justify-center w-10 h-10 rounded-full"
+                      style={{ backgroundColor: selectedContact.color }}>
+                      <Text className="text-sm font-bold text-gray-800">
+                        {selectedContact.initials}
+                      </Text>
+                    </View>
                   )}
                 </View>
                 <View className="flex-1">
@@ -1646,12 +1710,21 @@ export default function ContactManagement({ onNavigate, isMobileMenuOpen, setIsM
                       <View
                         className={`mb-3 flex-row ${isMe ? 'justify-end' : 'justify-start'} items-end`}>
                         {!isMe && (
-                          <View
-                            className="items-center justify-center mr-2 rounded-full h-7 w-7 shrink-0"
-                            style={{ backgroundColor: selectedContact.color }}>
-                            <Text className="text-[9px] font-bold text-gray-800">
-                              {selectedContact.initials}
-                            </Text>
+                          <View className="items-center justify-center mr-2 rounded-full h-7 w-7 shrink-0">
+                            {selectedContact.avatarUrl ? (
+                              <Image
+                                source={{ uri: selectedContact.avatarUrl }}
+                                style={{ width: 28, height: 28, borderRadius: 999 }}
+                              />
+                            ) : (
+                              <View
+                                className="items-center justify-center rounded-full h-7 w-7"
+                                style={{ backgroundColor: selectedContact.color }}>
+                                <Text className="text-[9px] font-bold text-gray-800">
+                                  {selectedContact.initials}
+                                </Text>
+                              </View>
+                            )}
                           </View>
                         )}
                         <View className="max-w-[72%]">

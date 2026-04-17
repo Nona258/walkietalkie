@@ -232,3 +232,66 @@ export async function deleteUserAccount(userId: string) {
   // Admins should manually delete from auth.users in Supabase dashboard if needed,
   // or use a server-side function with admin privileges.
 }
+
+// Upload an image from a local URI to the `profile_picture` bucket and return public URL
+export async function uploadProfilePictureFromUri(
+  userId: string,
+  uri: string,
+  fileName: string
+): Promise<string | null> {
+  if (!userId || !uri || !fileName) return null;
+  try {
+    const response = await fetch(uri);
+    const blob = await response.blob();
+
+    const filePath = `${userId}/${fileName}`;
+    const { error: uploadError } = await supabase.storage
+      .from('profile_picture')
+      .upload(filePath, blob, { contentType: 'image/jpeg', upsert: true });
+
+    if (uploadError) {
+      console.error('uploadProfilePictureFromUri uploadError:', uploadError);
+      throw uploadError;
+    }
+
+    const { data } = supabase.storage.from('profile_picture').getPublicUrl(filePath);
+    const publicUrl = data?.publicUrl || null;
+    return publicUrl;
+  } catch (err) {
+    console.error('uploadProfilePictureFromUri error:', err);
+    return null;
+  }
+}
+
+// Update the users table and optionally auth metadata. `updateData` may include
+// { full_name?, profile_picture_url?, phone_number?, status?, role? }
+export async function updateUserProfile(userId: string, updateData: Record<string, any>) {
+  if (!userId) throw new Error('userId required');
+
+  const { error: dbError } = await supabase.from('users').update(updateData).eq('id', userId);
+  if (dbError) {
+    console.error('updateUserProfile dbError:', dbError);
+    throw dbError;
+  }
+
+  // If full_name changed, attempt to update auth metadata for consistency
+  if (updateData.full_name) {
+    try {
+      await supabase.auth.updateUser({ data: { full_name: updateData.full_name } });
+    } catch (authErr) {
+      console.warn('updateUserProfile: failed to update auth metadata:', authErr);
+    }
+  }
+}
+
+// Helper to compute initials from a name string
+export function initialsFromName(name?: string) {
+  if (!name) return 'AD';
+  return name
+    .split(' ')
+    .filter(Boolean)
+    .map((p) => p[0])
+    .join('')
+    .toUpperCase()
+    .slice(0, 2);
+}

@@ -18,7 +18,7 @@ import ActivityLogs from './ActivityLogs';
 import CompanyList from './CompanyList';
 import Employees from './Employees';
 import EmployeeLogs from './EmployeeLogs';
-import Settings from './Settings';
+import Settings from './Settings'
 import TechnicalSupport from './TechnicalSupport';
 import '../../global.css';
 

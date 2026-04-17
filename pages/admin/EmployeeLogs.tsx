@@ -25,6 +25,8 @@ type AttendanceWithUserRow = {
   users: { full_name: string | null; role: string | null } | null;
 };
 
+type FilterType = 'all' | 'today' | 'week' | 'month';
+
 function pad2(n: number) {
   return String(n).padStart(2, '0');
 }
@@ -61,8 +63,9 @@ function escapeHtml(input: unknown) {
     .replace(/'/g, '&#039;');
 }
 
-function buildAttendanceHtml(rows: AttendanceWithUserRow[]) {
+function buildAttendanceHtml(rows: AttendanceWithUserRow[], filterType: FilterType = 'all') {
   const generatedAt = new Date().toLocaleString();
+  const filterLabel = filterType === 'all' ? 'All Records' : filterType === 'today' ? 'Today' : filterType === 'week' ? 'This Week' : 'This Month';
   const bodyRows = (rows || [])
     .map((r) => {
       const fullName = r.users?.full_name || 'Unknown';
@@ -93,19 +96,21 @@ function buildAttendanceHtml(rows: AttendanceWithUserRow[]) {
 			<meta charset="utf-8" />
 			<meta name="viewport" content="width=device-width, initial-scale=1" />
 			<title>Attendance Report</title>
-			<style>
-				body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif; padding: 16px; color: #111827; }
-				h1 { font-size: 18px; margin: 0 0 8px; }
-				.meta { font-size: 12px; color: #6b7280; margin-bottom: 12px; }
-				table { width: 100%; border-collapse: collapse; }
-				th, td { border: 1px solid #e5e7eb; padding: 8px; font-size: 12px; text-align: left; vertical-align: top; }
-				th { background: #f9fafb; }
-				.count { margin-top: 8px; font-size: 12px; color: #6b7280; }
-			</style>
+      <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif; padding: 16px; color: #111827; }
+        h1 { font-size: 18px; margin: 0 0 8px; }
+        .filter-info { font-size: 14px; color: #237227; font-weight: 600; margin-bottom: 8px; }
+        .meta { font-size: 12px; color: #6b7280; margin-bottom: 12px; }
+        table { width: 100%; border-collapse: collapse; }
+        th, td { border: 1px solid #e5e7eb; padding: 8px; font-size: 12px; text-align: left; vertical-align: top; }
+        th { background: #f9fafb; }
+        .count { margin-top: 8px; font-size: 12px; color: #6b7280; }
+      </style>
 		</head>
 		<body>
 			<h1>Attendance Report</h1>
-			<div class="meta">Generated: ${escapeHtml(generatedAt)}</div>
+      <div class="filter-info">Filter: ${escapeHtml(filterLabel)}</div>
+      <div class="meta">Generated: ${escapeHtml(generatedAt)}</div>
 			<table>
 				<thead>
 					<tr>
@@ -226,17 +231,40 @@ export default function EmployeeLogs({
   const [error, setError] = useState<string | null>(null);
   const [exporting, setExporting] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  const [filterType, setFilterType] = useState<FilterType>('all');
   const [currentPage, setCurrentPage] = useState(1);
 
-  const fetchRows = useCallback(async () => {
+  const fetchRows = useCallback(async (filter: FilterType = 'all') => {
     setError(null);
     try {
-      const { data, error: fetchError } = await supabase
+      const now = new Date();
+      const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+
+      let start: Date | null = null;
+      let end: Date | null = null;
+
+      if (filter === 'today') {
+        start = new Date(today);
+        end = new Date(today.getTime() + 86400000);
+      } else if (filter === 'week') {
+        start = new Date(today);
+        start.setDate(start.getDate() - start.getDay());
+        end = new Date(today.getTime() + 86400000);
+      } else if (filter === 'month') {
+        start = new Date(now.getFullYear(), now.getMonth(), 1);
+        end = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+      }
+
+      let q: any = supabase
         .from('user_attendances')
-        .select(
-          'id, created_at, employee_start_time, employee_end_time, total_hours, status, users(full_name, role)'
-        )
+        .select('id, created_at, employee_start_time, employee_end_time, total_hours, status, users(full_name, role)')
         .order('created_at', { ascending: false });
+
+      if (start && end) {
+        q = q.gte('created_at', start.toISOString()).lt('created_at', end.toISOString());
+      }
+
+      const { data, error: fetchError } = await q;
 
       if (fetchError) throw fetchError;
       setRows((data as any) || []);
@@ -249,24 +277,32 @@ export default function EmployeeLogs({
   useEffect(() => {
     (async () => {
       setLoading(true);
-      await fetchRows();
+      await fetchRows(filterType);
       setLoading(false);
     })();
-  }, [fetchRows]);
+  }, [fetchRows, filterType]);
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
-    await fetchRows();
+    await fetchRows(filterType);
     setRefreshing(false);
-  }, [fetchRows]);
+  }, [fetchRows, filterType]);
 
   const canExport = rows.length > 0 && !exporting;
 
   const exportToPdf = useCallback(async () => {
-    if (!rows.length) return;
+    const exportRows = rows.filter(
+      (r) =>
+        r.users?.full_name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        r.users?.role?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        r.status?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        formatCreatedAt(r.created_at).toLowerCase().includes(searchQuery.toLowerCase())
+    );
+
+    if (!exportRows.length) return;
     setExporting(true);
     try {
-      const html = buildAttendanceHtml(rows);
+      const html = buildAttendanceHtml(exportRows, filterType);
 
       if (Platform.OS === 'web') {
         const w = window.open('', '_blank');
@@ -450,6 +486,29 @@ export default function EmployeeLogs({
                     <Ionicons name="download-outline" size={18} color="#ffffff" />
                   </TouchableOpacity>
                 )}
+              </View>
+            </View>
+
+            {/* Filter Buttons */}
+            <View className="px-4 py-3">
+              <View className="flex-row gap-3 mb-3">
+                {(['all', 'today', 'week', 'month'] as const).map((f) => (
+                  <TouchableOpacity
+                    key={f}
+                    className={`rounded-lg px-4 py-2 ${
+                      filterType === f ? 'bg-[#237227]' : 'border border-[#e5e7eb] bg-white'
+                    }`}
+                    onPress={() => {
+                      setFilterType(f);
+                      setCurrentPage(1);
+                    }}
+                    activeOpacity={0.8}
+                  >
+                    <Text className={`text-sm font-medium ${filterType === f ? 'text-white' : 'text-[#374151]'}`}>
+                      {f === 'all' ? 'All' : f === 'today' ? 'Today' : f === 'week' ? 'This Week' : 'This Month'}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
               </View>
             </View>
 
