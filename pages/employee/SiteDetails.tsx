@@ -1403,7 +1403,7 @@ export default function SiteDetails({
 
               {/* Member Slots */}
               {memberInfo && (
-                <View className={`flex-row items-center border-b border-gray-100 p-4 ${memberInfo.isFull ? 'bg-red-50' : 'bg-green-50'}`}>
+                <View className={`flex-row items-center border-b border-gray-100 p-4 ${memberInfo.isFull ? 'bg-red-50' : 'bg-[#e8f5e9]'}`}>
                   <Ionicons
                     name={memberInfo.isFull ? 'close-circle-outline' : 'checkmark-circle-outline'}
                     size={20}
@@ -1418,7 +1418,7 @@ export default function SiteDetails({
                           : 'No limit'}
                       </Text>
                       {memberInfo.maxMembers !== null && (
-                        <Text className={`text-xs font-semibold ${memberInfo.isFull ? 'text-red-600' : 'text-green-600'}`}>
+                        <Text className={`text-xs font-semibold ${memberInfo.isFull ? 'text-red-600' : 'text-[#237227]'}`}>
                           {memberInfo.isFull
                             ? 'FULL'
                             : `${memberInfo.availableSlots} slot${memberInfo.availableSlots !== 1 ? 's' : ''} left`}
