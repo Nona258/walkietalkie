@@ -561,36 +561,13 @@ export default function Dashboard({
     if (attendanceActionLoading) return;
     setAttendanceActionLoading(true);
     try {
-      // --- Location check start ---
-      // Target site coordinates (center)
-      const TARGET_LAT = 8.2246043;
-      const TARGET_LON = 124.2504357;
-      // Allowed radius in meters (adjust as needed)
-      const ALLOWED_RADIUS_METERS = 10;
+      // --- Determine target site coordinates and allowed radius ---
+      // Defaults (fallbacks)
+      let targetLat = 8.2246043;
+      let targetLon = 124.2504357;
+      let allowedRadiusMeters = 50; // more forgiving default
 
-      const { status: permStatus } = await Location.requestForegroundPermissionsAsync();
-      if (permStatus !== 'granted') {
-        console.log('[TimeIn] location permission not granted', { permStatus });
-        setSweetAlertMessage('Location permission denied. Cannot time-in.');
-        setShowSweetAlert(true);
-        setAttendanceActionLoading(false);
-        return;
-      }
-
-      const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Highest });
-      const userLat = loc.coords.latitude;
-      const userLon = loc.coords.longitude;
-      const dist = haversineDistance(userLat, userLon, TARGET_LAT, TARGET_LON);
-      console.log('[TimeIn] location fetched', { userLat, userLon, target: { TARGET_LAT, TARGET_LON }, dist, ALLOWED_RADIUS_METERS });
-      if (dist > ALLOWED_RADIUS_METERS) {
-        console.log('[TimeIn] user outside allowed radius', { dist, ALLOWED_RADIUS_METERS });
-        setSweetAlertMessage('You cannot time-in early');
-        setShowSweetAlert(true);
-        setAttendanceActionLoading(false);
-        return;
-      }
-      // --- Location check end ---
-
+      // Get authenticated user early so we can fetch assigned site coords
       const {
         data: { user },
         error: authError,
@@ -598,7 +575,58 @@ export default function Dashboard({
       if (authError) throw authError;
       if (!user?.id) throw new Error('No authenticated user');
 
+      try {
+        const { data: userRow, error: userRowErr } = await supabase
+          .from('users')
+          .select('site_id')
+          .eq('id', user.id)
+          .maybeSingle();
+        if (!userRowErr && userRow?.site_id) {
+          const siteId = String(userRow.site_id);
+          const { data: siteRow, error: siteErr } = await supabase
+            .from('sites')
+            .select('latitude, longitude, allowed_radius_meters')
+            .eq('id', siteId)
+            .maybeSingle();
+          if (!siteErr && siteRow) {
+            const lat = Number((siteRow as any).latitude);
+            const lon = Number((siteRow as any).longitude);
+            const rad = Number((siteRow as any).allowed_radius_meters);
+            if (!Number.isNaN(lat) && !Number.isNaN(lon)) {
+              targetLat = lat;
+              targetLon = lon;
+            }
+            if (!Number.isNaN(rad) && rad > 0) allowedRadiusMeters = rad;
+          }
+        }
+      } catch (fetchSiteErr) {
+        console.warn('[TimeIn] failed to fetch site coords, using defaults', fetchSiteErr);
+      }
+
+      // --- Location check start ---
+      const { status: permStatus } = await Location.requestForegroundPermissionsAsync();
+      if (permStatus !== 'granted') {
+        console.log('[TimeIn] location permission not granted', { permStatus });
+        setSweetAlertMessage('Location permission denied. Cannot time-in.');
+        setShowSweetAlert(true);
+        return;
+      }
+
+      const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Highest });
+      const userLat = loc.coords.latitude;
+      const userLon = loc.coords.longitude;
+      const dist = haversineDistance(userLat, userLon, targetLat, targetLon);
+      console.log('[TimeIn] location fetched', { userLat, userLon, target: { targetLat, targetLon }, dist, allowedRadiusMeters });
+      if (dist > allowedRadiusMeters) {
+        console.log('[TimeIn] user outside allowed radius', { dist, allowedRadiusMeters });
+        setSweetAlertMessage(`You are ${Math.round(dist)}m away from the site. Move within ${allowedRadiusMeters}m to time-in.`);
+        setShowSweetAlert(true);
+        return;
+      }
+      // --- Location check end ---
+
       if (attendance?.employee_start_time && !attendance?.employee_end_time) {
+        // already timed in
         return;
       }
 
@@ -699,7 +727,7 @@ export default function Dashboard({
               className="p-3 bg-[#237227] rounded-full active:scale-95"
               onPress={() => setIsNotificationOpen(true)}>
               <View className="relative">
-                <Ionicons name="notifications" size={22} color="#f8f4fb" />
+                <Ionicons name="notifications" size={24} color="#f8f4fb" />
                 {unreadCount > 0 && (
                   <View className="absolute -right-2 -top-2 min-w-[18px] items-center justify-center rounded-full bg-red-500 px-1">
                     <Text className="text-[11px] font-bold text-white">
@@ -712,25 +740,21 @@ export default function Dashboard({
             <TouchableOpacity
               onPress={onNavigateToSettings}
               className="p-3 bg-[#237227] rounded-full active:scale-95">
-              <Ionicons name="settings" size={22} color="#f8f4fb" />
+              <Ionicons name="settings" size={24} color="#f8f4fb" />
             </TouchableOpacity>
           </View>
         </View>
 
-        {/* Notifications Panel (right-side overlay) */}
+        {/* Notifications Panel */}
         {isNotificationOpen && (
-          <Pressable
-            className="absolute inset-0 items-end"
-            style={{ zIndex: 50 }}
-            onPress={() => setIsNotificationOpen(false)}>
-            <Pressable
-              className="w-full h-full max-w-md p-5 bg-white rounded-l-2xl"
-              onPress={() => {}}
-              style={{ shadowColor: '#000', shadowOffset: { width: -2, height: 0 }, shadowOpacity: 0.1, shadowRadius: 8, elevation: 8 }}>
+          <View className="absolute inset-0 z-50">
+            <Pressable className="absolute inset-0 bg-black/40" onPress={() => setIsNotificationOpen(false)} />
+
+            <View className="absolute top-16 right-4 w-[92%] max-w-md p-5 bg-white rounded-2xl shadow-lg">
               <View className="flex-row items-center justify-between">
                 <Text className="text-lg font-bold text-gray-900">Notifications</Text>
                 <TouchableOpacity
-                  className="p-2 bg-[#f8f4fb] rounded-full"
+                  className="p-2 bg-gray-100 rounded-full"
                   onPress={() => setIsNotificationOpen(false)}>
                   <Ionicons name="close" size={18} color="#6b7280" />
                 </TouchableOpacity>
@@ -758,21 +782,27 @@ export default function Dashboard({
                           className="p-3 mb-3 border border-gray-100 rounded-xl bg-gray-50">
                           <Text className="text-sm font-bold text-gray-900">{n.title || 'Notification'}</Text>
                           <Text className="mt-1 text-xs text-gray-600">{bodyWithoutMarker}</Text>
-                          <Text className="mt-2 text-[11px] text-gray-400">{n.created_at ? new Date(n.created_at).toLocaleString() : ''}</Text>
+                          <Text className="mt-2 text-[11px] text-gray-400">
+                            {n.created_at ? new Date(n.created_at).toLocaleString() : ''}
+                          </Text>
 
                           {senderId && n.title === 'Contact Request' && (
                             <View className="flex-row gap-2 mt-3">
                               <TouchableOpacity
-                                className="flex-1 py-2 bg-[#237227] rounded-xl"
+                                className="flex-1 py-2 bg-green-600 rounded-xl"
                                 onPress={() => void handleRespondToRequest(Number(n.id), senderId, true)}
                                 disabled={Boolean(notifActionLoading[Number(n.id)])}>
-                                <Text className="text-sm font-semibold text-center text-white">{notifActionLoading[Number(n.id)] ? 'Processing...' : 'Accept'}</Text>
+                                <Text className="text-sm font-semibold text-center text-white">
+                                  {notifActionLoading[Number(n.id)] ? 'Processing...' : 'Accept'}
+                                </Text>
                               </TouchableOpacity>
                               <TouchableOpacity
                                 className="flex-1 py-2 bg-gray-100 rounded-xl"
                                 onPress={() => void handleRespondToRequest(Number(n.id), senderId, false)}
                                 disabled={Boolean(notifActionLoading[Number(n.id)])}>
-                                <Text className="text-sm font-semibold text-center text-gray-700">{notifActionLoading[Number(n.id)] ? 'Processing...' : 'Deny'}</Text>
+                                <Text className="text-sm font-semibold text-center text-gray-700">
+                                  {notifActionLoading[Number(n.id)] ? 'Processing...' : 'Deny'}
+                                </Text>
                               </TouchableOpacity>
                             </View>
                           )}
@@ -790,10 +820,10 @@ export default function Dashboard({
                   void loadUnreadCount();
                 }}
                 disabled={notificationsLoading}>
-                <Text className="text-md font-semibold text-center text-[#f8f4fb]">Refresh</Text>
+                <Text className="text-sm font-semibold text-center text-[#f8f4fb]">Refresh</Text>
               </TouchableOpacity>
-            </Pressable>
-          </Pressable>
+            </View>
+          </View>
         )}
 
         {/* Content */}
@@ -885,7 +915,7 @@ export default function Dashboard({
                 disabled={attendanceLoading || attendanceActionLoading}
                 onPress={isTimedIn ? handleTimeOut : handleTimeIn}
                 className="mt-2 w-full flex-row items-center justify-center rounded-xl bg-[#237227] py-3.5 active:scale-95">
-                <Ionicons name="finger-print" size={20} color="#f8f4fb" />
+                <Ionicons name="finger-print" size={20} color="white" />
                 <Text className="ml-2 text-base font-semibold text-[#f8f4fb]">
                   {attendanceActionLoading ? 'Saving…' : isTimedIn ? 'Time Out' : 'Time In'}
                 </Text>
@@ -921,8 +951,8 @@ function StatCard({
 }) {
   return (
     <View className="mb-3 w-[48%] rounded-2xl border border-gray-200 bg-white p-4 active:scale-95">
-      <View className={`${color} mb-3 self-start rounded-full p-2.5`}>
-        <Ionicons name={icon} size={20} color="#f8f4fb" />
+      <View className={`${color} mb-3 self-start rounded-xl p-2.5`}>
+        <Ionicons name={icon} size={20} color="white" />
       </View>
       <Text className="text-2xl font-black text-gray-900">{value}</Text>
       <Text className="mt-1 text-xs font-medium text-gray-500">{title}</Text>

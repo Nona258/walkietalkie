@@ -142,7 +142,7 @@ export default function Logs() {
 
         {/* Search Bar - Light Gray Border */}
         <View className="flex-row items-center px-4 py-3 rounded-xl bg-gray-50 border border-[#237227]">
-          <Ionicons name="search-outline" size={18} color="#237227" />
+          <Ionicons name="search-outline" size={18} color="#6B7280" />
           <TextInput
             placeholder="Search activity..."
             value={searchText}
@@ -182,7 +182,7 @@ export default function Logs() {
                   <Text className="flex-1 text-lg font-bold text-gray-900">{log.siteName}</Text>
                   <View
                     className={`h-2.5 w-2.5 rounded-full ${
-                      log.status === 'completed' ? 'bg-gray-400' : 'bg-green-500'
+                      log.status === 'completed' ? 'bg-gray-400' : 'bg-[#237227]'
                     }`}
                   />
                 </View>
@@ -199,7 +199,7 @@ export default function Logs() {
                     <Text className="text-xs font-semibold text-gray-500">
                       {log.timeOut ? 'Time Out' : 'Status'}
                     </Text>
-                    <Text className={`text-base font-bold ${log.status === 'active' ? 'text-green-700' : 'text-gray-700'}`}>
+                    <Text className={`text-base font-bold ${log.status === 'active' ? 'text-[#237227]' : 'text-gray-700'}`}>
                       {log.timeOut || (log.status === 'active' ? 'In Progress' : '--')}
                     </Text>
                   </View>
@@ -211,8 +211,8 @@ export default function Logs() {
                     <Ionicons name="calendar-outline" size={14} color="#6B7280" />
                     <Text className="text-sm font-semibold text-gray-700">{log.date}</Text>
                   </View>
-                  <View className="px-2 py-1 rounded-md bg-green-50">
-                    <Text className="text-xs font-semibold text-green-700">{log.duration || '0h 00m'}</Text>
+                  <View className="px-2 py-1 rounded-md bg-[#f8f4fb] border border-[#237227]">
+                    <Text className="text-xs font-semibold text-stone-900">{log.duration || '0h 00m'}</Text>
                   </View>
                 </View>
               </TouchableOpacity>
@@ -220,7 +220,7 @@ export default function Logs() {
           </View>
         ) : (
           <View className="items-center justify-center py-16">
-            <Ionicons name="document-text-outline" size={48} color="#237227" />
+            <Ionicons name="document-text-outline" size={48} color="#9CA3AF" />
             <Text className="mt-4 text-base text-gray-500">No activity found</Text>
           </View>
         )}
