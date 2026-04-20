@@ -250,128 +250,132 @@ export default function SignUp({ onNavigateToSignIn, onSignUpSuccess }: SignUpPr
   };
 
   return (
-    <View className="flex-1 bg-white">
+    <View className="flex-1 bg-gray-50">
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         className="flex-1">
-        <View className="justify-center flex-1 px-6">
-          {/* Header */}
-          <View className="mb-8">
-            <Text className="mb-2 text-4xl font-bold text-gray-900">Create your account</Text>
-            <Text className="text-base text-gray-500">Start communicating instantly with walkietalkie</Text>
-          </View>
-
-          {/* Full Name */}
-          <View className="mb-4">
-            <TextInput
-              className="px-4 text-base border border-gray-300 h-14 rounded-2xl bg-gray-50"
-              placeholder="Full name"
-              placeholderTextColor="#9ca3af"
-              autoCapitalize="words"
-              value={fullName}
-              onChangeText={setFullName}
-            />
-          </View>
-
-          {/* Email */}
-          <View className="mb-4">
-            <TextInput
-              className="px-4 text-base border border-gray-300 h-14 rounded-2xl bg-gray-50"
-              placeholder="Email address"
-              placeholderTextColor="#9ca3af"
-              keyboardType="email-address"
-              autoCapitalize="none"
-              value={email}
-              onChangeText={setEmail}
-            />
-          </View>
-
-          {/* Phone Number */}
-          <View className="mb-4">
-            <TextInput
-              className="px-4 text-base border border-gray-300 h-14 rounded-2xl bg-gray-50"
-              placeholder="Phone number"
-              placeholderTextColor="#9ca3af"
-              keyboardType="phone-pad"
-              value={phoneNumber}
-              onChangeText={setPhoneNumber}
-            />
-          </View>
-
-          {/* Password */}
-          <View className="flex-row items-center px-4 mb-4 border border-gray-300 rounded-2xl bg-gray-50">
-            <TextInput
-              className="flex-1 text-base h-14"
-              placeholder="Password"
-              placeholderTextColor="#9ca3af"
-              secureTextEntry={!showPassword}
-              value={password}
-              onChangeText={setPassword}
-            />
-            <TouchableOpacity onPress={() => setShowPassword(!showPassword)}>
-              <Ionicons
-                name={showPassword ? 'eye-outline' : 'eye-off-outline'}
-                size={22}
-                color="#9ca3af"
-              />
-            </TouchableOpacity>
-          </View>
-
-          {/* Confirm Password */}
-          <View className="flex-row items-center px-4 mb-6 border border-gray-300 rounded-2xl bg-gray-50">
-            <TextInput
-              className="flex-1 text-base h-14"
-              placeholder="Confirm password"
-              placeholderTextColor="#9ca3af"
-              secureTextEntry={!showConfirmPassword}
-              value={confirmPassword}
-              onChangeText={setConfirmPassword}
-            />
-            <TouchableOpacity onPress={() => setShowConfirmPassword(!showConfirmPassword)}>
-              <Ionicons
-                name={showConfirmPassword ? 'eye-outline' : 'eye-off-outline'}
-                size={22}
-                color="#9ca3af"
-              />
-            </TouchableOpacity>
-          </View>
-
-          {/* Terms of Service Checkbox */}
-          <TouchableOpacity
-            className="flex-row items-start mb-6"
-            onPress={() => setAgreeToTerms(!agreeToTerms)}
-            activeOpacity={0.7}>
-            <View
-              className={`mr-3 mt-0.5 h-5 w-5 items-center justify-center rounded border-2 ${
-                agreeToTerms ? 'border-[#237227] bg-[#237227]' : 'border-gray-300 bg-white'
-              }`}>
-              {agreeToTerms && <Ionicons name="checkmark" size={14} color="white" />}
+        <View className="items-center justify-center flex-1 px-4 py-8">
+          {/* Responsive wrapper: no card on mobile, card styles only on larger screens */}
+          <View className="w-full max-w-3xl p-0 sm:p-6 sm:bg-white sm:shadow-lg sm:rounded-2xl">
+            {/* Header */}
+            <View className="mb-6">
+              <Text className="mb-2 text-3xl font-bold text-gray-900 sm:text-4xl">Create your account</Text>
+              <Text className="text-sm text-gray-500 sm:text-base">Start communicating instantly with walkietalkie</Text>
             </View>
-            <Text className="flex-1 text-sm leading-5 text-gray-600">
-              I agree to the{' '}
-              <Text className="font-semibold text-[#237227]">Terms of Service</Text> and{' '}
-              <Text className="font-semibold text-[#237227]">Privacy Policy</Text>
-            </Text>
-          </TouchableOpacity>
 
-          {/* Create Account Button */}
-          <TouchableOpacity
-            className="items-center justify-center mb-6 bg-[#237227] shadow-sm h-14 rounded-2xl"
-            onPress={handleSignUp}
-            disabled={loading}
-            activeOpacity={0.8}>
-            {loading ? (
-              <ActivityIndicator color="#f8f4fb" />
-            ) : (
-              <Text className="text-lg font-semibold text-white">Create account</Text>
-            )}
-          </TouchableOpacity>
-          {/* Sign In Link */}
-          <View className="flex-row justify-center">
-            <Text className="text-sm text-gray-600">Already have an account? </Text>
-            <TouchableOpacity onPress={onNavigateToSignIn}>
-              <Text className="text-md font-semibold text-[#237227]">Sign in</Text>
+            {/* Full Name */}
+            <View className="mb-4">
+              <TextInput
+                className="px-4 text-base border border-gray-200 h-14 rounded-2xl bg-gray-50"
+                placeholder="Full name"
+                placeholderTextColor="#9ca3af"
+                autoCapitalize="words"
+                value={fullName}
+                onChangeText={setFullName}
+              />
+            </View>
+
+            {/* Email */}
+            <View className="mb-4">
+              <TextInput
+                className="px-4 text-base border border-gray-200 h-14 rounded-2xl bg-gray-50"
+                placeholder="Email address"
+                placeholderTextColor="#9ca3af"
+                keyboardType="email-address"
+                autoCapitalize="none"
+                value={email}
+                onChangeText={setEmail}
+              />
+            </View>
+
+            {/* Phone Number */}
+            <View className="mb-4">
+              <TextInput
+                className="px-4 text-base border border-gray-200 h-14 rounded-2xl bg-gray-50"
+                placeholder="Phone number"
+                placeholderTextColor="#9ca3af"
+                keyboardType="phone-pad"
+                value={phoneNumber}
+                onChangeText={setPhoneNumber}
+              />
+            </View>
+
+            {/* Password */}
+            <View className="flex-row items-center px-4 mb-4 border border-gray-200 rounded-2xl bg-gray-50">
+              <TextInput
+                className="flex-1 text-base h-14"
+                placeholder="Password"
+                placeholderTextColor="#9ca3af"
+                secureTextEntry={!showPassword}
+                value={password}
+                onChangeText={setPassword}
+              />
+              <TouchableOpacity onPress={() => setShowPassword(!showPassword)}>
+                <Ionicons
+                  name={showPassword ? 'eye-outline' : 'eye-off-outline'}
+                  size={22}
+                  color="#9ca3af"
+                />
+              </TouchableOpacity>
+            </View>
+
+            {/* Confirm Password */}
+            <View className="flex-row items-center px-4 mb-6 border border-gray-200 rounded-2xl bg-gray-50">
+              <TextInput
+                className="flex-1 text-base h-14"
+                placeholder="Confirm password"
+                placeholderTextColor="#9ca3af"
+                secureTextEntry={!showConfirmPassword}
+                value={confirmPassword}
+                onChangeText={setConfirmPassword}
+              />
+              <TouchableOpacity onPress={() => setShowConfirmPassword(!showConfirmPassword)}>
+                <Ionicons
+                  name={showConfirmPassword ? 'eye-outline' : 'eye-off-outline'}
+                  size={22}
+                  color="#9ca3af"
+                />
+              </TouchableOpacity>
+            </View>
+
+            {/* Terms of Service Checkbox */}
+            <TouchableOpacity
+              className="flex-row items-start mb-6"
+              onPress={() => setAgreeToTerms(!agreeToTerms)}
+              activeOpacity={0.7}>
+              <View
+                className={`mr-3 mt-0.5 h-5 w-5 items-center justify-center rounded border-2 ${
+                  agreeToTerms ? 'border-[#237227] bg-[#237227]' : 'border-gray-300 bg-white'
+                }`}>
+                {agreeToTerms && <Ionicons name="checkmark" size={14} color="white" />}
+              </View>
+              <Text className="flex-1 text-sm leading-5 text-gray-600">
+                I agree to the{' '}
+                <Text className="font-semibold text-[#237227]">Terms of Service</Text> and{' '}
+                <Text className="font-semibold text-[#237227]">Privacy Policy</Text>
+              </Text>
             </TouchableOpacity>
+
+            {/* Create Account Button */}
+            <TouchableOpacity
+              className="w-full items-center justify-center mb-4 bg-[#237227] shadow-sm h-14 rounded-2xl"
+              onPress={handleSignUp}
+              disabled={loading}
+              activeOpacity={0.8}>
+              {loading ? (
+                <ActivityIndicator color="#f8f4fb" />
+              ) : (
+                <Text className="text-lg font-semibold text-white">Create account</Text>
+              )}
+            </TouchableOpacity>
+
+            {/* Sign In Link */}
+            <View className="flex-row justify-center">
+              <Text className="text-sm text-gray-600">Already have an account? </Text>
+              <TouchableOpacity onPress={onNavigateToSignIn}>
+                <Text className="text-md font-semibold text-[#237227]">Sign in</Text>
+              </TouchableOpacity>
+            </View>
           </View>
         </View>
       </KeyboardAvoidingView>

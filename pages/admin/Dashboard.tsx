@@ -8,8 +8,11 @@ import {
   ActivityIndicator,
   Dimensions,
   Platform,
+  Pressable,
+  Modal,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { LineChart } from 'react-native-chart-kit';
 import supabase from '../../utils/supabase';
 import AdminNavbar from '../../components/AdminNavbar';
 import SiteManagement from './SiteManagement';
@@ -1132,6 +1135,23 @@ export default function AdminDashboard({ onLogout, onNavigate }: AdminDashboardP
 
   const windowWidth = Dimensions.get('window').width;
   const isWebView = windowWidth > 900;
+  const chartWidth = isWebView ? Math.min(windowWidth * 0.7, 720) : Math.max(windowWidth - 40, 280);
+  const [chartContainerWidth, setChartContainerWidth] = useState<number>(chartWidth);
+  // number of horizontal grid lines (segments) to show on the chart
+  const CHART_SEGMENTS = 4;
+  // fixed chart height used for alignment of ticks
+  const chartHeight = 160;
+  const [chartRange, setChartRange] = useState<'previousWeeks' | 'thisWeek' | 'lastMonth'>('thisWeek');
+  const [rangeMenuOpen, setRangeMenuOpen] = useState(false);
+  const menuButtonRef = React.useRef<any>(null);
+  const [menuButtonLayout, setMenuButtonLayout] = useState<{ x: number; y: number; width: number; height: number }>({ x: 0, y: 0, width: 0, height: 0 });
+  const [tooltip, setTooltip] = useState<{
+    visible: boolean;
+    x: number;
+    y: number;
+    value: number | string;
+    label: string;
+  }>({ visible: false, x: 0, y: 0, value: 0, label: '' });
 
   const onlineUsersForMap = React.useMemo(
     () =>
@@ -1176,35 +1196,102 @@ export default function AdminDashboard({ onLogout, onNavigate }: AdminDashboardP
       const d = new Date();
       d.setDate(d.getDate() - i);
       d.setHours(0, 0, 0, 0);
-      const dayName = d.toLocaleDateString('en-US', { weekday: 'short' });
+      const dayName = d.toLocaleDateString('en-US', { weekday: 'long' });
       days.push({ date: d, dayName });
     }
     return days;
   };
 
-  const fetchAccomplishedSitesData = async () => {
+  const getThisWeekDays = () => {
+    const days = [];
+    const today = new Date();
+    const day = today.getDay(); // 0 (Sun) .. 6 (Sat)
+    // compute Monday of current week
+    const monday = new Date(today);
+    const offsetToMonday = (day + 6) % 7; // 0->Mon offset
+    monday.setDate(today.getDate() - offsetToMonday);
+    monday.setHours(0,0,0,0);
+    for (let i = 0; i < 7; i++) {
+      const d = new Date(monday);
+      d.setDate(monday.getDate() + i);
+      days.push({ date: d, dayName: d.toLocaleDateString('en-US', { weekday: 'long' }) });
+    }
+    return days;
+  };
+
+  const fetchAccomplishedSitesData = async (range?: 'previousWeeks' | 'thisWeek' | 'lastMonth') => {
     try {
-      const last7Days = getLast7Days();
-      const promises = last7Days.map(async ({ date, dayName }) => {
-        const startOfDay = new Date(date);
-        const endOfDay = new Date(date);
-        endOfDay.setHours(23, 59, 59, 999);
+      const selected = range || chartRange || 'previousWeeks';
+      const weekOrder = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
 
-        const { count, error } = await supabase
-          .from('archived_sitegroup')
-          .select('*', { count: 'exact', head: true })
-          .gte('finished_at', startOfDay.toISOString())
-          .lte('finished_at', endOfDay.toISOString());
+      if (selected === 'previousWeeks' || selected === 'thisWeek') {
+        const days = selected === 'previousWeeks' ? getLast7Days() : getThisWeekDays();
+        const promises = days.map(async ({ date, dayName }) => {
+          const startOfDay = new Date(date);
+          const endOfDay = new Date(date);
+          endOfDay.setHours(23, 59, 59, 999);
 
-        if (error) {
-          console.error(`Error fetching count for ${dayName}:`, error);
-          return { day: dayName, count: 0 };
+          const { count, error } = await supabase
+            .from('archived_sitegroup')
+            .select('*', { count: 'exact', head: true })
+            .gte('finished_at', startOfDay.toISOString())
+            .lte('finished_at', endOfDay.toISOString());
+
+          if (error) {
+            console.error(`Error fetching count for ${dayName}:`, error);
+            return { day: dayName, count: 0 };
+          }
+          return { day: dayName, count: count ?? 0 };
+        });
+
+        const results = await Promise.all(promises);
+        const ordered = weekOrder.map((wd) => results.find(r => r.day === wd) || { day: wd, count: 0 });
+        setDailyAccomplished(ordered);
+        return;
+      }
+
+      // selected === 'lastMonth' -> aggregate counts per weekday across previous month
+      if (selected === 'lastMonth') {
+        const now = new Date();
+        const startOfMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+        const endOfMonth = new Date(now.getFullYear(), now.getMonth(), 0);
+
+        // build array of dates for the month
+        const dates: Date[] = [];
+        for (let d = new Date(startOfMonth); d <= endOfMonth; d.setDate(d.getDate() + 1)) {
+          dates.push(new Date(d));
         }
-        return { day: dayName, count: count ?? 0 };
-      });
 
-      const results = await Promise.all(promises);
-      setDailyAccomplished(results);
+        // For each date, fetch the count and sum into weekday buckets
+        const perDatePromises = dates.map(async (date) => {
+          const s = new Date(date);
+          s.setHours(0,0,0,0);
+          const e = new Date(date);
+          e.setHours(23,59,59,999);
+          const { count, error } = await supabase
+            .from('archived_sitegroup')
+            .select('*', { count: 'exact', head: true })
+            .gte('finished_at', s.toISOString())
+            .lte('finished_at', e.toISOString());
+          if (error) {
+            console.error('Error fetching month date count:', error);
+            return { date: new Date(date), count: 0 };
+          }
+          return { date: new Date(date), count: count ?? 0 };
+        });
+
+        const perDateResults = await Promise.all(perDatePromises);
+        const buckets: Record<string, number> = { Monday: 0, Tuesday: 0, Wednesday: 0, Thursday: 0, Friday: 0, Saturday: 0, Sunday: 0 };
+        perDateResults.forEach(({ date, count }) => {
+          const name = date.toLocaleDateString('en-US', { weekday: 'long' });
+          if (!buckets[name]) buckets[name] = 0;
+          buckets[name] += Number(count || 0);
+        });
+
+        const ordered = weekOrder.map((wd) => ({ day: wd, count: buckets[wd] || 0 }));
+        setDailyAccomplished(ordered);
+        return;
+      }
     } catch (error) {
       console.error('Error fetching accomplished sites data:', error);
     }
@@ -1715,9 +1802,53 @@ export default function AdminDashboard({ onLogout, onNavigate }: AdminDashboardP
                     Based on archived site groups
                   </Text>
                 </View>
-                <View className="flex-row items-center rounded-lg border border-stone-100 bg-stone-50 px-3 py-1.5">
-                  <Text className="mr-1 text-xs font-medium text-stone-600">Last 7 Days</Text>
-                  <Ionicons name="chevron-down" size={13} color="#78716c" />
+                <View className="flex-row items-center">
+                    <View style={{ position: 'relative', marginRight: 12, overflow: 'visible', zIndex: 999 }}>
+                      <Pressable ref={menuButtonRef} onPress={() => {
+                        try {
+                          if (menuButtonRef.current && typeof menuButtonRef.current.measureInWindow === 'function') {
+                            menuButtonRef.current.measureInWindow((x: number, y: number, width: number, height: number) => {
+                              setMenuButtonLayout({ x, y, width, height });
+                            });
+                          } else if (menuButtonRef.current && (menuButtonRef.current.getBoundingClientRect)) {
+                            // web fallback
+                            const r = menuButtonRef.current.getBoundingClientRect();
+                            setMenuButtonLayout({ x: r.left, y: r.top, width: r.width, height: r.height });
+                          }
+                        } catch (e) {
+                          // ignore measurement errors
+                        }
+                        setRangeMenuOpen((s) => !s);
+                      }} style={{ flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderColor: '#f3f4f6', backgroundColor: '#f8fafb', paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8 }}>
+                        <Text style={{ marginRight: 8, fontSize: 12, fontWeight: '600', color: '#475569' }}>
+                          {chartRange === 'previousWeeks' ? 'Previous Weeks' : chartRange === 'thisWeek' ? 'This Week' : 'Last Month'}
+                        </Text>
+                        <Ionicons name="chevron-down" size={13} color="#78716c" />
+                      </Pressable>
+                      {rangeMenuOpen && (
+                        <Modal transparent visible={rangeMenuOpen} onRequestClose={() => setRangeMenuOpen(false)}>
+                          <Pressable style={{ flex: 1 }} onPress={() => setRangeMenuOpen(false)}>
+                            <View style={{ position: 'absolute', top: menuButtonLayout.y + menuButtonLayout.height + 4, left: menuButtonLayout.x, minWidth: 160, backgroundColor: '#fff', borderRadius: 8, borderWidth: 1, borderColor: '#e6e6e6', shadowColor: '#000', shadowOpacity: 0.06, elevation: 12, zIndex: 99999 }}>
+                                <Pressable onPress={() => { setChartRange('thisWeek'); setRangeMenuOpen(false); fetchAccomplishedSitesData('thisWeek'); }} style={{ paddingHorizontal: 12, paddingVertical: 8 }}>
+                                  <Text style={{ color: chartRange === 'thisWeek' ? '#237227' : '#374151' }}>This Week</Text>
+                                </Pressable>
+                                <View style={{ height: 1, backgroundColor: '#f3f4f6' }} />
+                                <Pressable onPress={() => { setChartRange('previousWeeks'); setRangeMenuOpen(false); fetchAccomplishedSitesData('previousWeeks'); }} style={{ paddingHorizontal: 12, paddingVertical: 8 }}>
+                                  <Text style={{ color: chartRange === 'previousWeeks' ? '#237227' : '#374151' }}>Previous Weeks</Text>
+                                </Pressable>
+                                <View style={{ height: 1, backgroundColor: '#f3f4f6' }} />
+                                <Pressable onPress={() => { setChartRange('lastMonth'); setRangeMenuOpen(false); fetchAccomplishedSitesData('lastMonth'); }} style={{ paddingHorizontal: 12, paddingVertical: 8 }}>
+                                  <Text style={{ color: chartRange === 'lastMonth' ? '#237227' : '#374151' }}>Last Month</Text>
+                                </Pressable>
+                            </View>
+                          </Pressable>
+                        </Modal>
+                      )}
+                    </View>
+                  <View className="flex-row items-center">
+                    <View style={{ width: 10, height: 10, backgroundColor: '#237227', borderRadius: 3, marginRight: 8 }} />
+                    <Text className="text-xs font-medium text-stone-600">Sites Accomplished</Text>
+                  </View>
                 </View>
               </View>
 
@@ -1726,28 +1857,129 @@ export default function AdminDashboard({ onLogout, onNavigate }: AdminDashboardP
                   <Text className="text-sm text-stone-400">No data available</Text>
                 </View>
               ) : (
-                <View className="flex-row items-end justify-between gap-1" style={{ height: 120 }}>
-                  {dailyAccomplished.map((bar, i) => {
-                    const maxCount = Math.max(...dailyAccomplished.map(b => b.count), 1);
-                    const percentage = (bar.count / maxCount) * 100;
-                    const barHeight = Math.max(8, percentage);
-                    return (
-                      <View key={i} className="items-center flex-1" style={{ height: '100%' }}>
+                <View>
+                  <View style={{ flexDirection: 'row', alignItems: 'flex-start' }}>
+                    {/* Left column: Y-axis ticks aligned with chart horizontal grid lines */}
+                    <View style={{ width: 28, paddingRight: 6, alignItems: 'flex-end' }}>
+                      {(() => {
+                        const counts = dailyAccomplished.map(d => Number(d.count || 0));
+                        const maxVal = Math.max(1, ...counts);
+                        const segments = CHART_SEGMENTS; // must match LineChart `segments` prop
+                        const ticks: number[] = [];
+                        for (let i = 0; i < segments; i++) {
+                          // top -> bottom: highest to lowest
+                          const v = Math.round((maxVal * (segments - i)) / segments);
+                          ticks.push(v);
+                        }
+
+                        return (
+                          <View style={{ height: chartHeight, position: 'relative' }}>
+                            {ticks.map((t, idx) => {
+                              const top = (idx / (CHART_SEGMENTS)) * chartHeight;
+                              return (
+                                <Text
+                                  key={idx}
+                                  style={{
+                                    position: 'absolute',
+                                    left: 0,
+                                    right: 0,
+                                    top,
+                                    transform: [{ translateY: -8 }],
+                                    fontSize: 12,
+                                    fontWeight: '500',
+                                    color: '#6b7280',
+                                    textAlign: 'right',
+                                  }}
+                                >
+                                  {t.toLocaleString()}
+                                </Text>
+                              );
+                            })}
+                          </View>
+                        );
+                      })()}
+                    </View>
+
+                    {/* Right column: chart */}
+                    <View style={{ flex: 1, position: 'relative' }} onLayout={(e) => {
+                      const w = e.nativeEvent.layout.width;
+                      if (w && w > 0) setChartContainerWidth(w);
+                    }}>
+                      <LineChart
+                        data={{
+                          labels: dailyAccomplished.map(d => d.day),
+                          datasets: [{ data: dailyAccomplished.map(d => d.count) }],
+                        }}
+                        width={chartContainerWidth}
+                        // give extra vertical room for full weekday labels
+                        height={160}
+                        yAxisLabel=""
+                        yAxisSuffix=""
+                        withInnerLines={true}
+                        withOuterLines={false}
+                        withDots={true}
+                        bezier={true}
+                        // render x-axis labels horizontally
+                        verticalLabelRotation={0}
+                        formatXLabel={(label: string) => String(label)}
+                        onDataPointClick={(event: any) => {
+                          try {
+                            const index = event.index as number;
+                            const value = event.value as number;
+                            const label = dailyAccomplished[index]?.day || '';
+                            setTooltip({ visible: true, x: event.x, y: event.y, value, label });
+                            // auto-hide after 2.5s
+                            setTimeout(() => setTooltip((t) => ({ ...t, visible: false })), 2500);
+                          } catch (e) {
+                            // ignore
+                          }
+                        }}
+                        chartConfig={{
+                          backgroundGradientFrom: '#ffffff',
+                          backgroundGradientTo: '#ffffff',
+                          decimalPlaces: 0,
+                          color: (opacity = 1) => `rgba(35,114,39,${opacity})`,
+                          labelColor: (opacity = 1) => `rgba(113,128,150,${opacity})`,
+                          propsForDots: {
+                            r: '4',
+                            strokeWidth: '1',
+                            stroke: '#ffffff',
+                          },
+                          style: { borderRadius: 8 },
+                        }}
+                        style={{
+                          marginVertical: 0,
+                          borderRadius: 8,
+                          // give more bottom padding so horizontal weekday labels fit
+                          paddingBottom: 44,
+                          // reduce left padding so left-side numbers sit closer to chart
+                          paddingLeft: 20,
+                          paddingRight: 32,
+                        }}
+                        fromZero={true}
+                        segments={CHART_SEGMENTS}
+                        // hide built-in Y labels — we render custom aligned labels
+                        formatYLabel={() => ''}
+                      />
+
+                      {tooltip.visible && (
                         <View
-                          className="w-full rounded-t-md"
                           style={{
-                            height: `${barHeight}%`,
-                            backgroundColor: bar.count > 0 ? '#237227' : '#e8f5e9',
-                            marginTop: 'auto',
-                          }}
-                        />
-                        <Text className="mt-1.5 text-xs font-medium text-stone-400">{bar.day}</Text>
-                        <Text className="mt-0.5 text-[10px] font-medium text-stone-500">
-                          {bar.count}
-                        </Text>
-                      </View>
-                    );
-                  })}
+                            position: 'absolute',
+                            left: Math.max(6, Math.min(chartContainerWidth - 100, tooltip.x - 40)),
+                            top: Math.max(0, tooltip.y - 40),
+                            backgroundColor: '#237227',
+                            paddingVertical: 6,
+                            paddingHorizontal: 8,
+                            borderRadius: 6,
+                            elevation: 4,
+                          }}>
+                          <Text style={{ color: '#fff', fontWeight: '600' }}>{tooltip.label}</Text>
+                          <Text style={{ color: '#e6ffe9', fontSize: 12 }}>{tooltip.value}</Text>
+                        </View>
+                      )}
+                    </View>
+                  </View>
                 </View>
               )}
             </View>

@@ -277,7 +277,8 @@ export default function ForgotPassword({ onBackToSignIn }: ForgotPasswordProps) 
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         className="flex-1">
-        <View className="justify-center flex-1 px-6">
+        <View className="justify-center flex-1 px-6 sm:items-center sm:py-8">
+          <View className="w-full max-w-3xl sm:bg-white sm:shadow-lg sm:rounded-2xl sm:p-8">
           {!canUpdatePassword ? (
             <>
               {/* Heading */}
@@ -448,6 +449,7 @@ export default function ForgotPassword({ onBackToSignIn }: ForgotPasswordProps) 
               </TouchableOpacity>
             </>
           )}
+          </View>
         </View>
       </KeyboardAvoidingView>
 
