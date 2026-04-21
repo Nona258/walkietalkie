@@ -337,25 +337,7 @@ export default function SignUp({ onNavigateToSignIn, onSignUpSuccess }: SignUpPr
                 />
               </TouchableOpacity>
             </View>
-
-            {/* Terms of Service Checkbox */}
-            <TouchableOpacity
-              className="flex-row items-start mb-6"
-              onPress={() => setAgreeToTerms(!agreeToTerms)}
-              activeOpacity={0.7}>
-              <View
-                className={`mr-3 mt-0.5 h-5 w-5 items-center justify-center rounded border-2 ${
-                  agreeToTerms ? 'border-[#237227] bg-[#237227]' : 'border-gray-300 bg-white'
-                }`}>
-                {agreeToTerms && <Ionicons name="checkmark" size={14} color="white" />}
-              </View>
-              <Text className="flex-1 text-sm leading-5 text-gray-600">
-                I agree to the{' '}
-                <Text className="font-semibold text-[#237227]">Terms of Service</Text> and{' '}
-                <Text className="font-semibold text-[#237227]">Privacy Policy</Text>
-              </Text>
-            </TouchableOpacity>
-
+            
             {/* Create Account Button */}
             <TouchableOpacity
               className="w-full items-center justify-center mb-4 bg-[#237227] shadow-sm h-14 rounded-2xl"

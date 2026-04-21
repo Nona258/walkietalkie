@@ -222,7 +222,7 @@ export default function SignIn({
               <View className="mb-4 md:mb-6">
                 <Text className="mb-2 text-sm font-medium md:text-md text-stone-900">Email address</Text>
                 <TextInput
-                  className="w-full rounded-lg bg-[#f8f4fb] px-4 py-3 text-base text-[#111827] md:bg-white md:border md:border-[#f8f4fb]"
+                  className="w-full rounded-lg bg-[#f8f4fb] px-4 py-3 text-base text-[#111827] md:bg-white md:border md:border-[#d1d5db]"
                   placeholder="you@example.com"
                   placeholderTextColor="#9ca3af"
                   keyboardType="email-address"
