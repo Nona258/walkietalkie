@@ -378,6 +378,9 @@ export default function EmployeeLogs({
     return `${rows.length} records • Updated ${now}`;
   }, [rows.length]);
 
+  const displayCurrent = filteredRows.length ? currentPage : 0;
+  const displayTotal = filteredRows.length ? totalPages : 0;
+
   return (
     <View className="flex-1 bg-[#f8fafb]">
       <ScrollView
@@ -472,44 +475,59 @@ export default function EmployeeLogs({
                     </TouchableOpacity>
                   )}
                 </View>
-
-                {/* Mobile Export Button */}
-                {!isWebView && (
-                  <TouchableOpacity
-                    onPress={exportToPdf}
-                    disabled={!canExport}
-                    className={`w-10 h-10 rounded-lg items-center justify-center ${
-                      canExport ? 'bg-[#237227]' : 'bg-[#d6d3d1]'
-                    }`}
-                    accessible={true}
-                    accessibilityLabel="Export to PDF">
-                    <Ionicons name="download-outline" size={18} color="#ffffff" />
-                  </TouchableOpacity>
-                )}
               </View>
             </View>
 
             {/* Filter Buttons */}
             <View className="px-4 py-3">
-              <View className="flex-row gap-3 mb-3">
-                {(['all', 'today', 'week', 'month'] as const).map((f) => (
-                  <TouchableOpacity
-                    key={f}
-                    className={`rounded-lg px-4 py-2 ${
-                      filterType === f ? 'bg-[#237227]' : 'border border-[#e5e7eb] bg-white'
-                    }`}
-                    onPress={() => {
-                      setFilterType(f);
-                      setCurrentPage(1);
-                    }}
-                    activeOpacity={0.8}
-                  >
-                    <Text className={`text-sm font-medium ${filterType === f ? 'text-white' : 'text-[#374151]'}`}>
-                      {f === 'all' ? 'All' : f === 'today' ? 'Today' : f === 'week' ? 'This Week' : 'This Month'}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
+              {isWebView ? (
+                <View className="flex-row gap-3 mb-3">
+                  {(['all', 'today', 'week', 'month'] as const).map((f) => (
+                    <TouchableOpacity
+                      key={f}
+                      className={`rounded-lg px-4 py-2 ${
+                        filterType === f ? 'bg-[#237227]' : 'border border-[#e5e7eb] bg-white'
+                      }`}
+                      onPress={() => {
+                        setFilterType(f);
+                        setCurrentPage(1);
+                      }}
+                      activeOpacity={0.8}
+                    >
+                      <Text className={`text-sm font-medium ${filterType === f ? 'text-white' : 'text-[#374151]'}`}>
+                        {f === 'all' ? 'All' : f === 'today' ? 'Today' : f === 'week' ? 'This Week' : 'This Month'}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              ) : (
+                <ScrollView
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                  contentContainerStyle={{ paddingHorizontal: 4 }}
+                  className="mb-3"
+                >
+                  <View className="flex-row gap-3">
+                    {(['all', 'today', 'week', 'month'] as const).map((f) => (
+                      <TouchableOpacity
+                        key={f}
+                        className={`rounded-lg px-4 py-2 ${
+                          filterType === f ? 'bg-[#237227]' : 'border border-[#e5e7eb] bg-white'
+                        }`}
+                        onPress={() => {
+                          setFilterType(f);
+                          setCurrentPage(1);
+                        }}
+                        activeOpacity={0.8}
+                      >
+                        <Text className={`text-sm font-medium ${filterType === f ? 'text-white' : 'text-[#374151]'}`}>
+                          {f === 'all' ? 'All' : f === 'today' ? 'Today' : f === 'week' ? 'This Week' : 'This Month'}
+                        </Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                </ScrollView>
+              )}
             </View>
 
             {/* Loading / Error / Empty */}
@@ -528,8 +546,8 @@ export default function EmployeeLogs({
               </View>
             ) : filteredRows.length === 0 ? (
               <View className="items-center py-[60px] gap-[10px]">
-                <View className="w-12 h-12 rounded-[12px] bg-[#e8f5e9] items-center justify-center">
-                  <Ionicons name="time-outline" size={22} color="#237227" />
+                <View className="w-12 h-12 rounded-[12px] bg-[#237227] items-center justify-center">
+                  <Ionicons name="time-outline" size={22} color="#f8f4fb" />
                 </View>
                 <Text className="text-[14px] font-semibold text-[#1a2e1b]">No attendance logs found</Text>
                 <Text className="text-[12px] text-[#8fa88f]">
@@ -632,46 +650,79 @@ export default function EmployeeLogs({
               </>
             )}
 
-            {/* Table Footer */}
-            {!loading && !error && filteredRows.length > 0 && (
-              <View
-                className={`flex-row items-center justify-between ${isWebView ? 'px-5' : 'px-3'} py-3 border-t border-[#f0f4f0] bg-[#f8fafb]`}
-              >
-                <Text className={`${isWebView ? 'text-[12px]' : 'text-[11px]'} text-[#6b7280] flex-1`} numberOfLines={1}>
-                  Showing {showingCount} of {filteredRows.length}
-                </Text>
-                <View className="flex-row gap-2">
-                  <TouchableOpacity
-                    onPress={() => setCurrentPage((p) => Math.max(1, p - 1))}
-                    disabled={currentPage <= 1}
-                    className={
-                      `w-8 h-8 rounded-lg border border-[#e5e7eb] bg-white items-center justify-center ${
-                        currentPage <= 1 ? 'opacity-40' : ''
-                      }`
-                    }
-                    accessible={true}
-                    accessibilityLabel="Previous page">
-                    <Ionicons name={'chevron-back-outline' as any} size={14} color="#4b6b4d" />
-                  </TouchableOpacity>
-                  <View className="px-3 h-8 rounded-lg  border border-[#237227] items-center justify-center min-w-[60px]">
-                    <Text className="text-[11px] font-semibold text-stone-900">
-                      {currentPage} / {totalPages}
-                    </Text>
+            {/* Table Footer (desktop and mobile responsive) */}
+            {!loading && !error && (
+              isWebView ? (
+                <View className="flex-row items-center justify-between px-4 py-3 border-t border-stone-200 bg-stone-50">
+                  <Text className="text-sm text-stone-600">Showing {showingCount} of {filteredRows.length} attendance records</Text>
+
+                  <View className="flex-row gap-[6px]">
+                    <TouchableOpacity
+                      onPress={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                      disabled={filteredRows.length === 0 || currentPage <= 1}
+                      className={
+                        "w-8 h-8 rounded-[7px] border border-[#e5e7eb] bg-white items-center justify-center " +
+                        (filteredRows.length === 0 || currentPage <= 1 ? 'opacity-50' : '')
+                      }
+                    >
+                      <Ionicons name={'chevron-back-outline' as any} size={14} color="#4b6b4d" />
+                    </TouchableOpacity>
+
+                    <View className="px-3 h-8 rounded-lg  border border-[#237227] items-center justify-center min-w-[60px]">
+                      <Text className="text-[11px] font-semibold text-stone-900">
+                        {displayCurrent} / {displayTotal}
+                      </Text>
+                    </View>
+
+                    <TouchableOpacity
+                      onPress={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                      disabled={filteredRows.length === 0 || currentPage >= totalPages}
+                      className={
+                        "w-8 h-8 rounded-[7px] border border-[#e5e7eb] bg-white items-center justify-center " +
+                        (filteredRows.length === 0 || currentPage >= totalPages ? 'opacity-50' : '')
+                      }
+                    >
+                      <Ionicons name={'chevron-forward-outline' as any} size={14} color="#4b6b4d" />
+                    </TouchableOpacity>
                   </View>
-                  <TouchableOpacity
-                    onPress={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
-                    disabled={currentPage >= totalPages}
-                    className={
-                      `w-8 h-8 rounded-lg border border-[#e5e7eb] bg-white items-center justify-center ${
-                        currentPage >= totalPages ? 'opacity-40' : ''
-                      }`
-                    }
-                    accessible={true}
-                    accessibilityLabel="Next page">
-                    <Ionicons name={'chevron-forward-outline' as any} size={14} color="#4b6b4d" />
-                  </TouchableOpacity>
                 </View>
-              </View>
+              ) : (
+                <View className="px-4 py-3 border-t border-stone-200 bg-stone-50">
+                  <View className="flex-row items-center justify-between">
+                    <Text className="text-sm text-stone-600">Showing {showingCount} of {filteredRows.length} attendance records</Text>
+
+                    <View className="flex-row gap-[6px] items-center">
+                      <TouchableOpacity
+                        onPress={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                        disabled={filteredRows.length === 0 || currentPage <= 1}
+                        className={
+                          "w-8 h-8 rounded-[7px] border border-[#e5e7eb] bg-white items-center justify-center " +
+                          (filteredRows.length === 0 || currentPage <= 1 ? 'opacity-50' : '')
+                        }
+                      >
+                        <Ionicons name={'chevron-back-outline' as any} size={14} color="#4b6b4d" />
+                      </TouchableOpacity>
+
+                      <View className="px-3 h-8 rounded-lg border border-[#237227] items-center justify-center min-w-[60px]">
+                        <Text className="text-[11px] font-semibold text-stone-900">
+                          {displayCurrent} / {displayTotal}
+                        </Text>
+                      </View>
+
+                      <TouchableOpacity
+                        onPress={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                        disabled={filteredRows.length === 0 || currentPage >= totalPages}
+                        className={
+                          "w-8 h-8 rounded-[7px] border border-[#e5e7eb] bg-white items-center justify-center " +
+                          (filteredRows.length === 0 || currentPage >= totalPages ? 'opacity-50' : '')
+                        }
+                      >
+                        <Ionicons name={'chevron-forward-outline' as any} size={14} color="#4b6b4d" />
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+                </View>
+              )
             )}
           </View>
         </View>

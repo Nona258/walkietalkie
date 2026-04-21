@@ -1,6 +1,7 @@
 import { StatusBar } from 'expo-status-bar';
 import { useState, useEffect, useRef } from 'react';
 import { View, ActivityIndicator, Platform } from 'react-native';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Linking from 'expo-linking';
 import SignIn from './pages/SignIn';
@@ -15,6 +16,7 @@ import Logs from './pages/employee/Logs';
 import Settings from './pages/employee/Settings';
 import EditProfile from './pages/employee/EditProfile';
 import ChangePassword from './pages/employee/ChangePassword';
+import Notifications from './pages/employee/Notifications';
 import Navbar from './components/Navbar';
 import TechnicalSupport from 'pages/admin/TechnicalSupport';
 import LiveLocationTracker from './components/LiveLocationTracker';
@@ -528,7 +530,8 @@ export default function App() {
   }
 
   return (
-    <View style={{ flex: 1 }}>
+    <SafeAreaProvider>
+      <View style={{ flex: 1 }}>
       {currentPage === 'signin' ? (
         <SignIn
           onNavigateToSignUp={() => {
@@ -654,6 +657,8 @@ export default function App() {
             <EditProfile onBackToSettings={() => setActiveTab('settings')} />
           ) : activeTab === 'change-password' ? (
             <ChangePassword onBackToSettings={() => setActiveTab('settings')} />
+          ) : activeTab === 'notifications' ? (
+            <Notifications onBack={() => setActiveTab('dashboard')} />
           ) : (
             <Dashboard
               onLogout={async () => {
@@ -663,6 +668,7 @@ export default function App() {
                 setCurrentPage('signin');
               }}
               onNavigateToSettings={() => setActiveTab('settings')}
+              onNavigateToNotifications={() => setActiveTab('notifications')}
             />
           )}
           {userRole !== 'admin' &&
@@ -694,6 +700,7 @@ export default function App() {
         onConfirm={globalAlertConfig.onConfirm}
       />
       <StatusBar style="dark" />
-    </View>
+      </View>
+    </SafeAreaProvider>
   );
 }

@@ -1,5 +1,6 @@
 import React from 'react';
 import { View, Text, TouchableOpacity } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 
 interface NavbarProps {
@@ -11,7 +12,10 @@ interface NavbarProps {
 
 export default function Navbar({ activeTab, onTabChange, onMicPress, isRecording }: NavbarProps) {
   return (
-    <View className="absolute bottom-0 left-0 right-0 border-t-2 border-[#237227] bg-white shadow-lg">
+    <SafeAreaView
+      edges={["bottom"]}
+      className="absolute bottom-0 left-0 right-0 border-t-2 border-[#237227] bg-white shadow-lg"
+      style={{ zIndex: 50 }}>
       <View className="flex-row items-end px-2 py-2">
         <NavbarIcon
           icon="home-outline"
@@ -67,7 +71,7 @@ export default function Navbar({ activeTab, onTabChange, onMicPress, isRecording
           onPress={() => onTabChange('logs')}
         />
       </View>
-    </View>
+    </SafeAreaView>
   );
 }
 

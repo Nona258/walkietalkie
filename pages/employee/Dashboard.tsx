@@ -14,14 +14,7 @@ import { Ionicons } from '@expo/vector-icons';
 import supabase from '../../utils/supabase';
 import * as Location from 'expo-location';
 import SweetAlertModal from '../../components/SweetAlertModal';
-import {
-  fetchMyNotifications,
-  fetchMyUnreadNotificationCount,
-  deleteMyNotificationsOlderThan,
-  markMyNotificationsViewed,
-  type AppNotification,
-} from '../../utils/notifications';
-import { respondToContactRequest } from '../../utils/FriendRequests';
+import { fetchMyUnreadNotificationCount, deleteMyNotificationsOlderThan } from '../../utils/notifications';
 
 type AttendanceRow = {
   id: number;
@@ -127,9 +120,11 @@ function msUntilNextMidnight() {
 export default function Dashboard({
   onLogout,
   onNavigateToSettings,
+  onNavigateToNotifications,
 }: {
   onLogout?: () => void;
   onNavigateToSettings?: () => void;
+  onNavigateToNotifications?: () => void;
 }) {
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [userData, setUserData] = useState({
@@ -153,43 +148,7 @@ export default function Dashboard({
   });
   const [siteStatsLoading, setSiteStatsLoading] = useState(false);
 
-  const [isNotificationOpen, setIsNotificationOpen] = useState(false);
-  const [notifications, setNotifications] = useState<AppNotification[]>([]);
-  const [notificationsLoading, setNotificationsLoading] = useState(false);
   const [unreadCount, setUnreadCount] = useState(0);
-  const [notifActionLoading, setNotifActionLoading] = useState<Record<number, boolean>>({});
-
-  const loadNotifications = useCallback(async () => {
-    setNotificationsLoading(true);
-    try {
-      const rows = await fetchMyNotifications(30);
-      setNotifications(rows);
-    } finally {
-      setNotificationsLoading(false);
-    }
-  }, []);
-
-  const handleRespondToRequest = async (notificationId: number, senderId: string, accept: boolean) => {
-    if (!currentUserId) {
-      Alert.alert('Error', 'Unable to determine current user');
-      return;
-    }
-    setNotifActionLoading((s) => ({ ...s, [notificationId]: true }));
-    try {
-      await respondToContactRequest(senderId, currentUserId, accept);
-
-      // remove the notification row (best-effort)
-      await supabase.from('notification').delete().eq('id', notificationId);
-
-      // refresh
-      await Promise.all([loadNotifications(), loadUnreadCount()]);
-    } catch (e: any) {
-      console.error('Failed to respond to contact request:', e);
-      Alert.alert('Error', e?.message || String(e));
-    } finally {
-      setNotifActionLoading((s) => ({ ...s, [notificationId]: false }));
-    }
-  };
 
   const loadUnreadCount = useCallback(async () => {
     const count = await fetchMyUnreadNotificationCount();
@@ -403,43 +362,21 @@ export default function Dashboard({
     })();
   }, [fetchAttendance, fetchSiteStats, loadUnreadCount]);
 
-  useEffect(() => {
-    if (isNotificationOpen) {
-      (async () => {
-        // Auto-delete notifications older than 1 week.
-        await deleteMyNotificationsOlderThan(7);
-
-        // When the user opens the bell, mark notifications as read.
-        await markMyNotificationsViewed();
-        await Promise.all([loadNotifications(), loadUnreadCount()]);
-      })();
-    }
-  }, [isNotificationOpen, loadNotifications, loadUnreadCount]);
 
   useEffect(() => {
     if (!currentUserId) return;
 
     const channel = supabase
       .channel('employee_dashboard_notifications')
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'notification',
-          filter: `user_id=eq.${currentUserId}`,
-        },
-        () => {
-          void loadUnreadCount();
-          if (isNotificationOpen) void loadNotifications();
-        }
-      )
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'notification' }, () => {
+        void loadUnreadCount();
+      })
       .subscribe();
 
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [currentUserId, isNotificationOpen, loadNotifications, loadUnreadCount]);
+  }, [currentUserId, loadUnreadCount]);
 
   useEffect(() => {
     let mounted = true;
@@ -725,7 +662,7 @@ export default function Dashboard({
           <View className="flex-row items-center gap-3">
             <TouchableOpacity
               className="p-3 bg-[#237227] rounded-full active:scale-95"
-              onPress={() => setIsNotificationOpen(true)}>
+              onPress={() => onNavigateToNotifications && onNavigateToNotifications()}>
               <View className="relative">
                 <Ionicons name="notifications" size={24} color="#f8f4fb" />
                 {unreadCount > 0 && (
@@ -745,86 +682,7 @@ export default function Dashboard({
           </View>
         </View>
 
-        {/* Notifications Panel */}
-        {isNotificationOpen && (
-          <View className="absolute inset-0 z-50">
-            <Pressable className="absolute inset-0 bg-black/40" onPress={() => setIsNotificationOpen(false)} />
-
-            <View className="absolute top-16 right-4 w-[92%] max-w-md p-5 bg-white rounded-2xl shadow-lg">
-              <View className="flex-row items-center justify-between">
-                <Text className="text-lg font-bold text-gray-900">Notifications</Text>
-                <TouchableOpacity
-                  className="p-2 bg-gray-100 rounded-full"
-                  onPress={() => setIsNotificationOpen(false)}>
-                  <Ionicons name="close" size={18} color="#6b7280" />
-                </TouchableOpacity>
-              </View>
-
-              <View className="mt-4 max-h-96">
-                {notificationsLoading ? (
-                  <View className="items-center justify-center py-8">
-                    <ActivityIndicator />
-                    <Text className="mt-2 text-sm text-gray-500">Loading…</Text>
-                  </View>
-                ) : notifications.length === 0 ? (
-                  <Text className="py-6 text-sm text-center text-gray-500">You have no notifications.</Text>
-                ) : (
-                  <ScrollView showsVerticalScrollIndicator={false}>
-                    {notifications.map((n) => {
-                      const rawBody = n.body || '';
-                      const senderMatch = rawBody.match(/__sender_id__:(\S+)/);
-                      const senderId = senderMatch ? senderMatch[1] : null;
-                      const bodyWithoutMarker = rawBody.replace(/__sender_id__:\S+\n?/, '').trim();
-
-                      return (
-                        <View
-                          key={String(n.id)}
-                          className="p-3 mb-3 border border-gray-100 rounded-xl bg-gray-50">
-                          <Text className="text-sm font-bold text-gray-900">{n.title || 'Notification'}</Text>
-                          <Text className="mt-1 text-xs text-gray-600">{bodyWithoutMarker}</Text>
-                          <Text className="mt-2 text-[11px] text-gray-400">
-                            {n.created_at ? new Date(n.created_at).toLocaleString() : ''}
-                          </Text>
-
-                          {senderId && n.title === 'Contact Request' && (
-                            <View className="flex-row gap-2 mt-3">
-                              <TouchableOpacity
-                                className="flex-1 py-2 bg-green-600 rounded-xl"
-                                onPress={() => void handleRespondToRequest(Number(n.id), senderId, true)}
-                                disabled={Boolean(notifActionLoading[Number(n.id)])}>
-                                <Text className="text-sm font-semibold text-center text-white">
-                                  {notifActionLoading[Number(n.id)] ? 'Processing...' : 'Accept'}
-                                </Text>
-                              </TouchableOpacity>
-                              <TouchableOpacity
-                                className="flex-1 py-2 bg-gray-100 rounded-xl"
-                                onPress={() => void handleRespondToRequest(Number(n.id), senderId, false)}
-                                disabled={Boolean(notifActionLoading[Number(n.id)])}>
-                                <Text className="text-sm font-semibold text-center text-gray-700">
-                                  {notifActionLoading[Number(n.id)] ? 'Processing...' : 'Deny'}
-                                </Text>
-                              </TouchableOpacity>
-                            </View>
-                          )}
-                        </View>
-                      );
-                    })}
-                  </ScrollView>
-                )}
-              </View>
-
-              <TouchableOpacity
-                className="w-full py-3 mt-3 bg-[#237227] rounded-xl"
-                onPress={() => {
-                  void loadNotifications();
-                  void loadUnreadCount();
-                }}
-                disabled={notificationsLoading}>
-                <Text className="text-sm font-semibold text-center text-[#f8f4fb]">Refresh</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        )}
+        {/* Notifications now live in their own tab/screen */}
 
         {/* Content */}
         <View className="w-full px-6 py-2 pb-32 bg-gray-50">

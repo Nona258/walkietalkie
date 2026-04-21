@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useMemo } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, Image, Modal, Pressable, Dimensions } from 'react-native';
+import { View, Text, ScrollView, TouchableOpacity, Image, Modal, Pressable, useWindowDimensions } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import '../../global.css';
 import supabase from '../../utils/supabase';
@@ -19,17 +19,41 @@ export default function TechnicalSupport({
   isMobileMenuOpen,
   setIsMobileMenuOpen
 }: Props) {
-  const windowWidth = Dimensions.get('window').width;
-  const isWebView = windowWidth > 900;
+  const { width } = useWindowDimensions();
+  const isWebView = width > 900;
 
   const [items, setItems] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const [imageModalVisible, setImageModalVisible] = useState(false);
   const [activeImage, setActiveImage] = useState<string | null>(null);
+  const [activeEvidenceList, setActiveEvidenceList] = useState<string[]>([]);
+  const [activeImageIndex, setActiveImageIndex] = useState(0);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(3); // adapt below for mobile
+
+  // centralized modal close to ensure consistent cleanup
+  const closeImageModal = () => {
+    setImageModalVisible(false);
+    setActiveEvidenceList([]);
+    setActiveImageIndex(0);
+    setActiveImage(null);
+  };
+
+  const totalPages = useMemo(() => Math.max(1, Math.ceil(items.length / pageSize)), [items.length, pageSize]);
 
   useEffect(() => {
     fetchIssues();
   }, []);
+
+  // Adjust pageSize for mobile vs desktop and clamp current page
+  useEffect(() => {
+    const newSize = isWebView ? 3 : 1;
+    setPageSize(newSize);
+  }, [isWebView]);
+
+  useEffect(() => {
+    setCurrentPage((p) => Math.min(Math.max(1, p), totalPages));
+  }, [totalPages]);
 
   const fetchIssues = async () => {
     setLoading(true);
@@ -153,40 +177,57 @@ export default function TechnicalSupport({
               <>
                 {/* Desktop Table Layout */}
                 <View className="flex-row items-center px-4 py-3 border-b border-stone-200 bg-stone-50">
-                  <Text className="flex-1 text-xs font-semibold tracking-wide uppercase text-stone-600">Site Name</Text>
-                  <Text className="w-24 text-xs font-semibold tracking-wide uppercase text-stone-600">Status</Text>
-                  <Text className="text-xs font-semibold tracking-wide uppercase w-36 text-stone-600">Company</Text>
-                  <Text className="text-xs font-semibold tracking-wide uppercase w-36 text-stone-600">Branch</Text>
-                  <Text className="w-40 text-xs font-semibold tracking-wide uppercase text-stone-600">Starlink Serial</Text>
-                  <Text className="text-xs font-semibold tracking-wide uppercase w-44 text-stone-600">Issue Type</Text>
-                  <Text className="flex-1 text-xs font-semibold tracking-wide uppercase text-stone-600">Issue Description</Text>
-                  <Text className="text-xs font-semibold tracking-wide text-center uppercase w-28 text-stone-600">Evidence</Text>
+                  <Text className="flex-1 text-xs font-semibold tracking-wide text-left uppercase text-stone-600">Site Name</Text>
+                  <Text className="w-24 text-xs font-semibold tracking-wide text-center uppercase text-stone-600">Status</Text>
+                  <Text className="text-xs font-semibold tracking-wide text-center uppercase w-36 text-stone-600">Company</Text>
+                  <Text className="text-xs font-semibold tracking-wide text-left uppercase w-36 text-stone-600">Branch</Text>
+                  <Text className="w-40 text-xs font-semibold tracking-wide text-center uppercase text-stone-600">Starlink Serial</Text>
+                  <Text className="text-xs font-semibold tracking-wide text-center uppercase w-44 text-stone-600">Issue Type</Text>
+                  <Text className="flex-1 text-xs font-semibold tracking-wide text-center uppercase text-stone-600">Issue Description</Text>
+                  <Text className="text-xs font-semibold tracking-wide text-center uppercase w-28 text-stone-600">Action</Text>
                 </View>
 
-                {items.map((s, idx) => (
+                {items.slice((currentPage - 1) * pageSize, currentPage * pageSize).map((s, idx) => (
                   <View
                     key={s.id || idx}
                     className={`flex-row items-center px-4 py-3 ${idx % 2 === 0 ? 'bg-white' : 'bg-stone-50'}`}>
-                    <Text className="flex-1 text-sm font-semibold text-stone-900">{s.name}</Text>
-                    <Text className="w-24 text-sm text-stone-600">{s.status}</Text>
-                    <Text className="text-sm w-36 text-stone-600">{(s as any).company?.company_name || '—'}</Text>
-                    <Text className="text-sm w-36 text-stone-600">{(s as any).branch?.branch_name || '—'}</Text>
-                    <Text className="w-40 text-sm text-stone-600">{s.starlink_serial || '—'}</Text>
-                    <Text className="text-sm w-44 text-stone-600">{s.technical_issue || '—'}</Text>
-                    <Text className="flex-1 text-sm text-stone-600 line-clamp-2">{s.issue_description || '—'}</Text>
+                    <View className="flex-1 min-w-0">
+                      <Text className="text-sm font-semibold text-stone-900" numberOfLines={2}>{s.name}</Text>
+                    </View>
+                    <View className="items-center w-24">
+                      <Text className="text-sm text-stone-600">{s.status}</Text>
+                    </View>
+                    <View className="items-center w-36">
+                      <Text className="text-sm text-stone-600">{(s as any).company?.company_name || '—'}</Text>
+                    </View>
+                    <View className="w-36">
+                      <Text className="text-sm text-stone-600">{(s as any).branch?.branch_name || '—'}</Text>
+                    </View>
+                    <View className="items-center w-40">
+                      <Text className="text-sm text-stone-600">{s.starlink_serial || '—'}</Text>
+                    </View>
+                    <View className="items-center w-44">
+                      <Text className="text-sm text-stone-600">{s.technical_issue || '—'}</Text>
+                    </View>
+                    <View className="items-center flex-1 min-w-0">
+                      <Text className="text-sm text-center text-stone-600 line-clamp-2">{s.issue_description || '—'}</Text>
+                    </View>
                     <View className="items-center justify-center w-28">
-                      {Array.isArray(s.evidence_urls) && s.evidence_urls.length > 0 ? (
+                        {Array.isArray(s.evidence_urls) && s.evidence_urls.length > 0 ? (
                         <TouchableOpacity
                           onPress={() => {
-                            setActiveImage(String(s.evidence_urls[0]));
+                            const list = (s.evidence_urls || []).map((u: any) => String(u)).filter(Boolean);
+                            // if no valid URLs, don't open the modal
+                            if (!list || list.length === 0 || !list[0]) return;
+                            setActiveEvidenceList(list);
+                            setActiveImageIndex(0);
+                            setActiveImage(list[0]);
                             setImageModalVisible(true);
                           }}
-                          className="items-center justify-center w-10 h-10 overflow-hidden border rounded-md border-stone-200">
-                          <Image
-                            source={{ uri: String(s.evidence_urls[0]) }}
-                            className="w-10 h-10"
-                            onError={(e) => console.warn(`Failed to load image: ${s.evidence_urls[0]}`, e.nativeEvent.error)}
-                          />
+                          className="items-center justify-center w-10 h-10 rounded-full bg-[#f8f4fb] border border-[#237227]"
+                          accessible={true}
+                          accessibilityLabel="View evidence">
+                          <Ionicons name="eye-outline" size={22} color="#237227" />
                         </TouchableOpacity>
                       ) : (
                         <Text className="text-xs text-stone-400">—</Text>
@@ -194,11 +235,46 @@ export default function TechnicalSupport({
                     </View>
                   </View>
                 ))}
+
+                {/* Table footer / pagination */}
+                <View className="flex-row items-center justify-between px-4 py-3 border-t border-stone-200 bg-stone-50">
+                  <Text className="text-sm text-stone-600">Showing {Math.min(pageSize, items.length - (currentPage - 1) * pageSize)} of {items.length} technical issues</Text>
+
+                  <View className="flex-row gap-[6px]">
+                    <TouchableOpacity
+                      onPress={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                      disabled={currentPage <= 1}
+                      className={
+                        "w-7 h-7 rounded-[7px] border border-[#e5e7eb] bg-white items-center justify-center " +
+                        (currentPage <= 1 ? 'opacity-50' : '')
+                      }
+                    >
+                      <Ionicons name={'chevron-back-outline' as any} size={13} color="#4b6b4d" />
+                    </TouchableOpacity>
+
+                    <View className="px-3 h-8 rounded-lg  border border-[#237227] items-center justify-center min-w-[60px]">
+                      <Text className="text-[11px] font-semibold text-stone-900">
+                        {currentPage} / {totalPages}
+                      </Text>
+                    </View>
+
+                    <TouchableOpacity
+                      onPress={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                      disabled={currentPage >= totalPages}
+                      className={
+                        "w-7 h-7 rounded-[7px] border border-[#e5e7eb] bg-white items-center justify-center " +
+                        (currentPage >= totalPages ? 'opacity-50' : '')
+                      }
+                    >
+                      <Ionicons name={'chevron-forward-outline' as any} size={13} color="#4b6b4d" />
+                    </TouchableOpacity>
+                  </View>
+                </View>
               </>
             ) : (
               <>
                 {/* Mobile Card Layout */}
-                {items.map((s, idx) => (
+                {items.slice((currentPage - 1) * pageSize, currentPage * pageSize).map((s, idx) => (
                   <View
                     key={s.id || idx}
                     className={`p-3 ${idx < items.length - 1 ? 'border-b border-stone-200' : ''}`}>
@@ -219,20 +295,22 @@ export default function TechnicalSupport({
                           </View>
                         </View>
                         {Array.isArray(s.evidence_urls) && s.evidence_urls.length > 0 && (
-                          <TouchableOpacity
-                            onPress={() => {
-                              setActiveImage(String(s.evidence_urls[0]));
-                              setImageModalVisible(true);
-                            }}
-                            className="w-16 h-16 overflow-hidden border rounded-lg border-stone-200"
-                            accessible={true}
-                            accessibilityLabel="View evidence photo">
-                            <Image
-                              source={{ uri: String(s.evidence_urls[0]) }}
-                              className="w-16 h-16"
-                              onError={(e) => console.warn(`Failed to load image: ${s.evidence_urls[0]}`, e.nativeEvent.error)}
-                            />
-                          </TouchableOpacity>
+                          <View className="flex-row items-center gap-2">
+                            <TouchableOpacity
+                              onPress={() => {
+                                const list = (s.evidence_urls || []).map((u: any) => String(u)).filter(Boolean);
+                                if (!list || list.length === 0 || !list[0]) return;
+                                setActiveEvidenceList(list);
+                                setActiveImageIndex(0);
+                                setActiveImage(list[0]);
+                                setImageModalVisible(true);
+                              }}
+                              className="items-center justify-center w-10 h-10 rounded-md"
+                              accessible={true}
+                              accessibilityLabel="Open evidence gallery">
+                              <Ionicons name="eye-outline" size={20} color="#237227" />
+                            </TouchableOpacity>
+                          </View>
                         )}
                       </View>
 
@@ -273,26 +351,104 @@ export default function TechnicalSupport({
                     </View>
                   </View>
                 ))}
+
+                {/* Mobile footer / pagination */}
+                <View className="flex-row items-center justify-between px-4 py-3 border-t border-stone-200 bg-stone-50">
+                  <Text className="text-sm text-stone-600">Showing {Math.min(pageSize, items.length - (currentPage - 1) * pageSize)} of {items.length} technical issues</Text>
+                  <View className="flex-row gap-[6px]">
+                    <TouchableOpacity
+                      onPress={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                      disabled={currentPage <= 1}
+                      className={
+                        "w-7 h-7 rounded-[7px] border border-[#e5e7eb] bg-white items-center justify-center " +
+                        (currentPage <= 1 ? 'opacity-50' : '')
+                      }
+                    >
+                      <Ionicons name={'chevron-back-outline' as any} size={13} color="#4b6b4d" />
+                    </TouchableOpacity>
+
+                    <View className="px-3 h-8 rounded-lg  border border-[#237227] items-center justify-center min-w-[60px]">
+                      <Text className="text-[11px] font-semibold text-stone-900">
+                        {currentPage} / {totalPages}
+                      </Text>
+                    </View>
+
+                    <TouchableOpacity
+                      onPress={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                      disabled={currentPage >= totalPages}
+                      className={
+                        "w-7 h-7 rounded-[7px] border border-[#e5e7eb] bg-white items-center justify-center " +
+                        (currentPage >= totalPages ? 'opacity-50' : '')
+                      }
+                    >
+                      <Ionicons name={'chevron-forward-outline' as any} size={13} color="#4b6b4d" />
+                    </TouchableOpacity>
+                  </View>
+                </View>
               </>
             )}
           </View>
         </View>
 
         {/* Image Modal */}
-        <Modal visible={imageModalVisible} transparent animationType="fade">
+        <Modal visible={imageModalVisible} transparent animationType="fade" onRequestClose={closeImageModal}>
           <View className="items-center justify-center flex-1 p-4 bg-black/70">
             <View className="w-full max-w-3xl p-4 bg-white rounded-2xl lg:p-6">
               <View className="flex-row items-center justify-between mb-3">
                 <Text className="text-base font-bold text-stone-900 lg:text-lg">Evidence Photo</Text>
                 <TouchableOpacity
-                  onPress={() => setImageModalVisible(false)}
-                  className="items-center justify-center w-8 h-8 rounded-lg bg-stone-100"
+                  onPress={closeImageModal}
+                  className="items-center justify-center px-3 h-8 rounded-lg bg-[#f8f4fb] border border-[#237227]"
                   accessible={true}
                   accessibilityLabel="Close modal">
-                  <Ionicons name="close" size={20} color="#111827" />
+                  <Text className="text-sm font-semibold text-[#237227]">Close</Text>
                 </TouchableOpacity>
               </View>
-              {activeImage ? (
+
+              {activeEvidenceList && activeEvidenceList.length > 0 ? (
+                <View>
+                  <Image
+                    source={{ uri: activeEvidenceList[activeImageIndex] }}
+                    className="w-full rounded-lg"
+                    style={{ aspectRatio: 4 / 3 }}
+                    resizeMode="contain"
+                  />
+
+                  <View className="flex-row items-center justify-between mt-3">
+                    <TouchableOpacity
+                      onPress={() => {
+                        const nextIndex = Math.max(0, activeImageIndex - 1);
+                        setActiveImageIndex(nextIndex);
+                        setActiveImage(activeEvidenceList[nextIndex] || null);
+                      }}
+                      disabled={activeImageIndex === 0}
+                      className="p-2">
+                      <Ionicons
+                        name="chevron-back-outline"
+                        size={23}
+                        color={activeImageIndex === 0 ? '#237227' : '#237227'}
+                      />
+                    </TouchableOpacity>
+
+                    <Text className="text-sm text-stone-600">{activeImageIndex + 1} / {activeEvidenceList.length}</Text>
+
+                    <TouchableOpacity
+                      onPress={() => {
+                        const nextIndex = Math.min(activeEvidenceList.length - 1, activeImageIndex + 1);
+                        setActiveImageIndex(nextIndex);
+                        setActiveImage(activeEvidenceList[nextIndex] || null);
+                      }}
+                      disabled={activeImageIndex === activeEvidenceList.length - 1}
+                      className="p-2">
+                      <Ionicons
+                        name="chevron-forward-outline"
+                        size={23}
+                        color={activeImageIndex === activeEvidenceList.length - 1 ? '#237227' : '#237227'}
+                      />
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              ) : activeImage ? (
                 <Image
                   source={{ uri: activeImage }}
                   className="w-full rounded-lg"
