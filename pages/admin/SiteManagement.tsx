@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import {
   View,
   Text,
@@ -230,6 +230,15 @@ export default function SiteManagement({ onNavigate, isMobileMenuOpen, setIsMobi
   const fullscreenMapRef = useRef<any>(null);
   const fullscreenMarkerRef = useRef<any>(null);
   const [showMapControls, setShowMapControls] = useState(false);
+
+  // Pagination for sites list
+  const [sitesCurrentPage, setSitesCurrentPage] = useState(1);
+  const [sitesPageSize, setSitesPageSize] = useState(10);
+  const sitesTotalPages = useMemo(() => Math.max(1, Math.ceil(sites.length / sitesPageSize)), [sites.length, sitesPageSize]);
+
+  useEffect(() => {
+    setSitesCurrentPage((p) => Math.min(Math.max(1, p), sitesTotalPages));
+  }, [sitesTotalPages]);
 
   // Fetch sites from Supabase (active or archived)
   const fetchSites = async () => {
@@ -1610,7 +1619,7 @@ export default function SiteManagement({ onNavigate, isMobileMenuOpen, setIsMobi
                 <Text className="mt-1 text-xs text-stone-400">Click Add Site to create your first site</Text>
               </View>
             ) : (
-              sites.map((site, index) => (
+              sites.slice((sitesCurrentPage - 1) * sitesPageSize, sitesCurrentPage * sitesPageSize).map((site, index) => (
                 <View
                   key={site.id}
                   className={`flex-row items-center px-6 py-3.5 ${index !== sites.length - 1 ? 'border-b border-stone-50' : ''}`}
@@ -1674,8 +1683,37 @@ export default function SiteManagement({ onNavigate, isMobileMenuOpen, setIsMobi
             )}
             {sites.length > 0 && (
               <View className="flex-row items-center justify-between px-6 py-3 border-t border-stone-100 bg-stone-50">
-                <Text className="text-xs text-stone-900">Showing {sites.length} sites</Text>
-                <View />
+                <Text className="text-xs text-stone-900">Showing {Math.min(sitesPageSize, sites.length - (sitesCurrentPage - 1) * sitesPageSize)} of {sites.length} sites</Text>
+
+                <View className="flex-row gap-[6px]">
+                  <TouchableOpacity
+                    onPress={() => setSitesCurrentPage((p) => Math.max(1, p - 1))}
+                    disabled={sitesCurrentPage <= 1}
+                    className={
+                      "w-7 h-7 rounded-[7px] border border-[#e5e7eb] bg-white items-center justify-center " +
+                      (sitesCurrentPage <= 1 ? 'opacity-50' : '')
+                    }
+                  >
+                    <Ionicons name={'chevron-back-outline' as any} size={13} color="#4b6b4d" />
+                  </TouchableOpacity>
+
+                  <View className="px-3 h-8 rounded-lg  border border-[#237227] items-center justify-center min-w-[60px]">
+                    <Text className="text-[11px] font-semibold text-stone-900">
+                      {sitesCurrentPage} / {sitesTotalPages}
+                    </Text>
+                  </View>
+
+                  <TouchableOpacity
+                    onPress={() => setSitesCurrentPage((p) => Math.min(sitesTotalPages, p + 1))}
+                    disabled={sitesCurrentPage >= sitesTotalPages}
+                    className={
+                      "w-7 h-7 rounded-[7px] border border-[#e5e7eb] bg-white items-center justify-center " +
+                      (sitesCurrentPage >= sitesTotalPages ? 'opacity-50' : '')
+                    }
+                  >
+                    <Ionicons name={'chevron-forward-outline' as any} size={13} color="#4b6b4d" />
+                  </TouchableOpacity>
+                </View>
               </View>
             )}
           </View>
@@ -1694,7 +1732,7 @@ export default function SiteManagement({ onNavigate, isMobileMenuOpen, setIsMobi
               )}
             </View>
           ) : (
-            sites.map((site, index) => {
+            sites.slice((sitesCurrentPage - 1) * sitesPageSize, sitesCurrentPage * sitesPageSize).map((site, index) => {
               const gradient = CARD_GRADIENTS[index % CARD_GRADIENTS.length];
               const companyName =
                 companyOptions.find((opt) => String(opt.id) === String(site.company_id))?.name ||
@@ -1805,6 +1843,42 @@ export default function SiteManagement({ onNavigate, isMobileMenuOpen, setIsMobi
                 </View>
               );
             })
+          )}
+
+          {/* Mobile pagination footer */}
+          {sites.length > 0 && (
+            <View className="flex-row items-center justify-between px-4 py-3 border-t border-stone-100 bg-stone-50">
+              <Text className="text-sm text-stone-600">Showing {Math.min(sitesPageSize, sites.length - (sitesCurrentPage - 1) * sitesPageSize)} of {sites.length} sites</Text>
+              <View className="flex-row gap-[6px]">
+                <TouchableOpacity
+                  onPress={() => setSitesCurrentPage((p) => Math.max(1, p - 1))}
+                  disabled={sitesCurrentPage <= 1}
+                  className={
+                    "w-7 h-7 rounded-[7px] border border-[#e5e7eb] bg-white items-center justify-center " +
+                    (sitesCurrentPage <= 1 ? 'opacity-50' : '')
+                  }
+                >
+                  <Ionicons name={'chevron-back-outline' as any} size={13} color="#4b6b4d" />
+                </TouchableOpacity>
+
+                <View className="px-3 h-8 rounded-lg  border border-[#237227] items-center justify-center min-w-[60px]">
+                  <Text className="text-[11px] font-semibold text-stone-900">
+                    {sitesCurrentPage} / {sitesTotalPages}
+                  </Text>
+                </View>
+
+                <TouchableOpacity
+                  onPress={() => setSitesCurrentPage((p) => Math.min(sitesTotalPages, p + 1))}
+                  disabled={sitesCurrentPage >= sitesTotalPages}
+                  className={
+                    "w-7 h-7 rounded-[7px] border border-[#e5e7eb] bg-white items-center justify-center " +
+                    (sitesCurrentPage >= sitesTotalPages ? 'opacity-50' : '')
+                  }
+                >
+                  <Ionicons name={'chevron-forward-outline' as any} size={13} color="#4b6b4d" />
+                </TouchableOpacity>
+              </View>
+            </View>
           )}
         </View>
       </ScrollView>

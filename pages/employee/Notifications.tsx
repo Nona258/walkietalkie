@@ -75,7 +75,7 @@ export default function Notifications({ onBack }: { onBack?: () => void }) {
 
   return (
     <View className="flex-1 bg-gray-50">
-      <View className="flex-row items-center justify-between px-6 pt-12 pb-4 bg-white">
+      <View className="flex-row items-center justify-between px-6 pt-12 pb-4 bg-[#F8F4FB] ">
         <View className="flex-row items-center gap-3">
           <TouchableOpacity onPress={onBack} className="p-2">
             <Ionicons name="chevron-back" size={23} color="#237227" />
