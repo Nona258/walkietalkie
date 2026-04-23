@@ -21,7 +21,7 @@ import {
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Ionicons } from '@expo/vector-icons';
 import supabase, { searchUsers } from '../../utils/supabase';
-import { sendContactRequest,  } from '../../utils/FriendRequests';
+import { sendContactRequest } from '../../utils/FriendRequests';
 import Chat from './Chat';
 
 interface Contact {
@@ -448,7 +448,7 @@ export default function Contacts({ onContactSelected, currentUserId }: ContactsP
         setRefreshing(false);
       }
     }
-  }, [activeChatUserId]);
+  }, [activeChatUserId,]);
 
   useEffect(() => {
     // Fetch current user if not provided
@@ -475,14 +475,12 @@ export default function Contacts({ onContactSelected, currentUserId }: ContactsP
   }, [lastReadMapLoaded]);
 
   useEffect(() => {
+    // initial fetch and user status subscription
     fetchContacts();
 
-    // Optional: Subscribe to realtime updates for online status
     const subscription = supabase
       .channel('public:users')
       .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'users' }, (payload) => {
-        // When a user updates their status, silently refresh contacts.
-        // Also refresh when *my* site_id changes so Team chat appears immediately.
         const newRow: any = payload.new;
         const oldRow: any = payload.old;
         if (newRow?.id === activeChatUserId) {
@@ -495,122 +493,124 @@ export default function Contacts({ onContactSelected, currentUserId }: ContactsP
       })
       .subscribe();
 
-    // Subscribe to new messages to update contact list in real-time
-    if (activeChatUserId) {
-      messagesSubscriptionRef.current = supabase
-        .channel(`user-messages:${activeChatUserId}`)
-        .on(
-          'postgres_changes',
-          {
-            event: 'INSERT',
-            schema: 'public',
-            table: 'messages',
-          },
-          (payload) => {
-            const newMsg = payload.new as any;
-
-            // Handle group/site messages (site_id may be any accepted site or user's own site)
-            if (newMsg.site_id) {
-              const siteId = String(newMsg.site_id);
-              const isUserSite = mySiteId === siteId;
-              const isAcceptedSite = acceptedSiteIdsRef.current && acceptedSiteIdsRef.current.has(siteId);
-              if ((isUserSite || isAcceptedSite) && newMsg.sender_id !== activeChatUserId) {
-                const siteContactId = `site:${siteId}`;
-                const created = newMsg.created_at ? new Date(newMsg.created_at) : new Date();
-                const msgText = newMsg.transcription || newMsg.content || '';
-                const msgTime = created.toLocaleTimeString([], {
-                  hour: '2-digit',
-                  minute: '2-digit',
-                });
-
-                setContacts((prevContacts) =>
-                  prevContacts.map((c) => {
-                    if (c.id !== siteContactId) return c;
-                    return {
-                      ...c,
-                      lastMessage: msgText,
-                      lastMessageTime: msgTime,
-                      unreadCount: (c.unreadCount || 0) + 1,
-                    };
-                  })
-                );
-                return;
-              }
-            }
-
-            // Only handle messages received by the current user (not sent)
-            if (newMsg.receiver_id !== activeChatUserId) return;
-
-            const senderUserId = newMsg.sender_id;
-            const created = newMsg.created_at ? new Date(newMsg.created_at) : new Date();
-            const msgText = newMsg.transcription || newMsg.content || '';
-            const msgTime = created.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-
-            setContacts((prevContacts) => {
-              const existing = prevContacts.find((c) => c.id === senderUserId);
-
-              if (existing) {
-                // Update existing contact's last message + unread count
-                return prevContacts.map((contact) => {
-                  if (contact.id !== senderUserId) return contact;
-                  return {
-                    ...contact,
-                    lastMessage: msgText,
-                    lastMessageTime: msgTime,
-                    unreadCount: (contact.unreadCount || 0) + 1,
-                  };
-                });
-              }
-
-              // Sender is not yet in the list — fetch their details and add them
-              supabase
-                .from('users')
-                .select('id, email, full_name, phone_number, role, profile_picture_url, status')
-                .eq('id', senderUserId)
-                .single()
-                .then(({ data: userData, error }) => {
-                  if (error || !userData) return;
-                  const newContact: Contact = {
-                    id: userData.id,
-                    name: userData.full_name || 'Unknown',
-                    role: userData.role || 'Employee',
-                    initials: getInitials(userData.full_name || 'Unknown'),
-                    status:
-                      userData.status === 'online'
-                        ? 'online'
-                        : userData.status === 'busy'
-                          ? 'busy'
-                          : 'offline',
-                    avatar_color: getAvatarColor(userData.id),
-                    profile_picture_url: userData.profile_picture_url || null,
-                    email: userData.email,
-                    phone_number: userData.phone_number,
-                    lastMessage: msgText,
-                    lastMessageTime: msgTime,
-                    unreadCount: 1,
-                  };
-                  setContacts((prev) => {
-                    // Guard against double-add if the contact was added between the check and now
-                    if (prev.some((c) => c.id === senderUserId)) return prev;
-                    return [newContact, ...prev];
-                  });
-                });
-
-              return prevContacts; // unchanged until async fetch completes
-            });
-          }
-        )
-        .subscribe();
-    }
-
     return () => {
       subscription.unsubscribe();
+    };
+  }, [activeChatUserId, fetchContacts]);
+
+  // Real-time subscription for new messages – uses ref for accepted sites to avoid re‑runs
+  useEffect(() => {
+    if (!activeChatUserId) return;
+
+    if (messagesSubscriptionRef.current) {
+      messagesSubscriptionRef.current.unsubscribe();
+      messagesSubscriptionRef.current = null;
+    }
+
+    messagesSubscriptionRef.current = supabase
+      .channel(`user-messages:${activeChatUserId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'messages',
+        },
+        (payload) => {
+          const newMsg = payload.new as any;
+          // Group messages (site_id)
+          if (newMsg.site_id) {
+            const siteId = String(newMsg.site_id);
+            const isUserSite = mySiteId === siteId;
+            const isAcceptedSite = acceptedSiteIdsRef.current.has(siteId);
+            if ((isUserSite || isAcceptedSite) && newMsg.sender_id !== activeChatUserId) {
+              const siteContactId = `site:${siteId}`;
+              const created = newMsg.created_at ? new Date(newMsg.created_at) : new Date();
+              const msgText = newMsg.transcription || newMsg.content || '';
+              const msgTime = created.toLocaleTimeString([], {
+                hour: '2-digit',
+                minute: '2-digit',
+              });
+              setContacts((prevContacts) =>
+                prevContacts.map((c) => {
+                  if (c.id !== siteContactId) return c;
+                  return {
+                    ...c,
+                    lastMessage: msgText,
+                    lastMessageTime: msgTime,
+                    unreadCount: (c.unreadCount || 0) + 1,
+                  };
+                })
+              );
+              return;
+            }
+          }
+
+          // Private messages
+          if (newMsg.receiver_id !== activeChatUserId) return;
+          const senderUserId = newMsg.sender_id;
+          const created = newMsg.created_at ? new Date(newMsg.created_at) : new Date();
+          const msgText = newMsg.transcription || newMsg.content || '';
+          const msgTime = created.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+          setContacts((prevContacts) => {
+            const existing = prevContacts.find((c) => c.id === senderUserId);
+            if (existing) {
+              return prevContacts.map((contact) => {
+                if (contact.id !== senderUserId) return contact;
+                return {
+                  ...contact,
+                  lastMessage: msgText,
+                  lastMessageTime: msgTime,
+                  unreadCount: (contact.unreadCount || 0) + 1,
+                };
+              });
+            }
+            // Fetch user details and add new contact
+            supabase
+              .from('users')
+              .select('id, email, full_name, phone_number, role, profile_picture_url, status')
+              .eq('id', senderUserId)
+              .single()
+              .then(({ data: userData, error }) => {
+                if (error || !userData) return;
+                const newContact: Contact = {
+                  id: userData.id,
+                  name: userData.full_name || 'Unknown',
+                  role: userData.role || 'Employee',
+                  initials: getInitials(userData.full_name || 'Unknown'),
+                  status:
+                    userData.status === 'online'
+                      ? 'online'
+                      : userData.status === 'busy'
+                        ? 'busy'
+                        : 'offline',
+                  avatar_color: getAvatarColor(userData.id),
+                  profile_picture_url: userData.profile_picture_url || null,
+                  email: userData.email,
+                  phone_number: userData.phone_number,
+                  lastMessage: msgText,
+                  lastMessageTime: msgTime,
+                  unreadCount: 1,
+                };
+                setContacts((prev) => {
+                  if (prev.some((c) => c.id === senderUserId)) return prev;
+                  return [newContact, ...prev];
+                });
+              });
+            return prevContacts;
+          });
+        }
+      )
+      .subscribe();
+
+
+    return () => {
       if (messagesSubscriptionRef.current) {
         messagesSubscriptionRef.current.unsubscribe();
         messagesSubscriptionRef.current = null;
       }
     };
-  }, [activeChatUserId, mySiteId]);
+  }, [activeChatUserId, mySiteId]); // No acceptedSiteIds dependency
 
   // Apply filters and search whenever contacts, searchText, or filterType changes
   useEffect(() => {
@@ -1256,7 +1256,7 @@ export default function Contacts({ onContactSelected, currentUserId }: ContactsP
                   ) : (
                     <View
                       className="items-center justify-center rounded-full shadow-md h-14 w-14"
-                      style={{ backgroundColor: contact.avatar_color }}>
+                      style={{ backgroundColor: '#237227' }}>
                       <Text style={{ color: '#f8fafb', fontWeight: '700', fontSize: 16 }}>{contact.initials}</Text>
                     </View>
                   )}
