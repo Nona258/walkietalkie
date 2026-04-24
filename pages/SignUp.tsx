@@ -33,6 +33,7 @@ export default function SignUp({ onNavigateToSignIn, onSignUpSuccess }: SignUpPr
   const [agreeToTerms, setAgreeToTerms] = useState(false);
   const [loading, setLoading] = useState(false);
   const [showEulaModal, setShowEulaModal] = useState(false);
+  const [eulaForViewing, setEulaForViewing] = useState(false);
   const [eulaLoading, setEulaLoading] = useState(false);
   const [signedUpUser, setSignedUpUser] = useState<any>(null);
 
@@ -337,7 +338,40 @@ export default function SignUp({ onNavigateToSignIn, onSignUpSuccess }: SignUpPr
                 />
               </TouchableOpacity>
             </View>
-            
+            {/* Terms & Conditions checkbox */}
+            <View className="flex-row items-center px-2 mb-4">
+              <TouchableOpacity
+                className="mr-3"
+                onPress={() => setAgreeToTerms((v) => !v)}>
+                <Ionicons
+                  name={agreeToTerms ? 'checkbox' : 'square-outline'}
+                  size={22}
+                  color={agreeToTerms ? '#237227' : '#9ca3af'}
+                />
+              </TouchableOpacity>
+              <Text className="flex-1 text-sm text-gray-700">
+                I agree to the{' '}
+                <Text
+                  className="text-[#237227] font-semibold"
+                  onPress={() => {
+                    setEulaForViewing(true);
+                    setShowEulaModal(true);
+                  }}>
+                  Terms of Service
+                </Text>
+                {' '}and{' '}
+                <Text
+                  className="text-[#237227] font-semibold"
+                  onPress={() => {
+                    setEulaForViewing(true);
+                    setShowEulaModal(true);
+                  }}>
+                  Privacy Policy
+                </Text>
+                .
+              </Text>
+            </View>
+
             {/* Create Account Button */}
             <TouchableOpacity
               className="w-full items-center justify-center mb-4 bg-[#237227] shadow-sm h-14 rounded-2xl"
@@ -373,8 +407,23 @@ export default function SignUp({ onNavigateToSignIn, onSignUpSuccess }: SignUpPr
 
       <EulaModal
         visible={showEulaModal}
-        onAccept={handleEulaAccept}
-        onDecline={handleEulaDecline}
+        onAccept={async () => {
+          if (eulaForViewing) {
+            setAgreeToTerms(true);
+            setShowEulaModal(false);
+            setEulaForViewing(false);
+            return;
+          }
+          await handleEulaAccept();
+        }}
+        onDecline={() => {
+          if (eulaForViewing) {
+            setShowEulaModal(false);
+            setEulaForViewing(false);
+            return;
+          }
+          handleEulaDecline();
+        }}
         loading={eulaLoading}
       />
     </View>

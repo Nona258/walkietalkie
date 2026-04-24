@@ -165,7 +165,7 @@ export default function Settings({
           contentContainerStyle={{ paddingHorizontal: 24, paddingTop: 32, paddingBottom: 32 }}
           showsVerticalScrollIndicator={true}>
           {/* User Info Card */}
-          <View className="w-full p-6 mb-8 rounded-3xl bg-gradient-to-br from-[#e8f5e9] to-[#237227] shadow-lg ">
+          <View className="w-full p-6 mb-8 rounded-3xl bg-[#f8f4fb] border border-[#237227] shadow-lg ">
             <View className="flex-row items-center mb-6">
               <View className="items-center justify-center w-16 h-16 mr-4 overflow-hidden bg-[#237227] rounded-full">
                 {userData.profile_picture_url ? (
@@ -206,20 +206,8 @@ export default function Settings({
             onPress={onNavigateToChangePassword}
             disabled={!onNavigateToChangePassword}
           />
-          <SettingToggle
-            icon="notifications-outline"
-            label="Notifications"
-            description="Turn notifications on/off"
-            value={notificationsEnabled}
-            disabled={loadingNotificationsPref}
-            onValueChange={persistNotificationsPref}
-          />
-          <SettingOption
-            icon="shield-checkmark-outline"
-            label="Privacy & Security"
-            description="Control your privacy settings"
-            onPress={() => {}}
-          />
+          
+        
 
           {/* LOGOUT SECTION */}
           <View className="pt-8 mt-8 border-t border-gray-200">

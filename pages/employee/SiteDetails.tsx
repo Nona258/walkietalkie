@@ -1042,7 +1042,7 @@ export default function SiteDetails({
                   placeholder="Enter starlink serial"
                   placeholderTextColor="#9ca3af"
                   autoCapitalize="characters"
-                  className="px-4 py-3 mt-2 font-medium text-gray-900 border border-gray-200 rounded-xl bg-gray-50"
+                  className="px-4 py-3 mt-2 font-medium text-gray-900 border border-[#237227] rounded-xl "
                 />
                 {!!updateTriedSubmit && !!validation.serialError && (
                   <Text className="mt-1 text-xs text-red-600">{validation.serialError}</Text>
@@ -1057,7 +1057,7 @@ export default function SiteDetails({
                 <TouchableOpacity
                   disabled={updateSubmitting}
                   onPress={() => setTechnicalIssuePickerVisible(true)}
-                  className="flex-row items-center justify-between px-4 py-3 mt-2 border border-gray-200 rounded-xl bg-gray-50">
+                  className="flex-row items-center justify-between px-4 py-3 mt-2 border border-[#237227] rounded-xl">
                   <Text
                     className={`flex-1 font-medium ${
                       technicalIssue ? 'text-gray-900' : 'text-gray-400'
@@ -1082,7 +1082,7 @@ export default function SiteDetails({
                     placeholderTextColor="#9ca3af"
                     multiline
                     numberOfLines={4}
-                    className="px-4 py-3 mt-2 font-medium text-gray-900 border border-gray-200 rounded-xl bg-gray-50"
+                    className="px-4 py-3 mt-2 font-medium text-gray-900 border border-[#237227] rounded-xl "
                     style={{ textAlignVertical: 'top', minHeight: 100 }}
                   />
                   {!!updateTriedSubmit && !!validation.descError && (
@@ -1102,8 +1102,8 @@ export default function SiteDetails({
                   <TouchableOpacity
                     disabled={updateSubmitting}
                     onPress={pickEvidencePhotos}
-                    className="px-4 py-2 border border-green-200 rounded-full bg-green-50 active:scale-95">
-                    <Text className="text-sm font-medium text-green-700">Add Photos</Text>
+                    className="px-4 py-2 border border-[#237227] rounded-full  active:scale-95">
+                    <Text className="text-sm font-medium text-[#237227]">Add Photos</Text>
                   </TouchableOpacity>
                 </View>
 
@@ -1145,11 +1145,11 @@ export default function SiteDetails({
                 onPress={isNoneSelected ? uploadEvidenceAndFinish : submitIssueReport}
                 className={`w-full items-center justify-center rounded-xl px-4 py-3 ${
                   updateSubmitting || !validation.isValid
-                    ? 'bg-gray-300'
-                    : 'bg-green-500 active:scale-95'
+                    ? 'bg-[#f8f4fb]'
+                    : 'bg-[#237227] active:scale-95'
                 }`}>
                 {updateSubmitting ? (
-                  <ActivityIndicator color="#ffffff" />
+                  <ActivityIndicator color="#237227" />
                 ) : (
                   <Text
                     className={`text-base font-bold ${
@@ -1199,7 +1199,7 @@ export default function SiteDetails({
                       }`}>
                       {opt}
                     </Text>
-                    {selected ? <Ionicons name="checkmark" size={18} color="#10b981" /> : null}
+                    {selected ? <Ionicons name="checkmark" size={18} color="#237227" /> : null}
                   </TouchableOpacity>
                 );
               })}
@@ -1418,25 +1418,31 @@ export default function SiteDetails({
                 <Text className="text-base font-bold text-[#f8f4fb]">Update Site</Text>
               </TouchableOpacity>
             ) : isPending ? (
+              // Show a join/accept button for non-members so they can see the action.
+              // The button is disabled when the site cannot be accepted (not Pending),
+              // or when already accepted, or when the site is full.
               <TouchableOpacity
                 onPress={handleAcceptSite}
-                disabled={acceptLoading || hasAccepted || memberInfo?.isFull}
+                disabled={acceptLoading || hasAccepted || memberInfo?.isFull || !isPending}
                 className={`w-full items-center justify-center rounded-xl py-3 ${
-                  // When the site is full, show a light background with a green border
-                  memberInfo?.isFull
+                  memberInfo?.isFull || hasAccepted || !isPending
                     ? 'bg-[#f8f4fb] border border-[#237227]'
-                    : hasAccepted
-                    ? 'bg-[#f8f4fb]'
-                    : 'active:scale-95'
+                    : 'bg-[#237227] active:scale-95'
                 }`}>
                 {acceptLoading ? (
-                  <ActivityIndicator color="#f8f4fb" />
+                  <ActivityIndicator color={hasAccepted || memberInfo?.isFull || !isPending ? '#237227' : '#f8f4fb'} />
                 ) : (
                   <Text
                     className={`text-base font-bold  ${
-                      hasAccepted || memberInfo?.isFull ? 'text-[#237227]' : 'text-white'
+                      hasAccepted || memberInfo?.isFull || !isPending ? 'text-[#237227]' : 'text-white'
                     }`}>
-                    {memberInfo?.isFull ? 'Site is Full' : hasAccepted ? 'Joined' : 'Accept & Join'}
+                    {memberInfo?.isFull
+                      ? 'Site is Full'
+                      : hasAccepted
+                      ? 'Joined'
+                      : !isPending
+                      ? 'Not available'
+                      : 'Accept & Join'}
                   </Text>
                 )}
               </TouchableOpacity>
