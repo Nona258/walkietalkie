@@ -111,7 +111,7 @@ export default function Contacts({ onContactSelected, currentUserId }: ContactsP
               toValue: 0,
               duration: 240,
               easing: Easing.in(Easing.ease),
-              useNativeDriver: false,
+              useNativeDriver: true,
             }),
             Animated.timing(sheetAnim, {
               toValue: 600,
@@ -137,7 +137,7 @@ export default function Contacts({ onContactSelected, currentUserId }: ContactsP
           Animated.timing(backdropAnim, {
             toValue: 1,
             duration: 150,
-            useNativeDriver: false,
+            useNativeDriver: true,
           }).start();
         }
       },
@@ -687,7 +687,7 @@ export default function Contacts({ onContactSelected, currentUserId }: ContactsP
         toValue: 1,
         duration: 320,
         easing: Easing.out(Easing.ease),
-        useNativeDriver: false,
+        useNativeDriver: true,
       }),
       Animated.spring(sheetAnim, { toValue: 0, tension: 60, friction: 12, useNativeDriver: true }),
     ]).start();
@@ -709,7 +709,7 @@ export default function Contacts({ onContactSelected, currentUserId }: ContactsP
         toValue: 0,
         duration: 240,
         easing: Easing.in(Easing.ease),
-        useNativeDriver: false,
+        useNativeDriver: true,
       }),
       Animated.timing(sheetAnim, {
         toValue: 600,
@@ -906,10 +906,8 @@ export default function Contacts({ onContactSelected, currentUserId }: ContactsP
             style={{
               flex: 1,
               justifyContent: 'flex-end',
-              backgroundColor: backdropAnim.interpolate({
-                inputRange: [0, 1],
-                outputRange: ['rgba(0,0,0,0)', 'rgba(0,0,0,0.4)'],
-              }),
+              backgroundColor: 'rgba(0,0,0,0.4)',
+              opacity: backdropAnim,
             }}>
             <Animated.View
               style={{
@@ -1031,7 +1029,7 @@ export default function Contacts({ onContactSelected, currentUserId }: ContactsP
                         const already = contacts.some((c) => c.id === item.id);
                         const isCurrentUser = item.id === activeChatUserId;
                         const isAdmin = (item.role || '').toLowerCase() === 'admin';
-                        const avatarColor = getAvatarColor(item.id);
+                        const avatarColor = '#237227';
                         const initials = getInitials(item.full_name || item.email || 'U');
 
                         return (
@@ -1060,7 +1058,7 @@ export default function Contacts({ onContactSelected, currentUserId }: ContactsP
                                     alignItems: 'center',
                                     justifyContent: 'center',
                                   }}>
-                                  <Text style={{ color: 'white', fontWeight: '700', fontSize: 15 }}>
+                                  <Text style={{ color: '#f8f4fb', fontWeight: '700', fontSize: 15 }}>
                                     {initials}
                                   </Text>
                                 </View>
@@ -1257,7 +1255,7 @@ export default function Contacts({ onContactSelected, currentUserId }: ContactsP
                     <View
                       className="items-center justify-center rounded-full shadow-md h-14 w-14"
                       style={{ backgroundColor: '#237227' }}>
-                      <Text style={{ color: '#f8fafb', fontWeight: '700', fontSize: 16 }}>{contact.initials}</Text>
+                      <Text style={{ color: '#f8f4fb', fontWeight: '700', fontSize: 16 }}>{contact.initials}</Text>
                     </View>
                   )}
                   {/* Status Indicator */}

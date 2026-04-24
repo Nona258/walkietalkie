@@ -1137,6 +1137,25 @@ export default function AdminDashboard({ onLogout, onNavigate }: AdminDashboardP
   const isWebView = windowWidth > 900;
   const chartWidth = isWebView ? Math.min(windowWidth * 0.7, 720) : Math.max(windowWidth - 40, 280);
   const [chartContainerWidth, setChartContainerWidth] = useState<number>(chartWidth);
+  const isSmallScreen = windowWidth <= 420;
+  const labelsForChart = React.useMemo(() => {
+    // shorten weekday labels on small screens (Mon, Tue, ...)
+    const shortMap: Record<string, string> = {
+      monday: 'Mon',
+      tuesday: 'Tue',
+      wednesday: 'Wed',
+      thursday: 'Thu',
+      friday: 'Fri',
+      saturday: 'Sat',
+      sunday: 'Sun',
+    };
+    return (dailyAccomplished || []).map((d) => {
+      const raw = String(d.day || '');
+      if (!isSmallScreen) return raw;
+      const key = raw.trim().toLowerCase();
+      return shortMap[key] ?? (raw.length > 3 ? raw.slice(0, 3) : raw);
+    });
+  }, [dailyAccomplished, isSmallScreen]);
   // number of horizontal grid lines (segments) to show on the chart
   const CHART_SEGMENTS = 4;
   // fixed chart height used for alignment of ticks
@@ -1860,7 +1879,7 @@ export default function AdminDashboard({ onLogout, onNavigate }: AdminDashboardP
                 <View>
                   <View style={{ flexDirection: 'row', alignItems: 'flex-start' }}>
                     {/* Left column: Y-axis ticks aligned with chart horizontal grid lines */}
-                    <View style={{ width: 28, paddingRight: 6, alignItems: 'flex-end' }}>
+                    <View style={{ width: isSmallScreen ? 22 : 28, paddingRight: isSmallScreen ? 4 : 6, alignItems: 'flex-end' }}>
                       {(() => {
                         const counts = dailyAccomplished.map(d => Number(d.count || 0));
                         const maxVal = Math.max(1, ...counts);
@@ -1884,8 +1903,8 @@ export default function AdminDashboard({ onLogout, onNavigate }: AdminDashboardP
                                     left: 0,
                                     right: 0,
                                     top,
-                                    transform: [{ translateY: -8 }],
-                                    fontSize: 12,
+                                    transform: [{ translateY: isSmallScreen ? -6 : -8 }],
+                                    fontSize: isSmallScreen ? 10 : 12,
                                     fontWeight: '500',
                                     color: '#6b7280',
                                     textAlign: 'right',
@@ -1907,12 +1926,12 @@ export default function AdminDashboard({ onLogout, onNavigate }: AdminDashboardP
                     }}>
                       <LineChart
                         data={{
-                          labels: dailyAccomplished.map(d => d.day),
+                          labels: labelsForChart,
                           datasets: [{ data: dailyAccomplished.map(d => d.count) }],
                         }}
                         width={chartContainerWidth}
                         // give extra vertical room for full weekday labels
-                        height={160}
+                        height={isSmallScreen ? 140 : 160}
                         yAxisLabel=""
                         yAxisSuffix=""
                         withInnerLines={true}
@@ -1920,7 +1939,7 @@ export default function AdminDashboard({ onLogout, onNavigate }: AdminDashboardP
                         withDots={true}
                         bezier={true}
                         // render x-axis labels horizontally
-                        verticalLabelRotation={0}
+                        verticalLabelRotation={isSmallScreen ? 35 : 0}
                         formatXLabel={(label: string) => String(label)}
                         onDataPointClick={(event: any) => {
                           try {
@@ -1951,10 +1970,10 @@ export default function AdminDashboard({ onLogout, onNavigate }: AdminDashboardP
                           marginVertical: 0,
                           borderRadius: 8,
                           // give more bottom padding so horizontal weekday labels fit
-                          paddingBottom: 44,
+                          paddingBottom: isSmallScreen ? 34 : 44,
                           // reduce left padding so left-side numbers sit closer to chart
-                          paddingLeft: 20,
-                          paddingRight: 32,
+                          paddingLeft: isSmallScreen ? 12 : 20,
+                          paddingRight: isSmallScreen ? 14 : 32,
                         }}
                         fromZero={true}
                         segments={CHART_SEGMENTS}
@@ -1966,7 +1985,7 @@ export default function AdminDashboard({ onLogout, onNavigate }: AdminDashboardP
                         <View
                           style={{
                             position: 'absolute',
-                            left: Math.max(6, Math.min(chartContainerWidth - 100, tooltip.x - 40)),
+                            left: Math.max(6, Math.min(Math.max(chartContainerWidth, 180) - 100, tooltip.x - 40)),
                             top: Math.max(0, tooltip.y - 40),
                             backgroundColor: '#237227',
                             paddingVertical: 6,
